@@ -1,0 +1,26 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      - JELLYFIN_PublishedServerUrl=https://{{.Domain}}
+    ports:
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+    volumes:
+      {{- range .Volumes}}
+      - {{$.BaseDir}}/{{.Source}}:{{.Target}}
+      {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+networks:
+  caleope-public:
+    external: true
