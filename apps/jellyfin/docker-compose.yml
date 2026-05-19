@@ -19,6 +19,7 @@ services:
       - "traefik.http.routers.jellyfin.entrypoints=websecure"
       - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
       - "traefik.docker.network=caleope-public"
+      - "traefik.http.routers.jellyfin.tls.certresolver=letsencrypt"
     networks:
       - caleope-public
 networks:
