@@ -1,0 +1,21 @@
+{
+  "id": "nextcloud",
+  "name": "Nextcloud",
+  "category": "cloud",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/nextcloud/html",  "target": "/var/www/html" },
+    { "source": "app-data/nextcloud/db",    "target": "/var/lib/mysql" },
+    { "source": "app-data/nextcloud/redis", "target": "/data" }
+  ],
+  "backup": { "enabled": true }
+}

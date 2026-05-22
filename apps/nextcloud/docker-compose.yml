@@ -1,0 +1,62 @@
+services:
+  nextcloud-db:
+    image: mariadb:11
+    container_name: nextcloud-db
+    restart: unless-stopped
+    env_file:
+      - {{$.BaseDir}}/app-config/nextcloud/secrets.env
+    environment:
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+    volumes:
+      - {{$.BaseDir}}/app-data/nextcloud/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  nextcloud-redis:
+    image: redis:7-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    volumes:
+      - {{$.BaseDir}}/app-data/nextcloud/redis:/data
+    networks:
+      - caleope-internal
+
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    depends_on:
+      - nextcloud-db
+      - nextcloud-redis
+    env_file:
+      - {{$.BaseDir}}/app-config/nextcloud/secrets.env
+    environment:
+      - MYSQL_HOST=nextcloud-db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - REDIS_HOST=nextcloud-redis
+      - NEXTCLOUD_TRUSTED_DOMAINS={{.Domain}}
+      - OVERWRITEPROTOCOL=https
+      - OVERWRITECLIURL=https://{{.Domain}}
+    ports:
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+    volumes:
+      - {{$.BaseDir}}/app-data/nextcloud/html:/var/www/html
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextcloud.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.nextcloud.entrypoints=web"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
