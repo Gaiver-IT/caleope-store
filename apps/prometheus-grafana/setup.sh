@@ -1,13 +1,19 @@
 #!/bin/bash
 # setup.sh — Prometheus + Grafana
 # Génère la config Prometheus avec scraping du daemon Caleope (:9100/metrics)
+#
+# Variables d'environnement injectées par Caleope :
+#   CALEOPE_BASE_DIR  — répertoire racine (/opt/gaiver-it/caleope)
+#   CALEOPE_APP_ID    — identifiant de l'app (prometheus-grafana)
+#   CALEOPE_APP_DIR   — répertoire compose de l'app
+#   CALEOPE_DOMAIN    — domaine Grafana
 
 set -euo pipefail
 
-APP_CONFIG_DIR="${1}"   # /opt/gaiver-it/caleope/app-config/prometheus-grafana
-APP_DATA_DIR="${2}"     # /opt/gaiver-it/caleope/app-data/prometheus-grafana
-DOMAIN="${3}"           # grafana.caleope-redberry.guernaham.bzh
-HOST_IP="${4:-}"        # IP de l'hôte (optionnel, détectée auto sinon)
+APP_CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
+APP_DATA_DIR="${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}"
+DOMAIN="${CALEOPE_DOMAIN}"
+HOST_IP=""   # détecté automatiquement ci-dessous
 
 mkdir -p "${APP_CONFIG_DIR}"
 mkdir -p "${APP_DATA_DIR}/prometheus"
