@@ -1,0 +1,49 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: caleope-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - {{.AppDataDir}}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - {{.AppDataDir}}/prometheus:/prometheus
+    networks:
+      - caleope-internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: caleope-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "{{.Port}}:3000"
+    environment:
+      - GF_SERVER_ROOT_URL={{.Env.GF_SERVER_ROOT_URL}}
+      - GF_SECURITY_ADMIN_USER={{.Env.GF_SECURITY_ADMIN_USER}}
+      - GF_SECURITY_ADMIN_PASSWORD={{.Env.GF_SECURITY_ADMIN_PASSWORD}}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_PATHS_PROVISIONING=/var/lib/grafana/provisioning
+    volumes:
+      - {{.AppDataDir}}/grafana:/var/lib/grafana
+    networks:
+      - caleope-public
+      - caleope-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

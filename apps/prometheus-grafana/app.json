@@ -1,0 +1,22 @@
+{
+  "id": "prometheus-grafana",
+  "name": "Prometheus + Grafana",
+  "category": "monitoring",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "grafana", "container": 3000, "dynamic": true }
+  ],
+  "volumes": [
+    { "source": "app-data/prometheus-grafana/prometheus", "target": "/prometheus" },
+    { "source": "app-data/prometheus-grafana/grafana",    "target": "/var/lib/grafana" }
+  ],
+  "backup": { "enabled": true }
+}
