@@ -57,7 +57,7 @@ su -s /bin/bash www-data -c \
 su -s /bin/bash www-data -c \
     "php /var/www/html/occ config:app:set onlyoffice jwt_secret                --value='${JWT_SECRET}'"
 su -s /bin/bash www-data -c \
-    "php /var/www/html/occ config:app:set onlyoffice jwt_header                --value='AuthorizationJwt'"
+    "php /var/www/html/occ config:app:set onlyoffice jwt_header                --value='Authorization'"
 
 echo "✓ OnlyOffice connecté à Nextcloud"
 BOOTSTRAP
