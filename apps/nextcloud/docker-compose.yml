@@ -36,6 +36,8 @@ services:
       - "traefik.http.routers.nextcloud-onlyoffice.rule=Host(`${ONLYOFFICE_DOMAIN}`)"
       - "traefik.http.routers.nextcloud-onlyoffice.entrypoints=web"
       - "traefik.http.services.nextcloud-onlyoffice.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.onlyoffice-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.nextcloud-onlyoffice.middlewares=onlyoffice-headers"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
