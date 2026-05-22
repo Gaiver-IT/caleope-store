@@ -22,6 +22,25 @@ services:
     networks:
       - caleope-internal
 
+  nextcloud-onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: nextcloud-onlyoffice
+    restart: unless-stopped
+    env_file:
+      - {{$.BaseDir}}/app-config/nextcloud/secrets.env
+    volumes:
+      - {{$.BaseDir}}/app-data/nextcloud/onlyoffice/logs:/var/log/onlyoffice
+      - {{$.BaseDir}}/app-data/nextcloud/onlyoffice/data:/var/www/onlyoffice/Data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextcloud-onlyoffice.rule=Host(`${ONLYOFFICE_DOMAIN}`)"
+      - "traefik.http.routers.nextcloud-onlyoffice.entrypoints=web"
+      - "traefik.http.services.nextcloud-onlyoffice.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
   nextcloud:
     image: nextcloud:latest
     container_name: nextcloud
@@ -53,6 +72,22 @@ services:
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
+      - caleope-internal
+
+  nextcloud-bootstrap:
+    image: nextcloud:latest
+    container_name: nextcloud-bootstrap
+    restart: "no"
+    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    depends_on:
+      - nextcloud
+      - nextcloud-onlyoffice
+    env_file:
+      - {{$.BaseDir}}/app-config/nextcloud/secrets.env
+    volumes:
+      - {{$.BaseDir}}/app-data/nextcloud/html:/var/www/html
+      - {{$.BaseDir}}/app-config/nextcloud/bootstrap.sh:/bootstrap.sh:ro
+    networks:
       - caleope-internal
 
 networks:
