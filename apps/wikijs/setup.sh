@@ -24,7 +24,7 @@ DB_PORT=5432
 DB_USER=wiki
 DB_PASS=${DB_PASSWORD}
 DB_NAME=wiki
-APP_URL=http://${CALEOPE_DOMAIN}
+APP_URL=https://${CALEOPE_DOMAIN}
 JWT_SECRET=${JWT_SECRET}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
@@ -34,11 +34,11 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔══════════════════════════════════════════════════════════════╗
 ║              Wiki.js — Premiers accès                        ║
 ╠══════════════════════════════════════════════════════════════╣
-║  URL          : http://${CALEOPE_DOMAIN}                     ║
+║  URL          : https://${CALEOPE_DOMAIN}                    ║
 ║                                                              ║
 ║  ⚠️  À la PREMIÈRE ouverture, Wiki.js affiche un wizard      ║
 ║     de configuration. Renseigne :                            ║
-║       • Admin email    : admin@gaiver-it.fr                  ║
+║       • Admin email    : n'importe quel email (ex: admin@…)  ║
 ║       • Admin password : ${ADMIN_PASSWORD}                   ║
 ║       • (La base de données est déjà configurée)             ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -48,7 +48,8 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╠══════════════════════════════════════════════════════════════╣
 ║  SYNCHRONISATION GITHUB (optionnel) :                        ║
 ║    Administration → Storage → Git → Enable                   ║
-║    Repo : github.com/Gaiver-IT/caleope-docs (branche: main) ║
+║    Repo : github.com/Gaiver-IT/caleope (branche: main)       ║
+║    Répertoire local : docs                                   ║
 ║    Token : Personal Access Token GitHub (scope: repo)        ║
 ╚══════════════════════════════════════════════════════════════╝
 
