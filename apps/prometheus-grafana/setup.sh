@@ -48,7 +48,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://caleope-prometheus:9090
     isDefault: true
     editable: false
 EOF
@@ -117,6 +117,12 @@ cat > "${APP_DATA_DIR}/grafana/dashboards/caleope-overview.json" << 'DASHBOARD_E
 }
 DASHBOARD_EOF
 
+# ── Permissions des volumes ──
+# Grafana tourne en tant qu'UID 472 dans son image officielle
+chown -R 472:472 "${APP_DATA_DIR}/grafana"
+# Prometheus tourne en tant qu'UID 65534 (nobody)
+chown -R 65534:65534 "${APP_DATA_DIR}/prometheus"
+
 # ── Générer les credentials Grafana ──
 GRAFANA_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=')
 
@@ -153,3 +159,14 @@ cat > "${APP_CONFIG_DIR}/post-install.txt" << EOF
 ║  → Grafana > Dashboards > Caleope                    ║
 ╚══════════════════════════════════════════════════════╝
 EOF
+
+# ── Afficher les identifiants dans la sortie d'installation ──
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║     Prometheus + Grafana — Identifiants d'accès      ║"
+echo "╠══════════════════════════════════════════════════════╣"
+echo "║  URL      : https://${DOMAIN}"
+echo "║  Login    : admin"
+echo "║  Password : ${GRAFANA_PASSWORD}"
+echo "╚══════════════════════════════════════════════════════╝"
+echo ""
