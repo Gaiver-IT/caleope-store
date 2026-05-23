@@ -63,7 +63,7 @@ echo "✓ OnlyOffice connecté à Nextcloud"
 BOOTSTRAP
 chmod +x "${CALEOPE_BASE_DIR}/app-config/nextcloud/bootstrap.sh"
 
-cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
+cat > "${CALEOPE_BASE_DIR}/app-config/nextcloud/post-install.txt" << EOF
 
   ┌──────────────────────────────────────────────────────────────┐
   │          Nextcloud + OnlyOffice — Premiers accès             │
