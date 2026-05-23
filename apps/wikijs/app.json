@@ -1,0 +1,19 @@
+{
+  "id": "wikijs",
+  "name": "Wiki.js",
+  "category": "productivity",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 3000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/wikijs/db", "target": "/var/lib/postgresql/data" }
+  ],
+  "backup": { "enabled": true }
+}
