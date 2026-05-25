@@ -1,6 +1,6 @@
 ##
 ## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Readarr + Bazarr
-##             + qBittorrent + SABnzbd + Jellyseerr
+##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue
 ##
 ## Toutes les apps partagent /data (hardlinks fonctionnels) :
 ##   /data/downloads/  ← clients de téléchargement
@@ -215,6 +215,25 @@ services:
     networks:
       - caleope-public
       - arr-internal
+
+  # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
+  # SPA statique qui se connecte à ton serveur Jellyfin via l'API.
+  # Configure l'URL de ton Jellyfin au premier accès.
+  jellyfin-vue:
+    image: ghcr.io/jellyfin/jellyfin-vue:unstable
+    container_name: jellyfin-vue
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin-vue.rule=Host(`{{.Domain}}`) && PathPrefix(`/vue`)"
+      - "traefik.http.routers.jellyfin-vue.entrypoints=web"
+      - "traefik.http.routers.jellyfin-vue.priority=10"
+      - "traefik.http.routers.jellyfin-vue.middlewares=vue-strip"
+      - "traefik.http.middlewares.vue-strip.stripprefix.prefixes=/vue"
+      - "traefik.http.services.jellyfin-vue.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
 
 networks:
   caleope-public:

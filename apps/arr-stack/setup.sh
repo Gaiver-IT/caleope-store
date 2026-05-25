@@ -99,7 +99,8 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔══════════════════════════════════════════════════════════════════╗
 ║               Arr Stack — Accès                                  ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  Jellyseerr   : https://${CALEOPE_DOMAIN}                        ║
+║  Jellyseerr   : https://${CALEOPE_DOMAIN}          (demandes)    ║
+║  Jellyfin Vue : https://${CALEOPE_DOMAIN}/vue       (lecture)    ║
 ║  Prowlarr     : https://${CALEOPE_DOMAIN}/prowlarr               ║
 ║  Radarr       : https://${CALEOPE_DOMAIN}/radarr                 ║
 ║  Sonarr       : https://${CALEOPE_DOMAIN}/sonarr                 ║
