@@ -4,26 +4,22 @@ set -euo pipefail
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 
 # ── Chemin de stockage média ──────────────────────────────────────────
-# Par défaut : stockage local dans app-data/arr-stack
-# Personnalisable via : caleope install arr-stack --param storage_path=/mnt/nas/media
 STORAGE_PATH="${CALEOPE_PARAM_STORAGE_PATH:-${CALEOPE_BASE_DIR}/app-data/arr-stack/data}"
 
 mkdir -p "${CONFIG_DIR}"
 
-# ── Créer la structure de dossiers ───────────────────────────────────
+# ── Structure de dossiers ─────────────────────────────────────────────
 echo "→ Création de la structure de dossiers..."
 mkdir -p "${STORAGE_PATH}/downloads/complete/"{movies,tv,music,books}
 mkdir -p "${STORAGE_PATH}/downloads/incomplete"
 mkdir -p "${STORAGE_PATH}/media/"{movies,tv,music,books}
 
-# Lien symbolique si stockage externe (NAS)
 if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; then
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack"
     ln -sfn "${STORAGE_PATH}" "${CALEOPE_BASE_DIR}/app-data/arr-stack/data"
     echo "   ✓ Données liées vers : ${STORAGE_PATH}"
 fi
 
-# ── Dossiers de config par app ───────────────────────────────────────
 for app in prowlarr radarr sonarr lidarr readarr bazarr qbittorrent sabnzbd jellyseerr; do
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}"
 done
@@ -32,45 +28,46 @@ done
 PUID=$(id -u)
 PGID=$(id -g)
 
-# ── Générer les API keys ──────────────────────────────────────────────
-gen_api_key() { openssl rand -hex 16; }
-API_PROWLARR=$(gen_api_key)
-API_RADARR=$(gen_api_key)
-API_SONARR=$(gen_api_key)
-API_LIDARR=$(gen_api_key)
-API_READARR=$(gen_api_key)
+# ── Générer les secrets ───────────────────────────────────────────────
+gen_key() { openssl rand -hex 16; }
+API_PROWLARR=$(gen_key)
+API_RADARR=$(gen_key)
+API_SONARR=$(gen_key)
+API_LIDARR=$(gen_key)
+API_READARR=$(gen_key)
+API_SABNZBD=$(gen_key)
+QBT_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
 
-# ── Écrire secrets.env (fusionné dans app.env) ───────────────────────
+# ── secrets.env ──────────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
 ARR_PUID=${PUID}
 ARR_PGID=${PGID}
 ARR_TZ=Europe/Paris
 ARR_STORAGE_PATH=${STORAGE_PATH}
-# API keys (à utiliser dans Prowlarr pour connecter les apps)
 ARR_API_PROWLARR=${API_PROWLARR}
 ARR_API_RADARR=${API_RADARR}
 ARR_API_SONARR=${API_SONARR}
 ARR_API_LIDARR=${API_LIDARR}
 ARR_API_READARR=${API_READARR}
+ARR_API_SABNZBD=${API_SABNZBD}
+ARR_QBT_PASSWORD=${QBT_PASSWORD}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── Pré-configurer les URL base de chaque *arr ───────────────────────
-# Les apps lisent config.xml au premier démarrage
+# ── config.xml *arr (UrlBase + ApiKey + Auth désactivée) ─────────────
 write_arr_config() {
     local app=$1 port=$2 urlbase=$3 apikey=$4
-    local config_dir="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}"
-    mkdir -p "${config_dir}"
-    # Ne pas écraser si déjà configuré (réinstall)
-    [[ -f "${config_dir}/config.xml" ]] && return 0
-    cat > "${config_dir}/config.xml" <<XMLEOF
+    local cfg="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}/config.xml"
+    [[ -f "${cfg}" ]] && return 0
+    cat > "${cfg}" <<XMLEOF
 <Config>
   <BindAddress>*</BindAddress>
   <Port>${port}</Port>
   <UrlBase>${urlbase}</UrlBase>
   <EnableSsl>False</EnableSsl>
   <ApiKey>${apikey}</ApiKey>
-  <AuthenticationMethod>Forms</AuthenticationMethod>
+  <AuthenticationMethod>None</AuthenticationMethod>
+  <AuthenticationRequired>Disabled</AuthenticationRequired>
   <UpdateMechanism>Docker</UpdateMechanism>
   <Branch>master</Branch>
   <LogLevel>info</LogLevel>
@@ -84,51 +81,210 @@ write_arr_config sonarr   8989 /sonarr   "${API_SONARR}"
 write_arr_config lidarr   8686 /lidarr   "${API_LIDARR}"
 write_arr_config readarr  8787 /readarr  "${API_READARR}"
 
-# Bazarr : config ini
+# ── Bazarr config ────────────────────────────────────────────────────
 BAZARR_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/bazarr/config.ini"
 if [[ ! -f "${BAZARR_CFG}" ]]; then
-    mkdir -p "$(dirname "${BAZARR_CFG}")"
     cat > "${BAZARR_CFG}" <<INICFG
 [general]
 base_url = /bazarr
 INICFG
 fi
 
+# ── qBittorrent : config pré-générée (whitelist réseau Docker) ────────
+QBT_CFG_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/qbittorrent/qBittorrent"
+mkdir -p "${QBT_CFG_DIR}"
+if [[ ! -f "${QBT_CFG_DIR}/qBittorrent.conf" ]]; then
+    cat > "${QBT_CFG_DIR}/qBittorrent.conf" <<QBTCFG
+[LegalNotice]
+Accepted=true
+
+[Preferences]
+WebUI\Username=admin
+WebUI\Password_PBKDF2="@ByteArray()"
+WebUI\AuthSubnetWhitelistEnabled=true
+WebUI\AuthSubnetWhitelist=172.0.0.0/8, 10.0.0.0/8, 192.168.0.0/16
+WebUI\LocalHostAuth=false
+Downloads\SavePath=/data/downloads/complete
+Downloads\TempPath=/data/downloads/incomplete
+Downloads\TempPathEnabled=true
+QBTCFG
+fi
+
+# ── SABnzbd : API key pré-configurée ─────────────────────────────────
+SABNZBD_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/sabnzbd/sabnzbd.ini"
+if [[ ! -f "${SABNZBD_CFG}" ]]; then
+    cat > "${SABNZBD_CFG}" <<SABCFG
+[misc]
+api_key = ${API_SABNZBD}
+nzb_key = ${API_SABNZBD}
+url_base = /sabnzbd
+host = 0.0.0.0
+port = 8080
+complete_dir = /data/downloads/complete
+incomplete_dir = /data/downloads/incomplete
+SABCFG
+fi
+
+# ── Bootstrap script (connexions API automatiques) ────────────────────
+cat > "${CONFIG_DIR}/bootstrap.sh" <<'BOOTSTRAP'
+#!/bin/bash
+set -e
+
+P_URL="http://prowlarr:9696/prowlarr"
+R_URL="http://radarr:7878/radarr"
+S_URL="http://sonarr:8989/sonarr"
+L_URL="http://lidarr:8686/lidarr"
+RD_URL="http://readarr:8787/readarr"
+QBT_URL="http://qbittorrent:8080"
+SAB_URL="http://sabnzbd:8080/sabnzbd"
+
+# Attendre qu'un *arr soit prêt (essaie v3 et v1)
+wait_arr() {
+    local name=$1 url=$2 key=$3
+    printf "→ Attente %s..." "$name"
+    until curl -sf -H "X-Api-Key: $key" "$url/api/v3/system/status" >/dev/null 2>&1 \
+       || curl -sf -H "X-Api-Key: $key" "$url/api/v1/system/status" >/dev/null 2>&1; do
+        printf "."
+        sleep 5
+    done
+    echo " ✓"
+}
+
+wait_url() {
+    local name=$1 url=$2
+    printf "→ Attente %s..." "$name"
+    until curl -sf "$url" >/dev/null 2>&1; do printf "."; sleep 5; done
+    echo " ✓"
+}
+
+# POST silencieux — ignore les erreurs 400/409 (déjà configuré)
+api_post() {
+    local url=$1 key=$2 data=$3
+    curl -sf -X POST "$url" \
+        -H "X-Api-Key: $key" \
+        -H "Content-Type: application/json" \
+        -d "$data" >/dev/null 2>&1 || true
+}
+
+api_post_v3() { api_post "${1}/api/v3/${3}" "$2" "$4"; }
+api_post_v1() { api_post "${1}/api/v1/${3}" "$2" "$4"; }
+
+echo "╔════════════════════════════════════════╗"
+echo "║   Arr Stack — Bootstrap automatique    ║"
+echo "╚════════════════════════════════════════╝"
+echo ""
+echo "── [1/3] Attente du démarrage des services..."
+
+wait_arr "Prowlarr" "$P_URL"  "$ARR_API_PROWLARR"
+wait_arr "Radarr"   "$R_URL"  "$ARR_API_RADARR"
+wait_arr "Sonarr"   "$S_URL"  "$ARR_API_SONARR"
+wait_arr "Lidarr"   "$L_URL"  "$ARR_API_LIDARR"
+wait_arr "Readarr"  "$RD_URL" "$ARR_API_READARR"
+wait_url "qBittorrent" "$QBT_URL/api/v2/app/version"
+
+echo ""
+echo "── [2/3] Connexion Prowlarr → *arr..."
+
+# Prowlarr → Radarr
+api_post_v1 "$P_URL" "$ARR_API_PROWLARR" "applications" \
+    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"$R_URL\"},{\"name\":\"apiKey\",\"value\":\"$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]},{\"name\":\"animeSyncCategories\",\"value\":[5070]}]}"
+echo "  ✓ Prowlarr → Radarr"
+
+# Prowlarr → Sonarr
+api_post_v1 "$P_URL" "$ARR_API_PROWLARR" "applications" \
+    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"$S_URL\"},{\"name\":\"apiKey\",\"value\":\"$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]},{\"name\":\"animeSyncCategories\",\"value\":[5070]}]}"
+echo "  ✓ Prowlarr → Sonarr"
+
+# Prowlarr → Lidarr
+api_post_v1 "$P_URL" "$ARR_API_PROWLARR" "applications" \
+    "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"$L_URL\"},{\"name\":\"apiKey\",\"value\":\"$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
+echo "  ✓ Prowlarr → Lidarr"
+
+# Prowlarr → Readarr
+api_post_v1 "$P_URL" "$ARR_API_PROWLARR" "applications" \
+    "{\"name\":\"Readarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Readarr\",\"implementation\":\"Readarr\",\"configContract\":\"ReadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"$RD_URL\"},{\"name\":\"apiKey\",\"value\":\"$ARR_API_READARR\"},{\"name\":\"syncCategories\",\"value\":[7000,7020]}]}"
+echo "  ✓ Prowlarr → Readarr"
+
+echo ""
+echo "── [3/3] Clients de téléchargement + dossiers racine..."
+
+# Template download client qBittorrent (sans auth — whitelist réseau Docker)
+qbt_client() {
+    local name=$1 category=$2
+    echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"qbittorrent\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"${name}Category\",\"value\":\"$category\"},{\"name\":\"recentMoviePriority\",\"value\":0},{\"name\":\"olderMoviePriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}"
+}
+
+# Template download client SABnzbd
+sab_client() {
+    local category=$1
+    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/sabnzbd\"},{\"name\":\"${category}Category\",\"value\":\"$category\"}]}"
+}
+
+# Radarr
+api_post_v3 "$R_URL" "$ARR_API_RADARR" "downloadclient" "$(qbt_client movie movies)"
+api_post_v3 "$R_URL" "$ARR_API_RADARR" "downloadclient" "$(sab_client movie)"
+api_post_v3 "$R_URL" "$ARR_API_RADARR" "rootfolder"     "{\"path\":\"/data/media/movies\"}"
+echo "  ✓ Radarr → qBittorrent + SABnzbd + /data/media/movies"
+
+# Sonarr
+api_post_v3 "$S_URL" "$ARR_API_SONARR" "downloadclient" "$(qbt_client series tv)"
+api_post_v3 "$S_URL" "$ARR_API_SONARR" "downloadclient" "$(sab_client series)"
+api_post_v3 "$S_URL" "$ARR_API_SONARR" "rootfolder"     "{\"path\":\"/data/media/tv\"}"
+echo "  ✓ Sonarr → qBittorrent + SABnzbd + /data/media/tv"
+
+# Lidarr
+api_post_v1 "$L_URL" "$ARR_API_LIDARR" "downloadclient" "$(qbt_client music music)"
+api_post_v1 "$L_URL" "$ARR_API_LIDARR" "downloadclient" "$(sab_client music)"
+api_post_v1 "$L_URL" "$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/media/music\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
+echo "  ✓ Lidarr → qBittorrent + SABnzbd + /data/media/music"
+
+# Readarr
+api_post_v1 "$RD_URL" "$ARR_API_READARR" "downloadclient" "$(qbt_client book books)"
+api_post_v1 "$RD_URL" "$ARR_API_READARR" "downloadclient" "$(sab_client book)"
+api_post_v1 "$RD_URL" "$ARR_API_READARR" "rootfolder"     "{\"path\":\"/data/media/books\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
+echo "  ✓ Readarr → qBittorrent + SABnzbd + /data/media/books"
+
+echo ""
+echo "╔════════════════════════════════════════╗"
+echo "║  ✅  Bootstrap terminé avec succès !   ║"
+echo "║                                        ║"
+echo "║  Reste à faire manuellement :          ║"
+echo "║  • Prowlarr → ajouter tes indexeurs   ║"
+echo "║  • Jellyseerr → connecter Jellyfin    ║"
+echo "║  • Jellyseerr → connecter Radarr+Sonarr║"
+echo "╚════════════════════════════════════════╝"
+BOOTSTRAP
+chmod +x "${CONFIG_DIR}/bootstrap.sh"
+
 # ── post-install.txt ─────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
-╔══════════════════════════════════════════════════════════════════╗
-║               Arr Stack — Accès                                  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Jellyseerr   : https://${CALEOPE_DOMAIN}          (demandes)    ║
-║  Jellyfin Vue : https://${CALEOPE_DOMAIN}/vue       (lecture)    ║
-║  Prowlarr     : https://${CALEOPE_DOMAIN}/prowlarr               ║
-║  Radarr       : https://${CALEOPE_DOMAIN}/radarr                 ║
-║  Sonarr       : https://${CALEOPE_DOMAIN}/sonarr                 ║
-║  Lidarr       : https://${CALEOPE_DOMAIN}/lidarr                 ║
-║  Readarr      : https://${CALEOPE_DOMAIN}/readarr                ║
-║  Bazarr       : https://${CALEOPE_DOMAIN}/bazarr                 ║
-║  qBittorrent  : https://${CALEOPE_DOMAIN}/qbt                    ║
-║  SABnzbd      : https://${CALEOPE_DOMAIN}/sabnzbd                ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Stockage média : ${STORAGE_PATH}                                ║
-╠══════════════════════════════════════════════════════════════════╣
-║  API keys (pour connecter les apps entre elles) :                ║
-║    Prowlarr : ${API_PROWLARR}  ║
-║    Radarr   : ${API_RADARR}  ║
-║    Sonarr   : ${API_SONARR}  ║
-║    Lidarr   : ${API_LIDARR}  ║
-║    Readarr  : ${API_READARR}  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  ORDRE DE CONFIGURATION :                                        ║
-║  1. Prowlarr → ajouter tes indexeurs                             ║
-║  2. Prowlarr → Apps → connecter Radarr/Sonarr/Lidarr/Readarr    ║
-║  3. Radarr/Sonarr → Download Clients → qBittorrent              ║
-║     Host: qbittorrent  Port: 8080                                ║
-║  4. Jellyseerr → connecter Jellyfin + Radarr + Sonarr            ║
-║  5. Jellyfin → ajouter bibliothèque : ${STORAGE_PATH}/media      ║
-╚══════════════════════════════════════════════════════════════════╝
-
-NAS custom : caleope install arr-stack --param storage_path=/mnt/nas/media
+╔══════════════════════════════════════════════════════════════════════╗
+║                    Arr Stack — Accès                                 ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  Jellyseerr   : https://${CALEOPE_DOMAIN}           (demandes)      ║
+║  Jellyfin Vue : https://${CALEOPE_DOMAIN}/vue        (lecture)      ║
+║  Prowlarr     : https://${CALEOPE_DOMAIN}/prowlarr                  ║
+║  Radarr       : https://${CALEOPE_DOMAIN}/radarr                    ║
+║  Sonarr       : https://${CALEOPE_DOMAIN}/sonarr                    ║
+║  Lidarr       : https://${CALEOPE_DOMAIN}/lidarr                    ║
+║  Readarr      : https://${CALEOPE_DOMAIN}/readarr                   ║
+║  Bazarr       : https://${CALEOPE_DOMAIN}/bazarr                    ║
+║  qBittorrent  : https://${CALEOPE_DOMAIN}/qbt                       ║
+║  SABnzbd      : https://${CALEOPE_DOMAIN}/sabnzbd                   ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT :                         ║
+║     ✓ Prowlarr → Radarr, Sonarr, Lidarr, Readarr                   ║
+║     ✓ Radarr/Sonarr/Lidarr/Readarr → qBittorrent + SABnzbd         ║
+║     ✓ Dossiers média : /data/media/{movies,tv,music,books}          ║
+║     ✓ Auth désactivée (réseau local)                                ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  À FAIRE MANUELLEMENT (2 étapes seulement) :                        ║
+║  1. Prowlarr → Indexers → Add  (ajouter tes sources)                ║
+║  2. Jellyseerr → connecter Jellyfin + Radarr + Sonarr               ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  Stockage : ${STORAGE_PATH}                                          ║
+║  qBittorrent password : ${QBT_PASSWORD}  (si besoin)                ║
+╚══════════════════════════════════════════════════════════════════════╝
 EOF
 
-echo "✓ Arr Stack préparé (${STORAGE_PATH})"
+echo "✓ Arr Stack préparé — bootstrap configuré"

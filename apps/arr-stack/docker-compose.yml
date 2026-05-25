@@ -216,6 +216,27 @@ services:
       - caleope-public
       - arr-internal
 
+  # ── BOOTSTRAP — configure toutes les connexions API au démarrage ────
+  # S'exécute une seule fois, attend que tous les services soient prêts,
+  # puis configure Prowlarr→*arr, clients de téléchargement, dossiers.
+  arr-bootstrap:
+    image: alpine:3.19
+    container_name: arr-bootstrap
+    restart: "no"
+    command: ["/bin/sh", "-c", "apk add --no-cache curl bash >/dev/null 2>&1 && bash /bootstrap.sh"]
+    env_file: app.env
+    volumes:
+      - {{.BaseDir}}/app-config/arr-stack/bootstrap.sh:/bootstrap.sh:ro
+    networks:
+      - arr-internal
+    depends_on:
+      - prowlarr
+      - radarr
+      - sonarr
+      - lidarr
+      - readarr
+      - qbittorrent
+
   # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
   # SPA statique qui se connecte à ton serveur Jellyfin via l'API.
   # Configure l'URL de ton Jellyfin au premier accès.
