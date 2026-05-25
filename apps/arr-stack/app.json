@@ -1,0 +1,20 @@
+{
+  "id": "arr-stack",
+  "name": "Arr Stack (Médias)",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/arr-stack/data",   "target": "/data"   },
+    { "source": "app-data/arr-stack/config",  "target": "/config" }
+  ],
+  "backup": { "enabled": true }
+}
