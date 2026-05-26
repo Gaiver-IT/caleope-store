@@ -363,7 +363,7 @@ P_URL="http://prowlarr:9696/prowlarr"
 R_URL="http://radarr:7878/radarr"
 S_URL="http://sonarr:8989/sonarr"
 L_URL="http://lidarr:8686/lidarr"
-QBT_URL="http://${QBT_HOST}:8080"
+QBT_URL="http://\${ARR_QBT_HOST:-${QBT_HOST}}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
 wait_arr() {
