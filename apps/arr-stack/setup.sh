@@ -274,10 +274,10 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 write_arr_config() {
     local app=$1 port=$2 apikey=$3
     local cfg="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}/config.xml"
-    [[ -f "${cfg}" ]] && return 0
-    # UrlBase vide = pas de préfixe (sous-domaine).
-    # AuthenticationMethod=External = auth déléguée au reverse proxy.
-    # Pas de AuthenticationRequired → évite les incompatibilités DryIoc v2.x.
+    # Toujours écrire le config.xml (pas de garde [[ -f ]]).
+    # Garantit que la clé API dans config.xml correspond toujours à celle dans
+    # secrets.env/app.env — évite les désynchronisations lors des réinstallations.
+    # UrlBase vide = sous-domaine. AuthenticationMethod=External = auth via proxy.
     cat > "${cfg}" <<XMLEOF
 <Config>
   <BindAddress>*</BindAddress>
@@ -395,18 +395,21 @@ L_URL="http://lidarr:8686"
 QBT_URL="http://\${ARR_QBT_HOST:-${QBT_HOST}}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
-# ── wait_arr : attend qu'un service *arr réponde (timeout 10 min) ──────
+# ── wait_arr : attend qu'un service *arr réponde (HTTP, sans auth) ──────
+# On vérifie juste que le port répond (200 ou 401 = le service est up).
+# Ne pas utiliser l'API key ici : si config.xml a une vieille clé, on
+# obtiendrait 401 en boucle infinie.
 wait_arr() {
-    local name=\$1 url=\$2 key=\$3
+    local name=\$1 url=\$2  # \$3 (key) accepté pour compatibilité mais ignoré
     local tries=0 maxTries=120  # 120 * 5s = 10 min max
     echo "→ Attente \${name}..."
-    until curl -sf -H "X-Api-Key: \$key" "\$url/api/v3/system/status" >/dev/null 2>&1 \
-       || curl -sf -H "X-Api-Key: \$key" "\$url/api/v1/system/status" >/dev/null 2>&1; do
+    until curl -s --connect-timeout 5 --max-time 10 -o /dev/null "\$url/" 2>/dev/null; do
         sleep 5
         tries=\$((tries + 1))
         [[ \$tries -ge \$maxTries ]] && { echo "  ⚠ \${name} : timeout (10 min) — on continue quand même"; return 0; }
         [[ \$(( tries % 12 )) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$(( tries * 5 ))s)..."
     done
+    sleep 5  # Laisser le service finir ses migrations DB
     echo "  ✓ \${name} prêt"
 }
 
@@ -415,7 +418,7 @@ wait_url() {
     local name=\$1 url=\$2
     local tries=0 maxTries=120
     echo "→ Attente \${name}..."
-    until curl -sf "\$url" >/dev/null 2>&1; do
+    until curl -s --connect-timeout 5 --max-time 10 -o /dev/null "\$url" 2>/dev/null; do
         sleep 5
         tries=\$((tries + 1))
         [[ \$tries -ge \$maxTries ]] && { echo "  ⚠ \${name} : timeout — on continue quand même"; return 0; }
