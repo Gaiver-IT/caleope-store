@@ -35,7 +35,7 @@ services:
     dns_search: []
     # Fix DNS search domain hérité du host (guernaham.bzh → IP publique Traefik)
     # sans ce fix, Jellyseerr ne peut pas joindre 'jellyfin' en interne
-    command: ["/bin/sh", "-c", "printf 'nameserver 127.0.0.11\\noptions ndots:0\\n' > /etc/resolv.conf && npm start"]
+    command: ["/bin/sh", "-c", "printf 'nameserver 127.0.0.11\\noptions ndots:0\\n' > /etc/resolv.conf 2>/dev/null || true; npm start"]
     environment:
       - TZ=${ARR_TZ}
       - LOG_LEVEL=info
