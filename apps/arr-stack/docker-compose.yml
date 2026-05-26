@@ -1,12 +1,14 @@
 ##
 ## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Readarr + Bazarr
-##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue
+##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue [+ Jellyfin]
 ##
-## Profils Docker Compose :
-##   novpn  → qBittorrent sans VPN (défaut)
-##   vpn    → qBittorrent isolé derrière Gluetun
+## Profils Docker Compose (combinables) :
+##   novpn     → qBittorrent sans VPN
+##   vpn       → qBittorrent derrière Gluetun
+##   jellyfin  → Jellyfin inclus dans la stack
 ##
 ## COMPOSE_PROFILES est écrit dans secrets.env par setup.sh
+## ex: COMPOSE_PROFILES=vpn,jellyfin
 ##
 
 services:
@@ -27,6 +29,31 @@ services:
       - "traefik.http.routers.jellyseerr.entrypoints=web"
       - "traefik.http.routers.jellyseerr.priority=1"
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - arr-internal
+
+  # ── JELLYFIN — serveur multimédia (profil: jellyfin) ────────────────
+  # Activé si Jellyfin n'est pas déjà installé séparément.
+  # Les bibliothèques sont configurées automatiquement par le bootstrap.
+  jellyfin:
+    profiles: [jellyfin]
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      - JELLYFIN_PublishedServerUrl=https://{{.Domain}}/jellyfin
+    volumes:
+      - {{.BaseDir}}/app-data/arr-stack/config/jellyfin:/config
+      - {{.BaseDir}}/app-data/arr-stack/config/jellyfin-cache:/cache
+      - {{.BaseDir}}/app-data/arr-stack/data/media:/media:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin-srv.rule=Host(`{{.Domain}}`) && PathPrefix(`/jellyfin`)"
+      - "traefik.http.routers.jellyfin-srv.entrypoints=web"
+      - "traefik.http.routers.jellyfin-srv.priority=10"
+      - "traefik.http.services.jellyfin-srv.loadbalancer.server.port=8096"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
@@ -170,7 +197,6 @@ services:
       - arr-internal
 
   # ── QBITTORRENT SANS VPN (profil: novpn) ────────────────────────────
-  # Actif quand COMPOSE_PROFILES=novpn (installation sans VPN)
   qbittorrent:
     profiles: [novpn]
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -198,8 +224,6 @@ services:
       - arr-internal
 
   # ── GLUETUN — tunnel VPN (profil: vpn) ─────────────────────────────
-  # Client VPN qui isole le trafic réseau de qBittorrent.
-  # Les labels Traefik pour /qbt sont ici car qbt-vpn partage son namespace réseau.
   arr-gluetun:
     profiles: [vpn]
     image: qmcgaw/gluetun:latest
@@ -212,18 +236,13 @@ services:
     environment:
       - VPN_SERVICE_PROVIDER=${ARR_VPN_PROVIDER}
       - VPN_TYPE=${ARR_VPN_TYPE}
-      # WireGuard
       - WIREGUARD_PRIVATE_KEY=${ARR_VPN_WG_PRIVATE_KEY:-}
       - WIREGUARD_ADDRESSES=${ARR_VPN_WG_ADDRESSES:-}
-      # OpenVPN
       - OPENVPN_USER=${ARR_VPN_OPENVPN_USER:-}
       - OPENVPN_PASSWORD=${ARR_VPN_OPENVPN_PASSWORD:-}
-      # Filtrage serveur
       - SERVER_COUNTRIES=${ARR_VPN_SERVER_COUNTRIES:-}
-      # Autoriser le trafic Docker interne (arr-internal) à bypasser le VPN
       - FIREWALL_OUTBOUND_SUBNETS=172.0.0.0/8,10.0.0.0/8,192.168.0.0/16
     labels:
-      # Labels /qbt sur Gluetun — qBittorrent écoute sur port 8080 dans ce namespace
       - "traefik.enable=true"
       - "traefik.http.routers.qbt.rule=Host(`{{.Domain}}`) && PathPrefix(`/qbt`)"
       - "traefik.http.routers.qbt.entrypoints=web"
@@ -237,8 +256,6 @@ services:
       - arr-internal
 
   # ── QBITTORRENT AVEC VPN (profil: vpn) ─────────────────────────────
-  # Utilise le namespace réseau de Gluetun → TOUT son trafic passe par le VPN.
-  # Pas de labels Traefik ni de networks propres (hérités de arr-gluetun).
   qbittorrent-vpn:
     profiles: [vpn]
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -280,13 +297,11 @@ services:
       - arr-internal
 
   # ── BOOTSTRAP — configure toutes les connexions API au démarrage ────
-  # S'exécute une seule fois, attend que tous les services soient prêts,
-  # puis configure Prowlarr→*arr, clients de téléchargement, dossiers.
   arr-bootstrap:
     image: alpine:3.19
     container_name: arr-bootstrap
     restart: "no"
-    command: ["/bin/sh", "-c", "apk add --no-cache curl bash >/dev/null 2>&1 && bash /bootstrap.sh"]
+    command: ["/bin/sh", "-c", "apk add --no-cache curl bash jq >/dev/null 2>&1 && bash /bootstrap.sh"]
     env_file: app.env
     volumes:
       - {{.BaseDir}}/app-config/arr-stack/bootstrap.sh:/bootstrap.sh:ro
@@ -303,7 +318,6 @@ services:
         condition: service_started
       readarr:
         condition: service_started
-      # required: false → pas d'erreur si le service n'est pas dans le profil actif
       qbittorrent:
         condition: service_started
         required: false
@@ -313,10 +327,11 @@ services:
       arr-gluetun:
         condition: service_started
         required: false
+      jellyfin:
+        condition: service_started
+        required: false
 
   # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
-  # SPA statique qui se connecte à ton serveur Jellyfin via l'API.
-  # Configure l'URL de ton Jellyfin au premier accès.
   jellyfin-vue:
     image: ghcr.io/jellyfin/jellyfin-vue:unstable
     container_name: jellyfin-vue
