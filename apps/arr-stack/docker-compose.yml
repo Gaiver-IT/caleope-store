@@ -1,5 +1,5 @@
 ##
-## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Readarr + Bazarr
+## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Bazarr
 ##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue [+ Jellyfin]
 ##
 ## Profils Docker Compose (combinables) :
@@ -9,6 +9,18 @@
 ##
 ## COMPOSE_PROFILES est écrit dans secrets.env par setup.sh
 ## ex: COMPOSE_PROFILES=vpn,jellyfin
+##
+## Routage : chaque service est exposé sur un sous-domaine
+##   Jellyseerr   → {{.Domain}}               (page d'accueil)
+##   Radarr       → radarr.{{.Domain}}
+##   Sonarr       → sonarr.{{.Domain}}
+##   Lidarr       → lidarr.{{.Domain}}
+##   Bazarr       → bazarr.{{.Domain}}
+##   Prowlarr     → prowlarr.{{.Domain}}
+##   qBittorrent  → qbt.{{.Domain}}
+##   SABnzbd      → sabnzbd.{{.Domain}}
+##   Jellyfin     → jellyfin.{{.Domain}}
+##   Jellyfin Vue → vue.{{.Domain}}
 ##
 
 services:
@@ -43,14 +55,14 @@ services:
     container_name: jellyfin
     restart: unless-stopped
     environment:
-      - JELLYFIN_PublishedServerUrl=https://{{.Domain}}/jellyfin
+      - JELLYFIN_PublishedServerUrl=https://jellyfin.{{.Domain}}
     volumes:
       - {{.BaseDir}}/app-data/arr-stack/config/jellyfin:/config
       - {{.BaseDir}}/app-data/arr-stack/config/jellyfin-cache:/cache
       - {{.BaseDir}}/app-data/arr-stack/data/media:/media:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.jellyfin-srv.rule=Host(`{{.Domain}}`) && PathPrefix(`/jellyfin`)"
+      - "traefik.http.routers.jellyfin-srv.rule=Host(`jellyfin.{{.Domain}}`)"
       - "traefik.http.routers.jellyfin-srv.entrypoints=web"
       - "traefik.http.routers.jellyfin-srv.priority=10"
       - "traefik.http.services.jellyfin-srv.loadbalancer.server.port=8096"
@@ -72,7 +84,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/config/prowlarr:/config
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prowlarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/prowlarr`)"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.{{.Domain}}`)"
       - "traefik.http.routers.prowlarr.entrypoints=web"
       - "traefik.http.routers.prowlarr.priority=10"
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
@@ -95,7 +107,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.radarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/radarr`)"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.{{.Domain}}`)"
       - "traefik.http.routers.radarr.entrypoints=web"
       - "traefik.http.routers.radarr.priority=10"
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
@@ -118,7 +130,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sonarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/sonarr`)"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.{{.Domain}}`)"
       - "traefik.http.routers.sonarr.entrypoints=web"
       - "traefik.http.routers.sonarr.priority=10"
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
@@ -141,7 +153,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.lidarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/lidarr`)"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.{{.Domain}}`)"
       - "traefik.http.routers.lidarr.entrypoints=web"
       - "traefik.http.routers.lidarr.priority=10"
       - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
@@ -169,7 +181,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.bazarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/bazarr`)"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.{{.Domain}}`)"
       - "traefik.http.routers.bazarr.entrypoints=web"
       - "traefik.http.routers.bazarr.priority=10"
       - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
@@ -194,11 +206,9 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data/downloads:/data/downloads
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.qbt.rule=Host(`{{.Domain}}`) && PathPrefix(`/qbt`)"
+      - "traefik.http.routers.qbt.rule=Host(`qbt.{{.Domain}}`)"
       - "traefik.http.routers.qbt.entrypoints=web"
       - "traefik.http.routers.qbt.priority=10"
-      - "traefik.http.routers.qbt.middlewares=qbt-strip"
-      - "traefik.http.middlewares.qbt-strip.stripprefix.prefixes=/qbt"
       - "traefik.http.services.qbt.loadbalancer.server.port=8080"
       - "traefik.docker.network=caleope-public"
     networks:
@@ -226,11 +236,9 @@ services:
       - FIREWALL_OUTBOUND_SUBNETS=172.0.0.0/8,10.0.0.0/8,192.168.0.0/16
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.qbt.rule=Host(`{{.Domain}}`) && PathPrefix(`/qbt`)"
+      - "traefik.http.routers.qbt.rule=Host(`qbt.{{.Domain}}`)"
       - "traefik.http.routers.qbt.entrypoints=web"
       - "traefik.http.routers.qbt.priority=10"
-      - "traefik.http.routers.qbt.middlewares=qbt-strip"
-      - "traefik.http.middlewares.qbt-strip.stripprefix.prefixes=/qbt"
       - "traefik.http.services.qbt.loadbalancer.server.port=8080"
       - "traefik.docker.network=caleope-public"
     networks:
@@ -269,7 +277,7 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/data/downloads:/data/downloads
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sabnzbd.rule=Host(`{{.Domain}}`) && PathPrefix(`/sabnzbd`)"
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{.Domain}}`)"
       - "traefik.http.routers.sabnzbd.entrypoints=web"
       - "traefik.http.routers.sabnzbd.priority=10"
       - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
@@ -295,18 +303,16 @@ services:
       - sonarr
       - lidarr
 
-  # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
+  # ── JELLYFIN VUE — interface de lecture épurée (vue.domain) ─────────
   jellyfin-vue:
     image: ghcr.io/jellyfin/jellyfin-vue:unstable
     container_name: jellyfin-vue
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.jellyfin-vue.rule=Host(`{{.Domain}}`) && PathPrefix(`/vue`)"
+      - "traefik.http.routers.jellyfin-vue.rule=Host(`vue.{{.Domain}}`)"
       - "traefik.http.routers.jellyfin-vue.entrypoints=web"
       - "traefik.http.routers.jellyfin-vue.priority=10"
-      - "traefik.http.routers.jellyfin-vue.middlewares=vue-strip"
-      - "traefik.http.middlewares.vue-strip.stripprefix.prefixes=/vue"
       - "traefik.http.services.jellyfin-vue.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
     networks:

@@ -29,7 +29,7 @@ if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; the
     echo "   ✓ Données liées vers : ${STORAGE_PATH}"
 fi
 
-for app in prowlarr radarr sonarr lidarr readarr bazarr qbittorrent sabnzbd jellyseerr; do
+for app in prowlarr radarr sonarr lidarr bazarr qbittorrent sabnzbd jellyseerr; do
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}"
 done
 
@@ -291,10 +291,10 @@ write_arr_config() {
 XMLEOF
 }
 
-write_arr_config prowlarr 9696 /prowlarr "${API_PROWLARR}"
-write_arr_config radarr   7878 /radarr   "${API_RADARR}"
-write_arr_config sonarr   8989 /sonarr   "${API_SONARR}"
-write_arr_config lidarr   8686 /lidarr   "${API_LIDARR}"
+write_arr_config prowlarr 9696 / "${API_PROWLARR}"
+write_arr_config radarr   7878 / "${API_RADARR}"
+write_arr_config sonarr   8989 / "${API_SONARR}"
+write_arr_config lidarr   8686 / "${API_LIDARR}"
 
 # ── Jellyfin network.xml ──────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
@@ -304,7 +304,7 @@ if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         cat > "${JF_NET_CFG}" <<JFNET
 <?xml version="1.0" encoding="utf-8"?>
 <NetworkConfiguration>
-  <BaseUrl>/jellyfin</BaseUrl>
+  <BaseUrl></BaseUrl>
   <EnableHttps>false</EnableHttps>
   <RequireHttps>false</RequireHttps>
   <EnableRemoteAccess>true</EnableRemoteAccess>
@@ -316,7 +316,7 @@ fi
 # ── Bazarr config ─────────────────────────────────────────────────────
 BAZARR_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/bazarr/config.ini"
 if [[ ! -f "${BAZARR_CFG}" ]]; then
-    printf '[general]\nbase_url = /bazarr\n' > "${BAZARR_CFG}"
+    printf '[general]\nbase_url = /\n' > "${BAZARR_CFG}"
 fi
 
 # ── qBittorrent config ────────────────────────────────────────────────
@@ -346,7 +346,7 @@ if [[ ! -f "${SABNZBD_CFG}" ]]; then
 [misc]
 api_key = ${API_SABNZBD}
 nzb_key = ${API_SABNZBD}
-url_base = /sabnzbd
+url_base = /
 host = 0.0.0.0
 port = 8080
 complete_dir = /data/downloads/complete
@@ -359,10 +359,10 @@ cat > "${CONFIG_DIR}/bootstrap.sh" <<BOOTSTRAP
 #!/bin/bash
 set -e
 
-P_URL="http://prowlarr:9696/prowlarr"
-R_URL="http://radarr:7878/radarr"
-S_URL="http://sonarr:8989/sonarr"
-L_URL="http://lidarr:8686/lidarr"
+P_URL="http://prowlarr:9696"
+R_URL="http://radarr:7878"
+S_URL="http://sonarr:8989"
+L_URL="http://lidarr:8686"
 QBT_URL="http://\${ARR_QBT_HOST:-${QBT_HOST}}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
@@ -409,15 +409,15 @@ echo ""
 echo "── [2/4] Connexion Prowlarr → *arr..."
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$R_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
+    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://radarr:7878\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
 echo "  ✓ Prowlarr → Radarr"
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$S_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]}]}"
+    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://sonarr:8989\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]}]}"
 echo "  ✓ Prowlarr → Sonarr"
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$L_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
+    "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://lidarr:8686\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
 echo "  ✓ Prowlarr → Lidarr"
 
 echo ""
@@ -428,7 +428,7 @@ qbt_client() {
 }
 
 sab_client() {
-    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/sabnzbd\"},{\"name\":\"\${1}Category\",\"value\":\"\$1\"}]}"
+    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/\"},{\"name\":\"\${1}Category\",\"value\":\"\$1\"}]}"
 }
 
 api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "downloadclient" "\$(qbt_client movie movies)"
@@ -515,10 +515,10 @@ chmod +x "${CONFIG_DIR}/bootstrap.sh"
 
 # ── post-install.txt ─────────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-    JF_LINE="║  Jellyfin     : https://${CALEOPE_DOMAIN}/jellyfin              ║"
-    JF_CRED="║  Jellyfin admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}       ║"
+    JF_LINE="║  Jellyfin     : https://jellyfin.${CALEOPE_DOMAIN}                  ║"
+    JF_CRED="║  Jellyfin admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}            ║"
 elif [[ -n "${JELLYFIN_INT_URL}" ]]; then
-    JF_LINE="║  Jellyfin     : ${JELLYFIN_INT_URL} (externe)                   ║"
+    JF_LINE="║  Jellyfin     : ${JELLYFIN_INT_URL} (externe)                        ║"
     JF_CRED=""
 else
     JF_LINE=""
@@ -526,37 +526,37 @@ else
 fi
 
 if [[ "${VPN_ENABLED}" == "true" ]]; then
-    VPN_LINE="║  🔒 VPN : ${VPN_PROVIDER} / ${VPN_TYPE}                         ║"
+    VPN_LINE="║  🔒 VPN : ${VPN_PROVIDER} / ${VPN_TYPE}                              ║"
 else
-    VPN_LINE="║  🔓 VPN : désactivé                                              ║"
+    VPN_LINE="║  🔓 VPN : désactivé                                                  ║"
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
-╔══════════════════════════════════════════════════════════════════════╗
-║                    Arr Stack — Accès                                 ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  Jellyseerr   : https://${CALEOPE_DOMAIN}           (demandes)      ║
-║  Jellyfin Vue : https://${CALEOPE_DOMAIN}/vue        (lecture)      ║
+╔════════════════════════════════════════════════════════════════════════╗
+║                       Arr Stack — Accès                               ║
+╠════════════════════════════════════════════════════════════════════════╣
+║  Jellyseerr   : https://${CALEOPE_DOMAIN}          (demandes, root)  ║
+║  Jellyfin Vue : https://vue.${CALEOPE_DOMAIN}                        ║
 ${JF_LINE}
-║  Prowlarr     : https://${CALEOPE_DOMAIN}/prowlarr                  ║
-║  Radarr       : https://${CALEOPE_DOMAIN}/radarr                    ║
-║  Sonarr       : https://${CALEOPE_DOMAIN}/sonarr                    ║
-║  Lidarr       : https://${CALEOPE_DOMAIN}/lidarr                    ║
-║  Readarr      : https://${CALEOPE_DOMAIN}/readarr                   ║
-║  Bazarr       : https://${CALEOPE_DOMAIN}/bazarr                    ║
-║  qBittorrent  : https://${CALEOPE_DOMAIN}/qbt                       ║
-║  SABnzbd      : https://${CALEOPE_DOMAIN}/sabnzbd                   ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT                           ║
+║  Prowlarr     : https://prowlarr.${CALEOPE_DOMAIN}                   ║
+║  Radarr       : https://radarr.${CALEOPE_DOMAIN}                     ║
+║  Sonarr       : https://sonarr.${CALEOPE_DOMAIN}                     ║
+║  Lidarr       : https://lidarr.${CALEOPE_DOMAIN}                     ║
+║  Bazarr       : https://bazarr.${CALEOPE_DOMAIN}                     ║
+║  qBittorrent  : https://qbt.${CALEOPE_DOMAIN}                        ║
+║  SABnzbd      : https://sabnzbd.${CALEOPE_DOMAIN}                    ║
+╠════════════════════════════════════════════════════════════════════════╣
+║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT                            ║
 ${VPN_LINE}
-╠══════════════════════════════════════════════════════════════════════╣
-║  À FAIRE :                                                           ║
-║  1. Prowlarr → Indexers → Add                                        ║
-║  2. Jellyseerr → connecter Jellyfin + Radarr + Sonarr               ║
-╠══════════════════════════════════════════════════════════════════════╣
+╠════════════════════════════════════════════════════════════════════════╣
+║  À FAIRE :                                                            ║
+║  1. DNS : *.${CALEOPE_DOMAIN} → IP du serveur (ou entrées par app)   ║
+║  2. Prowlarr → Indexers → Add                                         ║
+║  3. Jellyseerr → connecter Jellyfin + Radarr + Sonarr                ║
+╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
-║  qBittorrent password : ${QBT_PASSWORD}                             ║
-╚══════════════════════════════════════════════════════════════════════╝
+║  qBittorrent password : ${QBT_PASSWORD}                              ║
+╚════════════════════════════════════════════════════════════════════════╝
 EOF
 
 echo "✓ Arr Stack préparé — bootstrap configuré"
