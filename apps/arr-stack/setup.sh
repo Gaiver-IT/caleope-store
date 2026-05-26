@@ -316,9 +316,31 @@ JFNET
 fi
 
 # ── Bazarr config ─────────────────────────────────────────────────────
+# Sonarr + Radarr pré-connectés au démarrage (config.ini lu par Bazarr à l'init)
 BAZARR_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/bazarr/config.ini"
 if [[ ! -f "${BAZARR_CFG}" ]]; then
-    printf '[general]\nbase_url = /\n' > "${BAZARR_CFG}"
+    cat > "${BAZARR_CFG}" <<BAZARRCFG
+[general]
+base_url = /
+ip = 0.0.0.0
+port = 6767
+
+[sonarr]
+enabled = True
+ip = sonarr
+port = 8989
+base_url = /
+apikey = ${API_SONARR}
+full_update = Weekly
+
+[radarr]
+enabled = True
+ip = radarr
+port = 7878
+base_url = /
+apikey = ${API_RADARR}
+full_update = Weekly
+BAZARRCFG
 fi
 
 # ── qBittorrent config ────────────────────────────────────────────────
@@ -353,6 +375,7 @@ host = 0.0.0.0
 port = 8080
 complete_dir = /data/downloads/complete
 incomplete_dir = /data/downloads/incomplete
+host_whitelist = sabnzbd.${CALEOPE_DOMAIN}
 SABCFG
 fi
 
@@ -400,15 +423,16 @@ echo "║   Arr Stack — Bootstrap automatique    ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
-echo "── [1/5] Attente du démarrage des services..."
+echo "── [1/6] Attente du démarrage des services..."
 wait_arr "Prowlarr"    "\$P_URL"  "\$ARR_API_PROWLARR"
 wait_arr "Radarr"      "\$R_URL"  "\$ARR_API_RADARR"
 wait_arr "Sonarr"      "\$S_URL"  "\$ARR_API_SONARR"
 wait_arr "Lidarr"      "\$L_URL"  "\$ARR_API_LIDARR"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
+wait_url "Bazarr"      "http://bazarr:6767/api/bazarr/system/status"
 
 echo ""
-echo "── [2/5] Connexion Prowlarr → *arr + FlareSolverr..."
+echo "── [2/6] Connexion Prowlarr → *arr + FlareSolverr..."
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
     "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://radarr:7878\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
@@ -428,7 +452,7 @@ api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "indexerproxy" \
 echo "  ✓ Prowlarr → FlareSolverr (http://arr-flaresolverr:8191)"
 
 echo ""
-echo "── [3/5] Clients de téléchargement + dossiers racine..."
+echo "── [3/6] Clients de téléchargement + dossiers racine..."
 
 qbt_client() {
     echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"${QBT_HOST}\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"\${1}Category\",\"value\":\"\$2\"},{\"name\":\"initialState\",\"value\":0}]}"
@@ -454,7 +478,54 @@ api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/med
 echo "  ✓ Lidarr configuré"
 
 echo ""
-echo "── [4/5] Jellyfin — configuration des bibliothèques..."
+echo "── [4/6] Langue française..."
+
+# set_lang_fr <url> <apikey> <apiversion>
+# Récupère l'ID de "French" dans l'API de l'app et met à jour l'UI language.
+set_lang_fr() {
+    local url=\$1 key=\$2 ver=\$3
+    local fr_id
+    fr_id=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/language" 2>/dev/null \
+        | jq -r '.[] | select(.name == "French") | .id // empty' 2>/dev/null)
+    [[ -z "\$fr_id" || "\$fr_id" == "null" ]] && return 0
+    local ui_cfg
+    ui_cfg=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/config/ui" 2>/dev/null)
+    [[ -z "\$ui_cfg" ]] && return 0
+    echo "\$ui_cfg" | jq --argjson lang "\$fr_id" '.uiLanguage = \$lang' \
+    | curl -sf -X PUT "\$url/api/\$ver/config/ui" \
+        -H "X-Api-Key: \$key" -H "Content-Type: application/json" \
+        -d @- >/dev/null 2>&1 || true
+}
+
+set_lang_fr "\$P_URL" "\$ARR_API_PROWLARR" v1 && echo "  ✓ Prowlarr → français"
+set_lang_fr "\$R_URL" "\$ARR_API_RADARR"   v3 && echo "  ✓ Radarr → français"
+set_lang_fr "\$S_URL" "\$ARR_API_SONARR"   v3 && echo "  ✓ Sonarr → français"
+set_lang_fr "\$L_URL" "\$ARR_API_LIDARR"   v1 && echo "  ✓ Lidarr → français"
+
+# Bazarr — créer un profil de sous-titres Français + Anglais
+BAZARR_URL="http://bazarr:6767"
+curl -sf -X POST "\$BAZARR_URL/api/bazarr/languagesprofiles" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Français + Anglais","cutoff":null,"items":[{"id":1,"language":"fr","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}]}' \
+    >/dev/null 2>&1 || true
+# Récupérer l'ID du profil créé
+BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/bazarr/languagesprofiles" 2>/dev/null \
+    | jq -r '.[] | select(.name == "Français + Anglais") | .profileid // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
+if [[ -n "\$BAZARR_PROFILE_ID" && "\$BAZARR_PROFILE_ID" != "null" ]]; then
+    # Appliquer à toutes les séries et films existants (et futurs via défaut)
+    curl -sf -X POST "\$BAZARR_URL/api/bazarr/series/all" \
+        -H "Content-Type: application/json" \
+        -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
+    curl -sf -X POST "\$BAZARR_URL/api/bazarr/movies/all" \
+        -H "Content-Type: application/json" \
+        -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
+    echo "  ✓ Bazarr → profil sous-titres Français + Anglais"
+else
+    echo "  ⚠ Bazarr : profil de langue non créé (configuration manuelle)"
+fi
+
+echo ""
+echo "── [5/6] Jellyfin — configuration des bibliothèques..."
 
 if [[ -z "\$JF_URL" ]]; then
     echo "  ⚠ Pas d'URL Jellyfin — étape ignorée"
@@ -507,10 +578,25 @@ else
     add_jf_lib "Séries"  "tvshows" "/media/tv"
     add_jf_lib "Musique" "music"   "/media/music"
     echo "  ✓ Bibliothèques Jellyfin configurées"
+
+    # Langue française : métadonnées + interface
+    if [[ -n "\$JF_TOKEN" ]]; then
+        JF_SYS_CFG=\$(curl -sf "\$JF_URL/System/Configuration" \
+            -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null) || JF_SYS_CFG=""
+        if [[ -n "\$JF_SYS_CFG" ]]; then
+            echo "\$JF_SYS_CFG" \
+            | jq '.MetadataCountryCode = "FR" | .PreferredMetadataLanguage = "fr" | .UICulture = "fr-FR"' \
+            | curl -sf -X POST "\$JF_URL/System/Configuration" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
+                -d @- >/dev/null 2>&1 || true
+            echo "  ✓ Jellyfin → langue française (métadonnées + interface)"
+        fi
+    fi
 fi
 
 echo ""
-echo "── [5/5] Jellyseerr — configuration automatique..."
+echo "── [6/6] Jellyseerr — configuration automatique..."
 
 JS_URL="http://jellyseerr:5055"
 printf "→ Attente Jellyseerr..."
@@ -552,7 +638,18 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
             -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"\$ARR_API_SONARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeAnimeProfileId\":1,\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4kServer\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
             >/dev/null 2>&1 || true
 
-        echo "  ✓ Jellyseerr configuré (Jellyfin + Radarr + Sonarr)"
+        # Langue française pour Jellyseerr
+        JS_MAIN_CFG=\$(curl -sf "\${JS_URL}/api/v1/settings/main" \
+            -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies 2>/dev/null) || JS_MAIN_CFG=""
+        if [[ -n "\${JS_MAIN_CFG}" ]]; then
+            echo "\${JS_MAIN_CFG}" | jq '.locale = "fr"' \
+            | curl -sf -X POST "\${JS_URL}/api/v1/settings/main" \
+                -H "Content-Type: application/json" \
+                -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies \
+                -d @- >/dev/null 2>&1 || true
+        fi
+
+        echo "  ✓ Jellyseerr configuré (Jellyfin + Radarr + Sonarr + langue française)"
     else
         echo "  ⚠ Jellyseerr : API key non récupérée — configuration manuelle requise"
         echo "    Connecte-toi sur https://jellyseerr.${CALEOPE_DOMAIN}"

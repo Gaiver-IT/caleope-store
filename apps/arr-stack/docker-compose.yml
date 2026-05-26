@@ -317,6 +317,7 @@ services:
       - radarr
       - sonarr
       - lidarr
+      - bazarr
       - jellyseerr
       - arr-flaresolverr
 
