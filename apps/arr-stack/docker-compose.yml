@@ -152,7 +152,7 @@ services:
 
   # ── READARR — livres ────────────────────────────────────────────────
   readarr:
-    image: lscr.io/linuxserver/readarr:latest
+    image: lscr.io/linuxserver/readarr:nightly
     container_name: readarr
     restart: unless-stopped
     environment:
