@@ -207,22 +207,25 @@ if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
         echo "  ── Clé WireGuard ─────────────────────────────────────────────"
         if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
             echo "  → account.proton.me → VPN → Télécharger → WireGuard"
-            echo "    Copie le champ PrivateKey de la section [Interface]"
+            echo "    Sélectionne le serveur souhaité (SecureCore inclus)"
+            echo "    Copie les champs PrivateKey et Address de la section [Interface]"
         elif [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
             echo "  → mullvad.net/account/wireguard-config"
         fi
         echo ""
         if [[ "${INTERACTIVE}" == "true" ]]; then
             read -rp "  Clé privée WireGuard (PrivateKey) : " VPN_WG_PRIVATE_KEY || VPN_WG_PRIVATE_KEY=""
-            if [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
-                read -rp "  Adresse WireGuard (Address, ex: 10.68.x.x/32) : " \
-                    VPN_WG_ADDRESSES || VPN_WG_ADDRESSES=""
-            fi
+            read -rp "  Adresse WireGuard (Address, ex: 10.2.0.2/32) : " \
+                VPN_WG_ADDRESSES || VPN_WG_ADDRESSES=""
         fi
     fi
 
     echo ""
     if [[ "${INTERACTIVE}" == "true" ]]; then
+        echo "  Pays de sortie VPN — nom complet en anglais (ex: Germany, France, Netherlands)"
+        if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
+            echo "  → SecureCore IS→DE : entrer 'Germany'  (pays de sortie uniquement)"
+        fi
         read -rp "  Pays du serveur VPN (optionnel, Entrée pour ignorer) : " \
             VPN_SERVER_COUNTRIES || VPN_SERVER_COUNTRIES=""
     fi
