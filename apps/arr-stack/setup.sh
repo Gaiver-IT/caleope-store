@@ -33,6 +33,22 @@ for app in prowlarr radarr sonarr lidarr bazarr qbittorrent sabnzbd jellyseerr; 
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}"
 done
 
+# ── Nettoyage Jellyfin (si réinstallation) ────────────────────────────
+# La DB Jellyfin est propriété root (écrite par le container), donc
+# os.RemoveAll du daemon échoue silencieusement. On utilise un container
+# Alpine éphémère pour la supprimer proprement avant chaque install.
+JELLYFIN_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
+mkdir -p "${JELLYFIN_CFG}"
+if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" ]]; then
+    echo "→ Nettoyage de la configuration Jellyfin précédente..."
+    docker run --rm \
+        -v "${JELLYFIN_CFG}:/jf" \
+        alpine:3.19 \
+        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
+        >/dev/null 2>&1 || true
+    echo "  ✓ Configuration Jellyfin réinitialisée"
+fi
+
 # ── Détecter PUID/PGID ───────────────────────────────────────────────
 PUID=$(id -u)
 PGID=$(id -g)
