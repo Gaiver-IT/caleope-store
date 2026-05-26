@@ -4,6 +4,7 @@
   "category": "media",
   "channel": "stable",
   "repository": "official",
+  "use_base_domain": true,
   "capabilities": {
     "reverse_proxy": true,
     "gpu": false,
