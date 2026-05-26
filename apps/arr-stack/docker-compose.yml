@@ -2,9 +2,11 @@
 ## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Readarr + Bazarr
 ##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue
 ##
-## Toutes les apps partagent /data (hardlinks fonctionnels) :
-##   /data/downloads/  ← clients de téléchargement
-##   /data/media/      ← bibliothèques finales (Jellyfin lit ici)
+## Profils Docker Compose :
+##   novpn  → qBittorrent sans VPN (défaut)
+##   vpn    → qBittorrent isolé derrière Gluetun
+##
+## COMPOSE_PROFILES est écrit dans secrets.env par setup.sh
 ##
 
 services:
@@ -167,8 +169,10 @@ services:
       - caleope-public
       - arr-internal
 
-  # ── QBITTORRENT — client torrent ────────────────────────────────────
+  # ── QBITTORRENT SANS VPN (profil: novpn) ────────────────────────────
+  # Actif quand COMPOSE_PROFILES=novpn (installation sans VPN)
   qbittorrent:
+    profiles: [novpn]
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     restart: unless-stopped
@@ -192,6 +196,65 @@ services:
     networks:
       - caleope-public
       - arr-internal
+
+  # ── GLUETUN — tunnel VPN (profil: vpn) ─────────────────────────────
+  # Client VPN qui isole le trafic réseau de qBittorrent.
+  # Les labels Traefik pour /qbt sont ici car qbt-vpn partage son namespace réseau.
+  arr-gluetun:
+    profiles: [vpn]
+    image: qmcgaw/gluetun:latest
+    container_name: arr-gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=${ARR_VPN_PROVIDER}
+      - VPN_TYPE=${ARR_VPN_TYPE}
+      # WireGuard
+      - WIREGUARD_PRIVATE_KEY=${ARR_VPN_WG_PRIVATE_KEY:-}
+      - WIREGUARD_ADDRESSES=${ARR_VPN_WG_ADDRESSES:-}
+      # OpenVPN
+      - OPENVPN_USER=${ARR_VPN_OPENVPN_USER:-}
+      - OPENVPN_PASSWORD=${ARR_VPN_OPENVPN_PASSWORD:-}
+      # Filtrage serveur
+      - SERVER_COUNTRIES=${ARR_VPN_SERVER_COUNTRIES:-}
+      # Autoriser le trafic Docker interne (arr-internal) à bypasser le VPN
+      - FIREWALL_OUTBOUND_SUBNETS=172.0.0.0/8,10.0.0.0/8,192.168.0.0/16
+    labels:
+      # Labels /qbt sur Gluetun — qBittorrent écoute sur port 8080 dans ce namespace
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbt.rule=Host(`{{.Domain}}`) && PathPrefix(`/qbt`)"
+      - "traefik.http.routers.qbt.entrypoints=web"
+      - "traefik.http.routers.qbt.priority=10"
+      - "traefik.http.routers.qbt.middlewares=qbt-strip"
+      - "traefik.http.middlewares.qbt-strip.stripprefix.prefixes=/qbt"
+      - "traefik.http.services.qbt.loadbalancer.server.port=8080"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - arr-internal
+
+  # ── QBITTORRENT AVEC VPN (profil: vpn) ─────────────────────────────
+  # Utilise le namespace réseau de Gluetun → TOUT son trafic passe par le VPN.
+  # Pas de labels Traefik ni de networks propres (hérités de arr-gluetun).
+  qbittorrent-vpn:
+    profiles: [vpn]
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: "service:arr-gluetun"
+    depends_on:
+      - arr-gluetun
+    environment:
+      - PUID=${ARR_PUID}
+      - PGID=${ARR_PGID}
+      - TZ=${ARR_TZ}
+      - WEBUI_PORT=8080
+    volumes:
+      - {{.BaseDir}}/app-data/arr-stack/config/qbittorrent:/config
+      - {{.BaseDir}}/app-data/arr-stack/data/downloads:/data/downloads
 
   # ── SABNZBD — client Usenet ─────────────────────────────────────────
   sabnzbd:
@@ -230,12 +293,26 @@ services:
     networks:
       - arr-internal
     depends_on:
-      - prowlarr
-      - radarr
-      - sonarr
-      - lidarr
-      - readarr
-      - qbittorrent
+      prowlarr:
+        condition: service_started
+      radarr:
+        condition: service_started
+      sonarr:
+        condition: service_started
+      lidarr:
+        condition: service_started
+      readarr:
+        condition: service_started
+      # required: false → pas d'erreur si le service n'est pas dans le profil actif
+      qbittorrent:
+        condition: service_started
+        required: false
+      qbittorrent-vpn:
+        condition: service_started
+        required: false
+      arr-gluetun:
+        condition: service_started
+        required: false
 
   # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
   # SPA statique qui se connecte à ton serveur Jellyfin via l'API.
