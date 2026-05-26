@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Trap pour identifier la ligne exacte en cas d'erreur
+trap 'echo "❌ setup.sh : erreur ligne ${LINENO} — ${BASH_COMMAND}" >&2' ERR
+
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 
 # ── Chemin de stockage média ──────────────────────────────────────────
@@ -10,9 +13,15 @@ mkdir -p "${CONFIG_DIR}"
 
 # ── Structure de dossiers ─────────────────────────────────────────────
 echo "→ Création de la structure de dossiers..."
-mkdir -p "${STORAGE_PATH}/downloads/complete/"{movies,tv,music,books}
-mkdir -p "${STORAGE_PATH}/downloads/incomplete"
-mkdir -p "${STORAGE_PATH}/media/"{movies,tv,music,books}
+mkdir -p "${STORAGE_PATH}/downloads/complete/movies" \
+         "${STORAGE_PATH}/downloads/complete/tv" \
+         "${STORAGE_PATH}/downloads/complete/music" \
+         "${STORAGE_PATH}/downloads/complete/books" \
+         "${STORAGE_PATH}/downloads/incomplete" \
+         "${STORAGE_PATH}/media/movies" \
+         "${STORAGE_PATH}/media/tv" \
+         "${STORAGE_PATH}/media/music" \
+         "${STORAGE_PATH}/media/books"
 
 if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; then
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack"
@@ -29,49 +38,20 @@ PUID=$(id -u)
 PGID=$(id -g)
 
 # ── Générer les secrets ───────────────────────────────────────────────
-gen_key() { openssl rand -hex 16; }
-API_PROWLARR=$(gen_key)
-API_RADARR=$(gen_key)
-API_SONARR=$(gen_key)
-API_LIDARR=$(gen_key)
-API_READARR=$(gen_key)
-API_SABNZBD=$(gen_key)
-QBT_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
+API_PROWLARR=$(openssl rand -hex 16)
+API_RADARR=$(openssl rand -hex 16)
+API_SONARR=$(openssl rand -hex 16)
+API_LIDARR=$(openssl rand -hex 16)
+API_READARR=$(openssl rand -hex 16)
+API_SABNZBD=$(openssl rand -hex 16)
+QBT_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
 
 # ── Détection mode interactif ─────────────────────────────────────────
-# Certaines versions de Caleope ne redirigent pas stdin vers setup.sh.
-# Dans ce cas on utilise les valeurs par défaut et on affiche un avertissement.
-INTERACTIVE=true
-if ! [ -t 0 ]; then
-    INTERACTIVE=false
-    echo ""
-    echo "  ⚠  Stdin non-interactif — valeurs par défaut appliquées."
-    echo "     Lance 'caleope upgrade' pour activer le wizard interactif."
+# Sans terminal (binaire non mis à jour), on applique les valeurs par défaut.
+INTERACTIVE=false
+if [ -t 0 ]; then
+    INTERACTIVE=true
 fi
-
-# Helper : read avec fallback si stdin fermé
-ask() {
-    # ask <var> <default> <prompt>
-    local _var=$1 _default=$2 _prompt=$3
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        read -rp "${_prompt}" "${_var}" || true
-    fi
-    # Utiliser le default si vide
-    if [[ -z "${!_var}" ]]; then
-        printf -v "${_var}" '%s' "${_default}"
-    fi
-}
-
-ask_secret() {
-    local _var=$1 _default=$2 _prompt=$3
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        read -rsp "${_prompt}" "${_var}" || true
-        echo ""
-    fi
-    if [[ -z "${!_var}" ]]; then
-        printf -v "${_var}" '%s' "${_default}"
-    fi
-}
 
 # ══════════════════════════════════════════════════════════════════════
 # JELLYFIN — WIZARD
@@ -87,34 +67,52 @@ JELLYFIN_PASSWORD=""
 JELLYFIN_USER="admin"
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
-    echo "  ℹ  Jellyfin détecté (container en cours d'exécution)"
-    ask _JF_REUSE "O" "  Utiliser ce Jellyfin existant ? [O/n] : "
+    # Jellyfin déjà en cours
+    echo "  ℹ  Jellyfin détecté (container existant)"
+    _JF_REUSE="O"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Utiliser ce Jellyfin existant ? [O/n] : " _JF_REUSE || _JF_REUSE="O"
+    fi
     if [[ "${_JF_REUSE,,}" == "n" || "${_JF_REUSE,,}" == "non" ]]; then
         JELLYFIN_EMBEDDED=true
         JELLYFIN_INT_URL="http://jellyfin:8096"
     else
-        JF_IP=$(docker inspect jellyfin 2>/dev/null \
-            | grep -o '"IPAddress": "[^"]*"' | head -1 | cut -d'"' -f4)
-        if [[ -n "$JF_IP" ]]; then
-            JELLYFIN_INT_URL="http://${JF_IP}:8096"
+        _JF_IP=$(docker inspect jellyfin 2>/dev/null \
+            | grep '"IPAddress"' | grep -v '""' | head -1 \
+            | grep -o '[0-9.]*') || _JF_IP=""
+        if [[ -n "${_JF_IP}" ]]; then
+            JELLYFIN_INT_URL="http://${_JF_IP}:8096"
             echo "  ✓ Jellyfin existant utilisé : ${JELLYFIN_INT_URL}"
         else
-            ask JELLYFIN_INT_URL "" "  URL interne Jellyfin (ex: http://192.168.1.x:8096) : "
+            JELLYFIN_INT_URL=""
+            if [[ "${INTERACTIVE}" == "true" ]]; then
+                read -rp "  URL interne Jellyfin (ex: http://192.168.1.x:8096) : " \
+                    JELLYFIN_INT_URL || JELLYFIN_INT_URL=""
+            fi
             echo "  ✓ Jellyfin externe : ${JELLYFIN_INT_URL}"
         fi
     fi
 else
+    # Pas de Jellyfin détecté
     echo "  Jellyfin n'est pas installé."
-    # Default : O (inclure Jellyfin)
-    ask _JF_INSTALL "O" "  L'inclure dans la stack ? [O/n] : "
+    _JF_INSTALL="O"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  L'inclure dans la stack ? [O/n] : " _JF_INSTALL || _JF_INSTALL="O"
+    else
+        echo "  (mode non-interactif → Jellyfin inclus par défaut)"
+    fi
     if [[ "${_JF_INSTALL,,}" != "n" && "${_JF_INSTALL,,}" != "non" ]]; then
         JELLYFIN_EMBEDDED=true
         JELLYFIN_INT_URL="http://jellyfin:8096"
-        JELLYFIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
+        JELLYFIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
         echo "  ✓ Jellyfin sera installé dans la stack"
         echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
     else
-        ask JELLYFIN_INT_URL "" "  URL de ton Jellyfin (ex: http://192.168.1.x:8096) : "
+        JELLYFIN_INT_URL=""
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            read -rp "  URL de ton Jellyfin (ex: http://192.168.1.x:8096) : " \
+                JELLYFIN_INT_URL || JELLYFIN_INT_URL=""
+        fi
         echo "  ✓ Jellyfin externe : ${JELLYFIN_INT_URL}"
     fi
 fi
@@ -129,8 +127,6 @@ echo "│                                                                 │"
 echo "│  Recommandé pour isoler le trafic torrent derrière un VPN.     │"
 echo "│  Utilise Gluetun — compatible ProtonVPN, Mullvad, NordVPN…     │"
 echo "└─────────────────────────────────────────────────────────────────┘"
-# Default : N (pas de VPN)
-ask _VPN_ANSWER "N" "  Activer un VPN ? [o/N] : "
 
 VPN_ENABLED=false
 VPN_PROVIDER=""
@@ -142,6 +138,13 @@ VPN_OPENVPN_PASSWORD=""
 VPN_SERVER_COUNTRIES=""
 COMPOSE_PROFILES="novpn"
 QBT_HOST="qbittorrent"
+
+_VPN_ANSWER="N"
+if [[ "${INTERACTIVE}" == "true" ]]; then
+    read -rp "  Activer un VPN ? [o/N] : " _VPN_ANSWER || _VPN_ANSWER="N"
+else
+    echo "  (mode non-interactif → VPN désactivé par défaut)"
+fi
 
 if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
       "${_VPN_ANSWER,,}" == "y" || "${_VPN_ANSWER,,}" == "yes" ]]; then
@@ -159,7 +162,10 @@ if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
     echo "    5) Surfshark"
     echo "    6) ExpressVPN"
     echo "    7) Autre (compatible Gluetun)"
-    ask _PROVIDER_CHOICE "1" "  Choix [1-7] : "
+    _PROVIDER_CHOICE="1"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Choix [1-7] : " _PROVIDER_CHOICE || _PROVIDER_CHOICE="1"
+    fi
 
     case "${_PROVIDER_CHOICE}" in
         1) VPN_PROVIDER="protonvpn" ;;
@@ -168,7 +174,12 @@ if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
         4) VPN_PROVIDER="private internet access" ;;
         5) VPN_PROVIDER="surfshark" ;;
         6) VPN_PROVIDER="expressvpn" ;;
-        7) ask VPN_PROVIDER "custom" "  Nom du fournisseur Gluetun (ex: ivpn) : " ;;
+        7)
+            VPN_PROVIDER=""
+            if [[ "${INTERACTIVE}" == "true" ]]; then
+                read -rp "  Nom du fournisseur Gluetun (ex: ivpn) : " VPN_PROVIDER || VPN_PROVIDER=""
+            fi
+            ;;
         *) VPN_PROVIDER="protonvpn" ;;
     esac
 
@@ -176,14 +187,20 @@ if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
     echo "  Protocole :"
     echo "    1) WireGuard  (recommandé — plus rapide, plus simple)"
     echo "    2) OpenVPN    (plus compatible, légèrement plus lent)"
-    ask _PROTO_CHOICE "1" "  Choix [1/2] : "
+    _PROTO_CHOICE="1"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Choix [1/2] : " _PROTO_CHOICE || _PROTO_CHOICE="1"
+    fi
 
     if [[ "${_PROTO_CHOICE}" == "2" ]]; then
         VPN_TYPE="openvpn"
         echo ""
         echo "  ── Identifiants OpenVPN ──────────────────────────────────────"
-        ask VPN_OPENVPN_USER "" "  Nom d'utilisateur : "
-        ask_secret VPN_OPENVPN_PASSWORD "" "  Mot de passe      : "
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            read -rp "  Nom d'utilisateur : " VPN_OPENVPN_USER || VPN_OPENVPN_USER=""
+            read -rsp "  Mot de passe      : " VPN_OPENVPN_PASSWORD || VPN_OPENVPN_PASSWORD=""
+            echo ""
+        fi
     else
         VPN_TYPE="wireguard"
         echo ""
@@ -195,18 +212,24 @@ if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
             echo "  → mullvad.net/account/wireguard-config"
         fi
         echo ""
-        ask VPN_WG_PRIVATE_KEY "" "  Clé privée WireGuard (PrivateKey) : "
-        if [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
-            ask VPN_WG_ADDRESSES "" "  Adresse WireGuard (Address, ex: 10.68.x.x/32) : "
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            read -rp "  Clé privée WireGuard (PrivateKey) : " VPN_WG_PRIVATE_KEY || VPN_WG_PRIVATE_KEY=""
+            if [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
+                read -rp "  Adresse WireGuard (Address, ex: 10.68.x.x/32) : " \
+                    VPN_WG_ADDRESSES || VPN_WG_ADDRESSES=""
+            fi
         fi
     fi
 
     echo ""
-    ask VPN_SERVER_COUNTRIES "" "  Pays du serveur VPN (optionnel, Entrée pour ignorer, ex: France) : "
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Pays du serveur VPN (optionnel, Entrée pour ignorer) : " \
+            VPN_SERVER_COUNTRIES || VPN_SERVER_COUNTRIES=""
+    fi
     echo "  ✓ VPN configuré : ${VPN_PROVIDER} / ${VPN_TYPE}"
 fi
 
-# Ajouter le profil jellyfin si besoin
+# Ajouter le profil jellyfin si embarqué
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     COMPOSE_PROFILES="${COMPOSE_PROFILES},jellyfin"
 fi
@@ -235,7 +258,7 @@ ARR_JELLYFIN_INT_URL=${JELLYFIN_INT_URL}
 ARR_JELLYFIN_USER=${JELLYFIN_USER}
 ARR_JELLYFIN_PASSWORD=${JELLYFIN_PASSWORD}
 
-# VPN (Gluetun)
+# VPN (Gluetun) — vide si désactivé
 ARR_VPN_PROVIDER=${VPN_PROVIDER}
 ARR_VPN_TYPE=${VPN_TYPE}
 ARR_VPN_WG_PRIVATE_KEY=${VPN_WG_PRIVATE_KEY}
@@ -273,7 +296,7 @@ write_arr_config sonarr   8989 /sonarr   "${API_SONARR}"
 write_arr_config lidarr   8686 /lidarr   "${API_LIDARR}"
 write_arr_config readarr  8787 /readarr  "${API_READARR}"
 
-# ── Jellyfin network.xml (URL base = /jellyfin) ───────────────────────
+# ── Jellyfin network.xml ──────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin/config"
     JF_NET_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin/config/network.xml"
@@ -293,10 +316,7 @@ fi
 # ── Bazarr config ─────────────────────────────────────────────────────
 BAZARR_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/bazarr/config.ini"
 if [[ ! -f "${BAZARR_CFG}" ]]; then
-    cat > "${BAZARR_CFG}" <<INICFG
-[general]
-base_url = /bazarr
-INICFG
+    printf '[general]\nbase_url = /bazarr\n' > "${BAZARR_CFG}"
 fi
 
 # ── qBittorrent config ────────────────────────────────────────────────
@@ -365,11 +385,10 @@ wait_url() {
 }
 
 api_post() {
-    local url=\$1 key=\$2 data=\$3
-    curl -sf -X POST "\$url" \
-        -H "X-Api-Key: \$key" \
+    curl -sf -X POST "\$1" \
+        -H "X-Api-Key: \$2" \
         -H "Content-Type: application/json" \
-        -d "\$data" >/dev/null 2>&1 || true
+        -d "\$3" >/dev/null 2>&1 || true
 }
 
 api_post_v3() { api_post "\${1}/api/v3/\${3}" "\$2" "\$4"; }
@@ -392,11 +411,11 @@ echo ""
 echo "── [2/4] Connexion Prowlarr → *arr..."
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$R_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]},{\"name\":\"animeSyncCategories\",\"value\":[5070]}]}"
+    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$R_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
 echo "  ✓ Prowlarr → Radarr"
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$S_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]},{\"name\":\"animeSyncCategories\",\"value\":[5070]}]}"
+    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$S_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]}]}"
 echo "  ✓ Prowlarr → Sonarr"
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
@@ -411,40 +430,38 @@ echo ""
 echo "── [3/4] Clients de téléchargement + dossiers racine..."
 
 qbt_client() {
-    local name=\$1 category=\$2
-    echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"${QBT_HOST}\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"\${name}Category\",\"value\":\"\$category\"},{\"name\":\"recentMoviePriority\",\"value\":0},{\"name\":\"olderMoviePriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}"
+    echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"${QBT_HOST}\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"\${1}Category\",\"value\":\"\$2\"},{\"name\":\"initialState\",\"value\":0}]}"
 }
 
 sab_client() {
-    local category=\$1
-    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/sabnzbd\"},{\"name\":\"\${category}Category\",\"value\":\"\$category\"}]}"
+    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/sabnzbd\"},{\"name\":\"\${1}Category\",\"value\":\"\$1\"}]}"
 }
 
 api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "downloadclient" "\$(qbt_client movie movies)"
 api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "downloadclient" "\$(sab_client movie)"
 api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "rootfolder"     "{\"path\":\"/data/media/movies\"}"
-echo "  ✓ Radarr → qBittorrent + SABnzbd + /data/media/movies"
+echo "  ✓ Radarr configuré"
 
 api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "downloadclient" "\$(qbt_client series tv)"
 api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "downloadclient" "\$(sab_client series)"
 api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "rootfolder"     "{\"path\":\"/data/media/tv\"}"
-echo "  ✓ Sonarr → qBittorrent + SABnzbd + /data/media/tv"
+echo "  ✓ Sonarr configuré"
 
 api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(qbt_client music music)"
 api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(sab_client music)"
 api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/media/music\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
-echo "  ✓ Lidarr → qBittorrent + SABnzbd + /data/media/music"
+echo "  ✓ Lidarr configuré"
 
 api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "downloadclient" "\$(qbt_client book books)"
 api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "downloadclient" "\$(sab_client book)"
 api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "rootfolder"     "{\"path\":\"/data/media/books\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
-echo "  ✓ Readarr → qBittorrent + SABnzbd + /data/media/books"
+echo "  ✓ Readarr configuré"
 
 echo ""
 echo "── [4/4] Jellyfin — configuration des bibliothèques..."
 
 if [[ -z "\$JF_URL" ]]; then
-    echo "  ⚠ Pas d'URL Jellyfin configurée — étape ignorée"
+    echo "  ⚠ Pas d'URL Jellyfin — étape ignorée"
 else
     printf "→ Attente Jellyfin..."
     until curl -sf "\$JF_URL/health" >/dev/null 2>&1 \
@@ -453,7 +470,6 @@ else
     done
     echo " ✓"
 
-    # Setup wizard initial (ignoré si déjà fait — retourne 404)
     if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         curl -sf -X POST "\$JF_URL/Startup/User" \
             -H "Content-Type: application/json" \
@@ -463,38 +479,38 @@ else
             -H "Content-Type: application/json" \
             -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
             >/dev/null 2>&1 || true
-        curl -sf -X POST "\$JF_URL/Startup/Complete" \
-            >/dev/null 2>&1 || true
+        curl -sf -X POST "\$JF_URL/Startup/Complete" >/dev/null 2>&1 || true
         echo "  ✓ Wizard Jellyfin complété"
-    fi
 
-    # Authentification pour ajouter les bibliothèques
-    JF_TOKEN=""
-    if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
             -H "Content-Type: application/json" \
             -H 'X-Emby-Authorization: MediaBrowser Client="Bootstrap", Device="Bootstrap", DeviceId="arr-bootstrap-1", Version="1.0.0"' \
-            -d "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || true
-        JF_TOKEN=\$(echo "\$JF_AUTH" | grep -o '"AccessToken":"[^"]*"' | head -1 | cut -d'"' -f4)
+            -d "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_AUTH=""
+        JF_TOKEN=\$(echo "\$JF_AUTH" | grep -o '"AccessToken":"[^"]*"' | head -1 | cut -d'"' -f4) || JF_TOKEN=""
+    else
+        JF_TOKEN=""
     fi
 
-    # Ajouter les bibliothèques
-    add_jf_library() {
+    add_jf_lib() {
         local name=\$1 type=\$2 path=\$3
-        local extra_header=""
-        [[ -n "\$JF_TOKEN" ]] && extra_header="-H \"Authorization: MediaBrowser Token=\\\"\$JF_TOKEN\\\"\""
-        eval curl -sf -X POST \
-            "\"\$JF_URL/Library/VirtualFolders?refreshLibrary=false\"" \
-            -H "\"Content-Type: application/json\"" \
-            \$extra_header \
-            -d "\"{\\\"Name\\\":\\\"\$name\\\",\\\"CollectionType\\\":\\\"\$type\\\",\\\"Paths\\\":[\\\"\$path\\\"],\\\"LibraryOptions\\\":{}}\"" \
-            >/dev/null 2>&1 || true
+        if [[ -n "\$JF_TOKEN" ]]; then
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?refreshLibrary=false" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
+                -d "{\"Name\":\"\$name\",\"CollectionType\":\"\$type\",\"Paths\":[\"\$path\"],\"LibraryOptions\":{}}" \
+                >/dev/null 2>&1 || true
+        else
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?refreshLibrary=false" \
+                -H "Content-Type: application/json" \
+                -d "{\"Name\":\"\$name\",\"CollectionType\":\"\$type\",\"Paths\":[\"\$path\"],\"LibraryOptions\":{}}" \
+                >/dev/null 2>&1 || true
+        fi
     }
 
-    add_jf_library "Films"   "movies"  "/media/movies"
-    add_jf_library "Séries"  "tvshows" "/media/tv"
-    add_jf_library "Musique" "music"   "/media/music"
-    echo "  ✓ Bibliothèques Jellyfin configurées (Films, Séries, Musique)"
+    add_jf_lib "Films"   "movies"  "/media/movies"
+    add_jf_lib "Séries"  "tvshows" "/media/tv"
+    add_jf_lib "Musique" "music"   "/media/music"
+    echo "  ✓ Bibliothèques Jellyfin configurées"
 fi
 
 echo ""
@@ -510,20 +526,20 @@ chmod +x "${CONFIG_DIR}/bootstrap.sh"
 
 # ── post-install.txt ─────────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-    JF_LINE="║  Jellyfin     : https://${CALEOPE_DOMAIN}/jellyfin  (inclus dans la stack)  ║"
-    JF_CRED="║  Jellyfin admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}                   ║"
+    JF_LINE="║  Jellyfin     : https://${CALEOPE_DOMAIN}/jellyfin              ║"
+    JF_CRED="║  Jellyfin admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}       ║"
 elif [[ -n "${JELLYFIN_INT_URL}" ]]; then
-    JF_LINE="║  Jellyfin     : ${JELLYFIN_INT_URL}  (externe)                              ║"
+    JF_LINE="║  Jellyfin     : ${JELLYFIN_INT_URL} (externe)                   ║"
     JF_CRED=""
 else
-    JF_LINE="║  Jellyfin     : non configuré                                               ║"
+    JF_LINE=""
     JF_CRED=""
 fi
 
 if [[ "${VPN_ENABLED}" == "true" ]]; then
-    VPN_LINE="║  🔒 VPN actif : ${VPN_PROVIDER} / ${VPN_TYPE}                              ║"
+    VPN_LINE="║  🔒 VPN : ${VPN_PROVIDER} / ${VPN_TYPE}                         ║"
 else
-    VPN_LINE="║  🔓 VPN : désactivé                                                         ║"
+    VPN_LINE="║  🔓 VPN : désactivé                                              ║"
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
@@ -542,20 +558,15 @@ ${JF_LINE}
 ║  qBittorrent  : https://${CALEOPE_DOMAIN}/qbt                       ║
 ║  SABnzbd      : https://${CALEOPE_DOMAIN}/sabnzbd                   ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT :                         ║
-║     ✓ Prowlarr → Radarr, Sonarr, Lidarr, Readarr                   ║
-║     ✓ Radarr/Sonarr/Lidarr/Readarr → qBittorrent + SABnzbd         ║
-║     ✓ Dossiers média : /data/media/{movies,tv,music,books}          ║
-║     ✓ Bibliothèques Jellyfin : Films, Séries, Musique               ║
+║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT                           ║
 ${VPN_LINE}
 ╠══════════════════════════════════════════════════════════════════════╣
-║  À FAIRE MANUELLEMENT (2 étapes seulement) :                        ║
-║  1. Prowlarr → Indexers → Add  (ajouter tes sources)                ║
+║  À FAIRE :                                                           ║
+║  1. Prowlarr → Indexers → Add                                        ║
 ║  2. Jellyseerr → connecter Jellyfin + Radarr + Sonarr               ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  Stockage : ${STORAGE_PATH}                                          ║
 ${JF_CRED}
-║  qBittorrent password : ${QBT_PASSWORD}  (si besoin)                ║
+║  qBittorrent password : ${QBT_PASSWORD}                             ║
 ╚══════════════════════════════════════════════════════════════════════╝
 EOF
 
