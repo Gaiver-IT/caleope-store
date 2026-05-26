@@ -568,14 +568,13 @@ else
     wait_url "Jellyfin" "\$JF_URL/health" || wait_url "Jellyfin" "\$JF_URL"
 
     if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-        # Les APIs /Startup/* sont disponibles quelques minutes après le démarrage de Jellyfin
-        # (même si /health répond OK). On boucle jusqu'à obtenir un code != 503.
+        # Jellyfin 10.11+ : /Startup/User supprimé, remplacé par /Startup/FirstUser (PUT)
+        # Les APIs /Startup/* ne sont disponibles que pendant le wizard (avant /Startup/Complete)
+        # Elles retournent 503 quelques minutes après le démarrage → on boucle.
         echo "  ⏳ Attente initialisation wizard Jellyfin..."
         JF_WIZARD_STATUS="503"
         for _i in \$(seq 1 24); do
-            JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\$JF_URL/Startup/User" \
-                -H "Content-Type: application/json" \
-                -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_WIZARD_STATUS="000"
+            JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" "\$JF_URL/Startup/FirstUser" 2>/dev/null) || JF_WIZARD_STATUS="000"
             if [[ "\$JF_WIZARD_STATUS" != "503" && "\$JF_WIZARD_STATUS" != "000" ]]; then
                 break
             fi
@@ -583,13 +582,19 @@ else
             sleep 10
         done
 
-        # /Startup/RemoteAccess et /Startup/Complete (ignorés si wizard déjà complet)
+        # Définir le nom et mot de passe du premier utilisateur admin
+        curl -sf -X PUT "\$JF_URL/Startup/FirstUser" \
+            -H "Content-Type: application/json" \
+            -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" \
+            >/dev/null 2>&1 || true
+
+        # /Startup/RemoteAccess et /Startup/Complete
         curl -sf -X POST "\$JF_URL/Startup/RemoteAccess" \
             -H "Content-Type: application/json" \
             -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
             >/dev/null 2>&1 || true
         curl -sf -X POST "\$JF_URL/Startup/Complete" >/dev/null 2>&1 || true
-        echo "  ✓ Wizard Jellyfin complété (HTTP \$JF_WIZARD_STATUS)"
+        echo "  ✓ Wizard Jellyfin complété (HTTP wizard:\$JF_WIZARD_STATUS)"
 
         JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
             -H "Content-Type: application/json" \
