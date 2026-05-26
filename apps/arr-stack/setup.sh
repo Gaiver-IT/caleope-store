@@ -549,12 +549,7 @@ echo "── [5/6] Jellyfin — configuration des bibliothèques..."
 if [[ -z "\$JF_URL" ]]; then
     echo "  ⚠ Pas d'URL Jellyfin — étape ignorée"
 else
-    printf "→ Attente Jellyfin..."
-    until curl -sf "\$JF_URL/health" >/dev/null 2>&1 \
-       || curl -sf "\$JF_URL/jellyfin/health" >/dev/null 2>&1; do
-        printf "."; sleep 5
-    done
-    echo " ✓"
+    wait_url "Jellyfin" "\$JF_URL/health" || wait_url "Jellyfin" "\$JF_URL"
 
     if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         curl -sf -X POST "\$JF_URL/Startup/User" \
@@ -618,11 +613,7 @@ echo ""
 echo "── [6/6] Jellyseerr — configuration automatique..."
 
 JS_URL="http://jellyseerr:5055"
-printf "→ Attente Jellyseerr..."
-until curl -sf "\${JS_URL}/api/v1/settings/public" >/dev/null 2>&1; do
-    printf "."; sleep 5
-done
-echo " ✓"
+wait_url "Jellyseerr" "\${JS_URL}/api/v1/settings/public"
 
 JS_INIT=\$(curl -sf "\${JS_URL}/api/v1/settings/public" 2>/dev/null \
     | grep -o '"initialized":[^,}]*' | cut -d: -f2 | tr -d ' "') || JS_INIT="false"
