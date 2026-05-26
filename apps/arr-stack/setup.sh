@@ -42,7 +42,6 @@ API_PROWLARR=$(openssl rand -hex 16)
 API_RADARR=$(openssl rand -hex 16)
 API_SONARR=$(openssl rand -hex 16)
 API_LIDARR=$(openssl rand -hex 16)
-API_READARR=$(openssl rand -hex 16)
 API_SABNZBD=$(openssl rand -hex 16)
 QBT_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
 
@@ -247,7 +246,6 @@ ARR_API_PROWLARR=${API_PROWLARR}
 ARR_API_RADARR=${API_RADARR}
 ARR_API_SONARR=${API_SONARR}
 ARR_API_LIDARR=${API_LIDARR}
-ARR_API_READARR=${API_READARR}
 ARR_API_SABNZBD=${API_SABNZBD}
 ARR_QBT_PASSWORD=${QBT_PASSWORD}
 ARR_QBT_HOST=${QBT_HOST}
@@ -297,7 +295,6 @@ write_arr_config prowlarr 9696 /prowlarr "${API_PROWLARR}"
 write_arr_config radarr   7878 /radarr   "${API_RADARR}"
 write_arr_config sonarr   8989 /sonarr   "${API_SONARR}"
 write_arr_config lidarr   8686 /lidarr   "${API_LIDARR}"
-write_arr_config readarr  8787 /readarr  "${API_READARR}"
 
 # ── Jellyfin network.xml ──────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
@@ -366,7 +363,6 @@ P_URL="http://prowlarr:9696/prowlarr"
 R_URL="http://radarr:7878/radarr"
 S_URL="http://sonarr:8989/sonarr"
 L_URL="http://lidarr:8686/lidarr"
-RD_URL="http://readarr:8787/readarr"
 QBT_URL="http://${QBT_HOST}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
@@ -407,7 +403,6 @@ wait_arr "Prowlarr"    "\$P_URL"  "\$ARR_API_PROWLARR"
 wait_arr "Radarr"      "\$R_URL"  "\$ARR_API_RADARR"
 wait_arr "Sonarr"      "\$S_URL"  "\$ARR_API_SONARR"
 wait_arr "Lidarr"      "\$L_URL"  "\$ARR_API_LIDARR"
-wait_arr "Readarr"     "\$RD_URL" "\$ARR_API_READARR"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
 
 echo ""
@@ -424,10 +419,6 @@ echo "  ✓ Prowlarr → Sonarr"
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
     "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$L_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
 echo "  ✓ Prowlarr → Lidarr"
-
-api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Readarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Readarr\",\"implementation\":\"Readarr\",\"configContract\":\"ReadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"\$P_URL\"},{\"name\":\"baseUrl\",\"value\":\"\$RD_URL\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_READARR\"},{\"name\":\"syncCategories\",\"value\":[7000,7020]}]}"
-echo "  ✓ Prowlarr → Readarr"
 
 echo ""
 echo "── [3/4] Clients de téléchargement + dossiers racine..."
@@ -454,11 +445,6 @@ api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(qbt_client music m
 api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(sab_client music)"
 api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/media/music\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
 echo "  ✓ Lidarr configuré"
-
-api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "downloadclient" "\$(qbt_client book books)"
-api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "downloadclient" "\$(sab_client book)"
-api_post_v1 "\$RD_URL" "\$ARR_API_READARR" "rootfolder"     "{\"path\":\"/data/media/books\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
-echo "  ✓ Readarr configuré"
 
 echo ""
 echo "── [4/4] Jellyfin — configuration des bibliothèques..."

@@ -150,28 +150,10 @@ services:
       - caleope-public
       - arr-internal
 
-  # ── READARR — livres ────────────────────────────────────────────────
-  readarr:
-    image: ghcr.io/hotio/readarr:latest
-    container_name: readarr
-    restart: unless-stopped
-    environment:
-      - PUID=${ARR_PUID}
-      - PGID=${ARR_PGID}
-      - TZ=${ARR_TZ}
-    volumes:
-      - {{.BaseDir}}/app-data/arr-stack/config/readarr:/config
-      - {{.BaseDir}}/app-data/arr-stack/data:/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.readarr.rule=Host(`{{.Domain}}`) && PathPrefix(`/readarr`)"
-      - "traefik.http.routers.readarr.entrypoints=web"
-      - "traefik.http.routers.readarr.priority=10"
-      - "traefik.http.services.readarr.loadbalancer.server.port=8787"
-      - "traefik.docker.network=caleope-public"
-    networks:
-      - caleope-public
-      - arr-internal
+  # ── READARR — livres (désactivé : image sans support amd64 fiable) ──
+  # Pour l'activer manuellement, ajouter :
+  #   image: lscr.io/linuxserver/readarr:develop
+  #   + configurer manuellement via l'interface Prowlarr
 
   # ── BAZARR — sous-titres ────────────────────────────────────────────
   bazarr:
@@ -312,7 +294,6 @@ services:
       - radarr
       - sonarr
       - lidarr
-      - readarr
 
   # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
   jellyfin-vue:
