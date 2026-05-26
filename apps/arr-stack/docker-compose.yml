@@ -319,7 +319,7 @@ services:
     container_name: arr-bootstrap
     restart: "no"
     dns_search: []
-    command: ["/bin/sh", "-c", "sed -i '/^search/d' /etc/resolv.conf && apk add --no-cache curl bash jq >/dev/null 2>&1 && bash /bootstrap.sh"]
+    command: ["/bin/sh", "-c", "printf 'nameserver 127.0.0.11\\noptions ndots:0\\n' > /etc/resolv.conf && apk add --no-cache curl bash jq >/dev/null 2>&1 && bash /bootstrap.sh"]
     env_file: app.env
     volumes:
       - {{.BaseDir}}/app-config/arr-stack/bootstrap.sh:/bootstrap.sh:ro
