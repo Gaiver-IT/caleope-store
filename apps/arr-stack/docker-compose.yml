@@ -1,6 +1,7 @@
 ##
 ## ARR STACK — Prowlarr + Radarr + Sonarr + Lidarr + Bazarr
 ##             + qBittorrent + SABnzbd + Jellyseerr + Jellyfin Vue [+ Jellyfin]
+##             + FlareSolverr (bypass Cloudflare pour Prowlarr)
 ##
 ## Profils Docker Compose (combinables) :
 ##   novpn     → qBittorrent sans VPN
@@ -11,7 +12,7 @@
 ## ex: COMPOSE_PROFILES=vpn,jellyfin
 ##
 ## Routage : chaque service est exposé sur un sous-domaine
-##   Jellyseerr   → {{.Domain}}               (page d'accueil)
+##   Jellyseerr   → jellyseerr.{{.Domain}}    (demandes de contenu)
 ##   Radarr       → radarr.{{.Domain}}
 ##   Sonarr       → sonarr.{{.Domain}}
 ##   Lidarr       → lidarr.{{.Domain}}
@@ -21,25 +22,26 @@
 ##   SABnzbd      → sabnzbd.{{.Domain}}
 ##   Jellyfin     → jellyfin.{{.Domain}}
 ##   Jellyfin Vue → vue.{{.Domain}}
+##   FlareSolverr → interne seulement (http://arr-flaresolverr:8191)
 ##
 
 services:
 
-  # ── JELLYSEERR — UI de demande de contenu (root /) ──────────────────
+  # ── JELLYSEERR — UI de demande de contenu ───────────────────────────
   jellyseerr:
     image: fallenbagel/jellyseerr:latest
     container_name: jellyseerr
     restart: unless-stopped
     environment:
       - TZ=${ARR_TZ}
-      - LOG_LEVEL=debug
+      - LOG_LEVEL=info
     volumes:
       - {{.BaseDir}}/app-data/arr-stack/config/jellyseerr:/app/config
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.jellyseerr.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{.Domain}}`)"
       - "traefik.http.routers.jellyseerr.entrypoints=web"
-      - "traefik.http.routers.jellyseerr.priority=1"
+      - "traefik.http.routers.jellyseerr.priority=10"
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
       - "traefik.docker.network=caleope-public"
     networks:
@@ -286,6 +288,19 @@ services:
       - caleope-public
       - arr-internal
 
+  # ── FLARESOLVERR — bypass Cloudflare pour Prowlarr ──────────────────
+  # Accessible uniquement en interne : http://arr-flaresolverr:8191
+  # Prowlarr l'utilise automatiquement pour les indexeurs protégés.
+  arr-flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: arr-flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${ARR_TZ}
+    networks:
+      - arr-internal
+
   # ── BOOTSTRAP — configure toutes les connexions API au démarrage ────
   arr-bootstrap:
     image: alpine:3.19
@@ -302,6 +317,8 @@ services:
       - radarr
       - sonarr
       - lidarr
+      - jellyseerr
+      - arr-flaresolverr
 
   # ── JELLYFIN VUE — interface de lecture épurée (vue.domain) ─────────
   jellyfin-vue:

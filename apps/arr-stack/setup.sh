@@ -400,7 +400,7 @@ echo "║   Arr Stack — Bootstrap automatique    ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
-echo "── [1/4] Attente du démarrage des services..."
+echo "── [1/5] Attente du démarrage des services..."
 wait_arr "Prowlarr"    "\$P_URL"  "\$ARR_API_PROWLARR"
 wait_arr "Radarr"      "\$R_URL"  "\$ARR_API_RADARR"
 wait_arr "Sonarr"      "\$S_URL"  "\$ARR_API_SONARR"
@@ -408,7 +408,7 @@ wait_arr "Lidarr"      "\$L_URL"  "\$ARR_API_LIDARR"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
 
 echo ""
-echo "── [2/4] Connexion Prowlarr → *arr..."
+echo "── [2/5] Connexion Prowlarr → *arr + FlareSolverr..."
 
 api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
     "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://radarr:7878\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
@@ -422,8 +422,13 @@ api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
     "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://lidarr:8686\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
 echo "  ✓ Prowlarr → Lidarr"
 
+# FlareSolverr — proxy pour contourner Cloudflare sur les indexeurs protégés
+api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "indexerproxy" \
+    "{\"name\":\"FlareSolverr\",\"implementationName\":\"FlareSolverr\",\"implementation\":\"FlareSolverr\",\"configContract\":\"FlareSolverrSettings\",\"supportsRss\":false,\"supportsSearch\":false,\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"http://arr-flaresolverr:8191\"},{\"name\":\"requestTimeout\",\"value\":60}]}"
+echo "  ✓ Prowlarr → FlareSolverr (http://arr-flaresolverr:8191)"
+
 echo ""
-echo "── [3/4] Clients de téléchargement + dossiers racine..."
+echo "── [3/5] Clients de téléchargement + dossiers racine..."
 
 qbt_client() {
     echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"${QBT_HOST}\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"\${1}Category\",\"value\":\"\$2\"},{\"name\":\"initialState\",\"value\":0}]}"
@@ -449,7 +454,7 @@ api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/med
 echo "  ✓ Lidarr configuré"
 
 echo ""
-echo "── [4/4] Jellyfin — configuration des bibliothèques..."
+echo "── [4/5] Jellyfin — configuration des bibliothèques..."
 
 if [[ -z "\$JF_URL" ]]; then
     echo "  ⚠ Pas d'URL Jellyfin — étape ignorée"
@@ -505,12 +510,65 @@ else
 fi
 
 echo ""
+echo "── [5/5] Jellyseerr — configuration automatique..."
+
+JS_URL="http://jellyseerr:5055"
+printf "→ Attente Jellyseerr..."
+until curl -sf "\${JS_URL}/api/v1/settings/public" >/dev/null 2>&1; do
+    printf "."; sleep 5
+done
+echo " ✓"
+
+JS_INIT=\$(curl -sf "\${JS_URL}/api/v1/settings/public" 2>/dev/null \
+    | grep -o '"initialized":[^,}]*' | cut -d: -f2 | tr -d ' "') || JS_INIT="false"
+
+if [[ "\${JS_INIT}" == "true" ]]; then
+    echo "  ℹ Jellyseerr déjà initialisé — ignoré"
+elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
+    # Connexion Jellyseerr via le compte Jellyfin admin créé à l'install
+    curl -sf -X POST "\${JS_URL}/api/v1/auth/jellyfin" \
+        -H "Content-Type: application/json" \
+        -c /tmp/js.cookies -b /tmp/js.cookies \
+        -d '{"hostname":"jellyfin","port":8096,"useSsl":false,"urlBase":"","username":"${JELLYFIN_USER}","password":"${JELLYFIN_PASSWORD}"}' \
+        >/dev/null 2>&1 || true
+
+    # Récupérer l'API key Jellyseerr (disponible après login)
+    JS_KEY=\$(curl -sf "\${JS_URL}/api/v1/settings/main" \
+        -b /tmp/js.cookies 2>/dev/null \
+        | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
+
+    if [[ -n "\${JS_KEY}" ]]; then
+        # Ajouter Radarr dans Jellyseerr
+        curl -sf -X POST "\${JS_URL}/api/v1/settings/radarr" \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: \${JS_KEY}" \
+            -d "{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"\$ARR_API_RADARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeDirectory\":\"/data/media/movies\",\"is4kServer\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
+            >/dev/null 2>&1 || true
+
+        # Ajouter Sonarr dans Jellyseerr
+        curl -sf -X POST "\${JS_URL}/api/v1/settings/sonarr" \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: \${JS_KEY}" \
+            -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"\$ARR_API_SONARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeAnimeProfileId\":1,\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4kServer\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
+            >/dev/null 2>&1 || true
+
+        echo "  ✓ Jellyseerr configuré (Jellyfin + Radarr + Sonarr)"
+    else
+        echo "  ⚠ Jellyseerr : API key non récupérée — configuration manuelle requise"
+        echo "    Connecte-toi sur https://jellyseerr.${CALEOPE_DOMAIN}"
+        echo "    URL Jellyfin à entrer : http://jellyfin:8096"
+    fi
+else
+    echo "  ℹ Jellyfin externe — configure Jellyseerr manuellement"
+    echo "    URL Jellyfin à entrer dans le wizard : ${JELLYFIN_INT_URL:-http://<ip-jellyfin>:8096}"
+fi
+
+echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║  ✅  Bootstrap terminé avec succès !             ║"
 echo "║                                                  ║"
 echo "║  Reste à faire manuellement :                    ║"
 echo "║  • Prowlarr → ajouter tes indexeurs             ║"
-echo "║  • Jellyseerr → connecter Jellyfin              ║"
 echo "╚══════════════════════════════════════════════════╝"
 BOOTSTRAP
 chmod +x "${CONFIG_DIR}/bootstrap.sh"
@@ -533,11 +591,19 @@ else
     VPN_LINE="║  🔓 VPN : désactivé                                                  ║"
 fi
 
+# Item "Jellyseerr → configurer" affiché seulement si Jellyfin est externe
+# (si Jellyfin est embarqué, le bootstrap l'auto-configure)
+if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
+    JS_TODO=""
+else
+    JS_TODO="║  3. Jellyseerr → connecter Jellyfin (http://<ip>:8096)               ║"
+fi
+
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                       Arr Stack — Accès                               ║
 ╠════════════════════════════════════════════════════════════════════════╣
-║  Jellyseerr   : https://${CALEOPE_DOMAIN}          (demandes, root)  ║
+║  Jellyseerr   : https://jellyseerr.${CALEOPE_DOMAIN}                 ║
 ║  Jellyfin Vue : https://vue.${CALEOPE_DOMAIN}                        ║
 ${JF_LINE}
 ║  Prowlarr     : https://prowlarr.${CALEOPE_DOMAIN}                   ║
@@ -554,7 +620,7 @@ ${VPN_LINE}
 ║  À FAIRE :                                                            ║
 ║  1. DNS : *.${CALEOPE_DOMAIN} → IP du serveur (ou entrées par app)   ║
 ║  2. Prowlarr → Indexers → Add                                         ║
-║  3. Jellyseerr → connecter Jellyfin + Radarr + Sonarr                ║
+${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
 ║  qBittorrent password : ${QBT_PASSWORD}                              ║
