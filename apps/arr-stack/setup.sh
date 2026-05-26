@@ -568,16 +568,28 @@ else
     wait_url "Jellyfin" "\$JF_URL/health" || wait_url "Jellyfin" "\$JF_URL"
 
     if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-        curl -sf -X POST "\$JF_URL/Startup/User" \
-            -H "Content-Type: application/json" \
-            -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" \
-            >/dev/null 2>&1 || true
+        # Les APIs /Startup/* sont disponibles quelques minutes après le démarrage de Jellyfin
+        # (même si /health répond OK). On boucle jusqu'à obtenir un code != 503.
+        echo "  ⏳ Attente initialisation wizard Jellyfin..."
+        JF_WIZARD_STATUS="503"
+        for _i in \$(seq 1 24); do
+            JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\$JF_URL/Startup/User" \
+                -H "Content-Type: application/json" \
+                -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_WIZARD_STATUS="000"
+            if [[ "\$JF_WIZARD_STATUS" != "503" && "\$JF_WIZARD_STATUS" != "000" ]]; then
+                break
+            fi
+            echo "  ⏳  wizard pas encore prêt (HTTP \$JF_WIZARD_STATUS) — attente 10s... (\$_i/24)"
+            sleep 10
+        done
+
+        # /Startup/RemoteAccess et /Startup/Complete (ignorés si wizard déjà complet)
         curl -sf -X POST "\$JF_URL/Startup/RemoteAccess" \
             -H "Content-Type: application/json" \
             -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
             >/dev/null 2>&1 || true
         curl -sf -X POST "\$JF_URL/Startup/Complete" >/dev/null 2>&1 || true
-        echo "  ✓ Wizard Jellyfin complété"
+        echo "  ✓ Wizard Jellyfin complété (HTTP \$JF_WIZARD_STATUS)"
 
         JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
             -H "Content-Type: application/json" \
@@ -638,10 +650,11 @@ if [[ "\${JS_INIT}" == "true" ]]; then
     echo "  ℹ Jellyseerr déjà initialisé — ignoré"
 elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     # Connexion Jellyseerr via le compte Jellyfin admin créé à l'install
+    # serverType:2 = MediaServerType.JELLYFIN (requis depuis Jellyseerr 2.x)
     curl -sf -X POST "\${JS_URL}/api/v1/auth/jellyfin" \
         -H "Content-Type: application/json" \
         -c /tmp/js.cookies -b /tmp/js.cookies \
-        -d '{"hostname":"jellyfin","port":8096,"useSsl":false,"urlBase":"","username":"${JELLYFIN_USER}","password":"${JELLYFIN_PASSWORD}"}' \
+        -d '{"hostname":"jellyfin","port":8096,"useSsl":false,"urlBase":"","serverType":2,"username":"${JELLYFIN_USER}","password":"${JELLYFIN_PASSWORD}"}' \
         >/dev/null 2>&1 || true
 
     # Récupérer l'API key Jellyseerr (disponible après login)
@@ -650,18 +663,29 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
 
     if [[ -n "\${JS_KEY}" ]]; then
+        # Synchroniser et activer les bibliothèques Jellyfin dans Jellyseerr
+        JS_LIB_IDS=\$(curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library?sync=true" \
+            -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies 2>/dev/null \
+            | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ',' | sed 's/,$//') || JS_LIB_IDS=""
+        if [[ -n "\${JS_LIB_IDS}" ]]; then
+            curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library?enable=\${JS_LIB_IDS}" \
+                -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies >/dev/null 2>&1 || true
+            echo "  ✓ Jellyseerr → bibliothèques Jellyfin activées"
+        fi
+
         # Ajouter Radarr dans Jellyseerr
+        # minimumAvailability requis depuis Jellyseerr 2.x ; is4k (pas is4kServer)
         curl -sf -X POST "\${JS_URL}/api/v1/settings/radarr" \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: \${JS_KEY}" \
-            -d "{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"\$ARR_API_RADARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeDirectory\":\"/data/media/movies\",\"is4kServer\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
+            -d "{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"\$ARR_API_RADARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeDirectory\":\"/data/media/movies\",\"minimumAvailability\":\"released\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
             >/dev/null 2>&1 || true
 
         # Ajouter Sonarr dans Jellyseerr
         curl -sf -X POST "\${JS_URL}/api/v1/settings/sonarr" \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: \${JS_KEY}" \
-            -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"\$ARR_API_SONARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeAnimeProfileId\":1,\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4kServer\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
+            -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"\$ARR_API_SONARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeAnimeProfileId\":1,\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false,\"enableSeasonFolders\":true}" \
             >/dev/null 2>&1 || true
 
         # Langue française pour Jellyseerr
@@ -675,7 +699,7 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
                 -d @- >/dev/null 2>&1 || true
         fi
 
-        echo "  ✓ Jellyseerr configuré (Jellyfin + Radarr + Sonarr + langue française)"
+        echo "  ✓ Jellyseerr configuré (Jellyfin + bibliothèques + Radarr + Sonarr + langue française)"
     else
         echo "  ⚠ Jellyseerr : API key non récupérée — configuration manuelle requise"
         echo "    Connecte-toi sur https://jellyseerr.${CALEOPE_DOMAIN}"
