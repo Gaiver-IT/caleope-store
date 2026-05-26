@@ -282,7 +282,7 @@ write_arr_config() {
   <UrlBase>${urlbase}</UrlBase>
   <EnableSsl>False</EnableSsl>
   <ApiKey>${apikey}</ApiKey>
-  <AuthenticationMethod>None</AuthenticationMethod>
+  <AuthenticationMethod>External</AuthenticationMethod>
   <AuthenticationRequired>Disabled</AuthenticationRequired>
   <UpdateMechanism>Docker</UpdateMechanism>
   <Branch>master</Branch>
