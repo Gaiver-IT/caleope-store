@@ -308,28 +308,11 @@ services:
     networks:
       - arr-internal
     depends_on:
-      prowlarr:
-        condition: service_started
-      radarr:
-        condition: service_started
-      sonarr:
-        condition: service_started
-      lidarr:
-        condition: service_started
-      readarr:
-        condition: service_started
-      qbittorrent:
-        condition: service_started
-        required: false
-      qbittorrent-vpn:
-        condition: service_started
-        required: false
-      arr-gluetun:
-        condition: service_started
-        required: false
-      jellyfin:
-        condition: service_started
-        required: false
+      - prowlarr
+      - radarr
+      - sonarr
+      - lidarr
+      - readarr
 
   # ── JELLYFIN VUE — interface de lecture épurée (/vue) ───────────────
   jellyfin-vue:
