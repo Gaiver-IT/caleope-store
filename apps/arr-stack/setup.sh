@@ -382,7 +382,11 @@ fi
 # ── Bootstrap script ──────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/bootstrap.sh" <<BOOTSTRAP
 #!/bin/bash
-set -e
+# Pas de set -e : on veut continuer même si une étape optionnelle échoue.
+# Chaque appel API utilise || true pour ne pas bloquer.
+
+# Flush immédiat vers Docker logs (évite le buffering ligne)
+exec > /dev/stdout 2>&1
 
 P_URL="http://prowlarr:9696"
 R_URL="http://radarr:7878"
@@ -391,21 +395,33 @@ L_URL="http://lidarr:8686"
 QBT_URL="http://\${ARR_QBT_HOST:-${QBT_HOST}}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
+# ── wait_arr : attend qu'un service *arr réponde (timeout 10 min) ──────
 wait_arr() {
     local name=\$1 url=\$2 key=\$3
-    printf "→ Attente %s..." "\$name"
+    local tries=0 maxTries=120  # 120 * 5s = 10 min max
+    echo "→ Attente \${name}..."
     until curl -sf -H "X-Api-Key: \$key" "\$url/api/v3/system/status" >/dev/null 2>&1 \
        || curl -sf -H "X-Api-Key: \$key" "\$url/api/v1/system/status" >/dev/null 2>&1; do
-        printf "."; sleep 5
+        sleep 5
+        tries=\$((tries + 1))
+        [[ \$tries -ge \$maxTries ]] && { echo "  ⚠ \${name} : timeout (10 min) — on continue quand même"; return 0; }
+        [[ \$(( tries % 12 )) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$(( tries * 5 ))s)..."
     done
-    echo " ✓"
+    echo "  ✓ \${name} prêt"
 }
 
+# ── wait_url : attend qu'une URL HTTP réponde (timeout 10 min) ─────────
 wait_url() {
     local name=\$1 url=\$2
-    printf "→ Attente %s..." "\$name"
-    until curl -sf "\$url" >/dev/null 2>&1; do printf "."; sleep 5; done
-    echo " ✓"
+    local tries=0 maxTries=120
+    echo "→ Attente \${name}..."
+    until curl -sf "\$url" >/dev/null 2>&1; do
+        sleep 5
+        tries=\$((tries + 1))
+        [[ \$tries -ge \$maxTries ]] && { echo "  ⚠ \${name} : timeout — on continue quand même"; return 0; }
+        [[ \$(( tries % 12 )) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$(( tries * 5 ))s)..."
+    done
+    echo "  ✓ \${name} prêt"
 }
 
 api_post() {
@@ -429,7 +445,7 @@ wait_arr "Radarr"      "\$R_URL"  "\$ARR_API_RADARR"
 wait_arr "Sonarr"      "\$S_URL"  "\$ARR_API_SONARR"
 wait_arr "Lidarr"      "\$L_URL"  "\$ARR_API_LIDARR"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
-wait_url "Bazarr"      "http://bazarr:6767/api/bazarr/system/status"
+wait_url "Bazarr"      "http://bazarr:6767"
 
 echo ""
 echo "── [2/6] Connexion Prowlarr → *arr + FlareSolverr..."
