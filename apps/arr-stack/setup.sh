@@ -272,18 +272,20 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 
 # ── config.xml *arr ───────────────────────────────────────────────────
 write_arr_config() {
-    local app=$1 port=$2 urlbase=$3 apikey=$4
+    local app=$1 port=$2 apikey=$3
     local cfg="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}/config.xml"
     [[ -f "${cfg}" ]] && return 0
+    # UrlBase vide = pas de préfixe (sous-domaine).
+    # AuthenticationMethod=External = auth déléguée au reverse proxy.
+    # Pas de AuthenticationRequired → évite les incompatibilités DryIoc v2.x.
     cat > "${cfg}" <<XMLEOF
 <Config>
   <BindAddress>*</BindAddress>
   <Port>${port}</Port>
-  <UrlBase>${urlbase}</UrlBase>
+  <UrlBase></UrlBase>
   <EnableSsl>False</EnableSsl>
   <ApiKey>${apikey}</ApiKey>
   <AuthenticationMethod>External</AuthenticationMethod>
-  <AuthenticationRequired>Disabled</AuthenticationRequired>
   <UpdateMechanism>Docker</UpdateMechanism>
   <Branch>master</Branch>
   <LogLevel>info</LogLevel>
@@ -291,10 +293,10 @@ write_arr_config() {
 XMLEOF
 }
 
-write_arr_config prowlarr 9696 / "${API_PROWLARR}"
-write_arr_config radarr   7878 / "${API_RADARR}"
-write_arr_config sonarr   8989 / "${API_SONARR}"
-write_arr_config lidarr   8686 / "${API_LIDARR}"
+write_arr_config prowlarr 9696 "${API_PROWLARR}"
+write_arr_config radarr   7878 "${API_RADARR}"
+write_arr_config sonarr   8989 "${API_SONARR}"
+write_arr_config lidarr   8686 "${API_LIDARR}"
 
 # ── Jellyfin network.xml ──────────────────────────────────────────────
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
