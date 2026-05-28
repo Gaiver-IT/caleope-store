@@ -11,6 +11,11 @@ APP_DATA_DIR="${CALEOPE_BASE_DIR}/app-data/authentik"
 mkdir -p "${APP_CONFIG_DIR}"
 mkdir -p "${APP_DATA_DIR}/"{media,custom-templates,db,redis}
 
+# Authentik tourne en UID/GID 1000 dans ses containers (server + worker)
+# Les volumes media et custom-templates doivent lui appartenir
+chown -R 1000:1000 "${APP_DATA_DIR}/media"
+chown -R 1000:1000 "${APP_DATA_DIR}/custom-templates"
+
 # Génération des secrets
 SECRET_KEY=$(openssl rand -hex 50)
 DB_PASS=$(openssl rand -hex 20)
