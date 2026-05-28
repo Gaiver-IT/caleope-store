@@ -43,12 +43,17 @@ docker rm   jellyfin 2>/dev/null || true
 
 JELLYFIN_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
 mkdir -p "${JELLYFIN_CFG}"
-if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" ]]; then
+# Nettoyer si DB existante OU si le dossier root/ existe déjà (bibliothèques d'un install précédent).
+# On réinitialise aussi le flag wizard dans system.xml pour éviter que Jellyfin démarre
+# en mode "wizard déjà terminé" mais sans utilisateurs (DB effacée).
+if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" || -d "${JELLYFIN_CFG}/root" ]]; then
     echo "→ Nettoyage de la configuration Jellyfin précédente..."
     docker run --rm \
         -v "${JELLYFIN_CFG}:/jf" \
         alpine:3.19 \
-        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
+        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; \
+               sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; \
+               true" \
         >/dev/null 2>&1 || true
     echo "  ✓ Configuration Jellyfin réinitialisée"
 fi
@@ -527,6 +532,15 @@ echo "  ✓ Prowlarr → Lidarr"
 api_post_v1 "\$P_URL" "${API_PROWLARR}" "indexerproxy" \
     "{\"name\":\"FlareSolverr\",\"implementationName\":\"FlareSolverr\",\"implementation\":\"FlareSolverr\",\"configContract\":\"FlareSolverrSettings\",\"supportsRss\":false,\"supportsSearch\":false,\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"http://arr-flaresolverr:8191\"},{\"name\":\"requestTimeout\",\"value\":60}]}"
 echo "  ✓ Prowlarr → FlareSolverr (http://arr-flaresolverr:8191)"
+# Tester FlareSolverr immédiatement après création : sans test, l'UI affiche "disabled".
+# On récupère la config créée puis on la soumet à /indexerproxy/test → statut devient actif.
+_FS_CFG=\$(curl -sf -H "X-Api-Key: ${API_PROWLARR}" "\$P_URL/api/v1/indexerproxy" 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d[0]))" 2>/dev/null) || _FS_CFG=""
+[[ -n "\$_FS_CFG" ]] && curl -sf -o /dev/null -X POST \
+    -H "X-Api-Key: ${API_PROWLARR}" \
+    -H "Content-Type: application/json" \
+    -d "\$_FS_CFG" "\$P_URL/api/v1/indexerproxy/test" >/dev/null 2>&1 || true
+echo "  ✓ FlareSolverr testé — statut actif dans Prowlarr"
 
 echo ""
 echo "── [3/6] Clients de téléchargement + dossiers racine..."
@@ -586,7 +600,18 @@ set_lang_fr() {
         -d @- >/dev/null 2>&1 || true
 }
 
-set_lang_fr "\$P_URL" "${API_PROWLARR}" v1 && echo "  ✓ Prowlarr → français"
+# Prowlarr : uiLanguage est une chaîne "fr", pas un entier comme Radarr/Sonarr/Lidarr.
+# L'endpoint /language n'existe pas dans Prowlarr v1 → set_lang_fr ne fait rien.
+# On gère Prowlarr séparément avec la valeur string directement.
+_pw_ui=\$(curl -sf -H "X-Api-Key: ${API_PROWLARR}" "\$P_URL/api/v1/config/ui" 2>/dev/null) || _pw_ui=""
+if [[ -n "\$_pw_ui" ]]; then
+    echo "\$_pw_ui" | jq '.uiLanguage = "fr"' \
+    | curl -sf -X PUT "\$P_URL/api/v1/config/ui" \
+        -H "X-Api-Key: ${API_PROWLARR}" -H "Content-Type: application/json" \
+        -d @- >/dev/null 2>&1 || true
+    echo "  ✓ Prowlarr → français"
+fi
+
 set_lang_fr "\$R_URL" "${API_RADARR}"   v3 && echo "  ✓ Radarr → français"
 set_lang_fr "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → français"
 set_lang_fr "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → français"
@@ -622,13 +647,15 @@ else
     wait_url "Jellyfin" "\$JF_URL/health" || wait_url "Jellyfin" "\$JF_URL"
 
     if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-        # Jellyfin 10.11+ : /Startup/User supprimé, remplacé par /Startup/FirstUser (PUT)
-        # Les APIs /Startup/* ne sont disponibles que pendant le wizard (avant /Startup/Complete)
-        # Elles retournent 503 quelques minutes après le démarrage → on boucle.
+        # Jellyfin 10.11+ wizard flow :
+        #   POST /Startup/Configuration → POST /Startup/User → POST /Startup/RemoteAccess → POST /Startup/Complete
+        # Note: PUT /Startup/FirstUser retourne 405 (endpoint supprimé en 10.11).
+        # Les APIs /Startup/* ne sont disponibles que pendant le wizard (avant /Startup/Complete).
+        # Elles peuvent retourner 503 quelques secondes après le démarrage → on attend.
         echo "  ⏳ Attente initialisation wizard Jellyfin..."
         JF_WIZARD_STATUS="503"
         for _i in \$(seq 1 24); do
-            JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" "\$JF_URL/Startup/FirstUser" 2>/dev/null) || JF_WIZARD_STATUS="000"
+            JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" "\$JF_URL/Startup/Configuration" 2>/dev/null) || JF_WIZARD_STATUS="000"
             if [[ "\$JF_WIZARD_STATUS" != "503" && "\$JF_WIZARD_STATUS" != "000" ]]; then
                 break
             fi
@@ -636,17 +663,25 @@ else
             sleep 10
         done
 
-        # Définir le nom et mot de passe du premier utilisateur admin
-        curl -sf -X PUT "\$JF_URL/Startup/FirstUser" \
+        # Étape 1 : configuration serveur (avance le wizard à l'étape suivante)
+        curl -sf -X POST "\$JF_URL/Startup/Configuration" \
+            -H "Content-Type: application/json" \
+            -d '{"ServerName":"Caleope","UICulture":"en-US","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
+            >/dev/null 2>&1 || true
+
+        # Étape 2 : création du premier utilisateur admin
+        curl -sf -X POST "\$JF_URL/Startup/User" \
             -H "Content-Type: application/json" \
             -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" \
             >/dev/null 2>&1 || true
 
-        # /Startup/RemoteAccess et /Startup/Complete
+        # Étape 3 : accès distant
         curl -sf -X POST "\$JF_URL/Startup/RemoteAccess" \
             -H "Content-Type: application/json" \
             -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
             >/dev/null 2>&1 || true
+
+        # Étape 4 : finalisation wizard
         curl -sf -X POST "\$JF_URL/Startup/Complete" >/dev/null 2>&1 || true
         echo "  ✓ Wizard Jellyfin complété (HTTP wizard:\$JF_WIZARD_STATUS)"
 
@@ -698,20 +733,32 @@ else
     add_jf_lib() {
         local name=\$1 type=\$2 path=\$3
         # Jellyfin 10.10+: name/collectionType/paths sont des QUERY PARAMS, pas du body JSON.
-        # Le body contient uniquement les LibraryOptions.
+        # IMPORTANT: utiliser "paths=<val>" et non "paths%5B%5D=<val>" (bracket form non supportée
+        # par ASP.NET Core → bibliothèques créées avec Locations vides, scan impossible).
         local encoded_name=\$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "\$name" 2>/dev/null || printf '%s' "\$name" | sed 's/ /%20/g;s/é/%C3%A9/g;s/è/%C3%A8/g;s/ê/%C3%AA/g;s/à/%C3%A0/g')
+
+        # Vérifier si la bibliothèque existe déjà (idempotence — évite les doublons)
         if [[ -n "\$JF_TOKEN" ]]; then
-            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths%5B%5D=\${path}&refreshLibrary=false" \
+            local existing
+            existing=\$(curl -sf "\$JF_URL/Library/VirtualFolders" \
+                -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null \
+                | jq -r --arg n "\$name" '.[] | select(.Name == \$n) | .Name' 2>/dev/null) || existing=""
+            if [[ -n "\$existing" ]]; then
+                echo "  ℹ Bibliothèque '\$name' déjà présente — ignorée"
+                return 0
+            fi
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths=\${path}&refreshLibrary=false" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
                 -d '{"libraryOptions":{}}' \
                 >/dev/null 2>&1 || true
         else
-            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths%5B%5D=\${path}&refreshLibrary=false" \
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths=\${path}&refreshLibrary=false" \
                 -H "Content-Type: application/json" \
                 -d '{"libraryOptions":{}}' \
                 >/dev/null 2>&1 || true
         fi
+        echo "  ✓ Bibliothèque '\$name' créée (\$path)"
     }
 
     add_jf_lib "Films"   "movies"  "/media/movies"
@@ -753,6 +800,11 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         -H "Content-Type: application/json" \
         -c /tmp/js.cookies -b /tmp/js.cookies \
         -d '{"hostname":"jellyfin","port":8096,"useSsl":false,"urlBase":"","serverType":2,"username":"${JELLYFIN_USER}","password":"${JELLYFIN_PASSWORD}"}' \
+        >/dev/null 2>&1 || true
+
+    # Marquer Jellyseerr comme initialisé (évite "validation failed" au premier accès)
+    curl -sf -X POST "\${JS_URL}/api/v1/settings/initialize" \
+        -c /tmp/js.cookies -b /tmp/js.cookies \
         >/dev/null 2>&1 || true
 
     # Récupérer l'API key Jellyseerr (disponible après login)
