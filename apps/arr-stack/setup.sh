@@ -43,19 +43,31 @@ docker rm   jellyfin 2>/dev/null || true
 
 JELLYFIN_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
 mkdir -p "${JELLYFIN_CFG}"
-# Nettoyer si DB existante OU si le dossier root/ existe déjà (bibliothèques d'un install précédent).
-# On réinitialise aussi le flag wizard dans system.xml pour éviter que Jellyfin démarre
-# en mode "wizard déjà terminé" mais sans utilisateurs (DB effacée).
+# Nettoyage Jellyfin lors d'une réinstallation.
+# IMPORTANT : caleope remove supprime app-data/ en entier, donc jellyfin.db et root/ n'existent
+# plus quand setup.sh s'exécute. On ne peut pas se fier à leur présence pour décider de
+# nettoyer. On gère deux cas indépendants :
+#  A) DB ou bibliothèques présentes → nettoyage complet (data + log + root)
+#  B) system.xml présent avec wizard=true → reset du flag, peu importe si la DB existe
+# Les deux peuvent s'appliquer ensemble ou séparément.
 if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" || -d "${JELLYFIN_CFG}/root" ]]; then
-    echo "→ Nettoyage de la configuration Jellyfin précédente..."
+    echo "→ Nettoyage de la configuration Jellyfin précédente (data/root)..."
     docker run --rm \
         -v "${JELLYFIN_CFG}:/jf" \
         alpine:3.19 \
-        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; \
-               sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; \
-               true" \
+        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
         >/dev/null 2>&1 || true
-    echo "  ✓ Configuration Jellyfin réinitialisée"
+    echo "  ✓ Données Jellyfin supprimées"
+fi
+# Toujours réinitialiser le flag wizard si system.xml existe (déclenché même après remove).
+# Sans ce reset, Jellyfin démarre avec wizard=true mais sans users → bootstrap 401.
+if [[ -f "${JELLYFIN_CFG}/config/system.xml" ]]; then
+    docker run --rm \
+        -v "${JELLYFIN_CFG}:/jf" \
+        alpine:3.19 \
+        sh -c "sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; true" \
+        >/dev/null 2>&1 || true
+    echo "  ✓ Flag wizard Jellyfin réinitialisé"
 fi
 
 # ── Détecter PUID/PGID ───────────────────────────────────────────────
