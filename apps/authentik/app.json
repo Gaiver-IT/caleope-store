@@ -7,9 +7,8 @@
   "capabilities": {
     "reverse_proxy": true,
     "gpu": false,
-    "docker_socket": true,
-    "privileged": false,
-    "sso_provider": true
+    "docker_socket": false,
+    "privileged": false
   },
   "network": { "public": true, "internal": true },
   "ports": [{ "name": "web", "container": 9000, "dynamic": true }],
