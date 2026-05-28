@@ -22,6 +22,7 @@ mkdir -p "${STORAGE_PATH}/downloads/complete/movies" \
          "${STORAGE_PATH}/media/tv" \
          "${STORAGE_PATH}/media/music" \
          "${STORAGE_PATH}/media/books"
+chmod -R 777 "${STORAGE_PATH}"
 
 if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; then
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack"
@@ -34,9 +35,12 @@ for app in prowlarr radarr sonarr lidarr bazarr qbittorrent sabnzbd jellyseerr; 
 done
 
 # ── Nettoyage Jellyfin (si réinstallation) ────────────────────────────
-# La DB Jellyfin est propriété root (écrite par le container), donc
-# os.RemoveAll du daemon échoue silencieusement. On utilise un container
-# Alpine éphémère pour la supprimer proprement avant chaque install.
+# Supprimer d'abord tout container jellyfin arrêté (stopped) : compose ne peut
+# pas démarrer un service si un container du même nom existe déjà en état exited.
+# docker stop est sans effet si déjà arrêté ; docker rm supprime l'entrée.
+docker stop jellyfin 2>/dev/null || true
+docker rm   jellyfin 2>/dev/null || true
+
 JELLYFIN_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
 mkdir -p "${JELLYFIN_CFG}"
 if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" ]]; then
@@ -87,8 +91,15 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
     _JF_REUSE="O"
     if [[ "${INTERACTIVE}" == "true" ]]; then
         read -rp "  Utiliser ce Jellyfin existant ? [O/n] : " _JF_REUSE || _JF_REUSE="O"
+    else
+        # En non-interactif : un container jellyfin orphelin d'un ancien install
+        # ne doit pas bloquer l'embarquement — on réembedde systématiquement.
+        _JF_REUSE="n"
     fi
     if [[ "${_JF_REUSE,,}" == "n" || "${_JF_REUSE,,}" == "non" ]]; then
+        # Supprimer le container orphelin pour éviter un conflit de nom
+        docker stop jellyfin 2>/dev/null || true
+        docker rm   jellyfin 2>/dev/null || true
         JELLYFIN_EMBEDDED=true
         JELLYFIN_INT_URL="http://jellyfin:8096"
     else
@@ -290,10 +301,7 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 write_arr_config() {
     local app=$1 port=$2 apikey=$3
     local cfg="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/${app}/config.xml"
-    # Toujours écrire le config.xml (pas de garde [[ -f ]]).
-    # Garantit que la clé API dans config.xml correspond toujours à celle dans
-    # secrets.env/app.env — évite les désynchronisations lors des réinstallations.
-    # UrlBase vide = sous-domaine. AuthenticationMethod=External = auth via proxy.
+    mkdir -p "$(dirname "${cfg}")"
     cat > "${cfg}" <<XMLEOF
 <Config>
   <BindAddress>*</BindAddress>
@@ -360,8 +368,15 @@ BAZARRCFG
 fi
 
 # ── qBittorrent config ────────────────────────────────────────────────
+# NOTE: qBittorrent 5.x (lscr.io/linuxserver/qbittorrent) refuse de tourner en root.
+# Le compose.yml force PUID=1000 pour qbittorrent (pas ARR_PUID).
+# qBittorrent 5.x lit sa config depuis ${QBT_CFG_DIR}/config/qBittorrent.conf
+# (sous-dossier config/ = format migré v5.x). On pré-crée AUSSI ce fichier.
 QBT_CFG_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/qbittorrent/qBittorrent"
-mkdir -p "${QBT_CFG_DIR}"
+QBT_CFG_V5="${QBT_CFG_DIR}/config"
+mkdir -p "${QBT_CFG_DIR}" "${QBT_CFG_V5}"
+
+# Config principale (compatibilité)
 if [[ ! -f "${QBT_CFG_DIR}/qBittorrent.conf" ]]; then
     cat > "${QBT_CFG_DIR}/qBittorrent.conf" <<QBTCFG
 [LegalNotice]
@@ -370,6 +385,7 @@ Accepted=true
 [Preferences]
 WebUI\Username=admin
 WebUI\Password_PBKDF2="@ByteArray()"
+WebUI\Address=*
 WebUI\AuthSubnetWhitelistEnabled=true
 WebUI\AuthSubnetWhitelist=172.0.0.0/8, 10.0.0.0/8, 192.168.0.0/16
 WebUI\LocalHostAuth=false
@@ -378,6 +394,32 @@ Downloads\TempPath=/data/downloads/incomplete
 Downloads\TempPathEnabled=true
 QBTCFG
 fi
+# Config v5.x (sous-dossier config/) — qBittorrent 5.x lit depuis ce fichier après migration
+if [[ ! -f "${QBT_CFG_V5}/qBittorrent.conf" ]]; then
+    cat > "${QBT_CFG_V5}/qBittorrent.conf" <<QBTCFGV5
+[LegalNotice]
+Accepted=true
+
+[Preferences]
+WebUI\Address=*
+WebUI\AuthSubnetWhitelistEnabled=true
+WebUI\AuthSubnetWhitelist=172.0.0.0/8, 10.0.0.0/8, 192.168.0.0/16
+WebUI\LocalHostAuth=false
+QBTCFGV5
+fi
+# Garantir que LegalNotice et WebUI\Address sont présents dans les DEUX configs
+for _conf in "${QBT_CFG_DIR}/qBittorrent.conf" "${QBT_CFG_V5}/qBittorrent.conf"; do
+    if ! grep -q '\[LegalNotice\]' "${_conf}" 2>/dev/null; then
+        printf '\n[LegalNotice]\nAccepted=true\n' >> "${_conf}"
+        echo "✓ LegalNotice ajoutée dans ${_conf##*/}"
+    fi
+    if ! grep -q 'WebUI\\Address' "${_conf}" 2>/dev/null; then
+        printf '\n[Preferences]\nWebUI\\Address=*\n' >> "${_conf}"
+        echo "✓ WebUI\\Address=* ajouté dans ${_conf##*/}"
+    fi
+done
+# qbittorrent tourne en PUID=1000 → chown config pour éviter les conflits de droits
+chown -R 1000:${PGID} "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/qbittorrent/" 2>/dev/null || true
 
 # ── SABnzbd config ────────────────────────────────────────────────────
 SABNZBD_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/sabnzbd/sabnzbd.ini"
@@ -391,7 +433,8 @@ host = 0.0.0.0
 port = 8080
 complete_dir = /data/downloads/complete
 incomplete_dir = /data/downloads/incomplete
-host_whitelist = sabnzbd.${CALEOPE_DOMAIN}
+host_whitelist = sabnzbd,localhost,sabnzbd.${CALEOPE_DOMAIN}
+inet_exposure = 4
 SABCFG
 fi
 
@@ -411,22 +454,21 @@ L_URL="http://lidarr:8686"
 QBT_URL="http://\${ARR_QBT_HOST:-${QBT_HOST}}:8080"
 JF_URL="${JELLYFIN_INT_URL}"
 
-# ── wait_arr : attend qu'un service *arr réponde (HTTP, sans auth) ──────
-# On vérifie juste que le port répond (200 ou 401 = le service est up).
-# Ne pas utiliser l'API key ici : si config.xml a une vieille clé, on
-# obtiendrait 401 en boucle infinie.
+# ── wait_arr : attend que l'API *arr soit prête (200 ou 401) ────────────
+# On interroge /api/v3/system/status : il ne répond qu'une fois les
+# migrations DB terminées. 200 = clé OK, 401 = service prêt mais clé érronée
+# (on continue quand même — l'API sera accessible). Connection refusée = on attend.
 wait_arr() {
     local name=\$1 url=\$2  # \$3 (key) accepté pour compatibilité mais ignoré
     local tries=0 maxTries=120  # 120 * 5s = 10 min max
     echo "→ Attente \${name}..."
-    until curl -s --connect-timeout 5 --max-time 10 -o /dev/null "\$url/" 2>/dev/null; do
+    until code=\$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "\${url}/api/v3/system/status" 2>/dev/null) && { [[ "\$code" = "200" ]] || [[ "\$code" = "401" ]]; }; do
         sleep 5
         tries=\$((tries + 1))
         [[ \$tries -ge \$maxTries ]] && { echo "  ⚠ \${name} : timeout (10 min) — on continue quand même"; return 0; }
         [[ \$(( tries % 12 )) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$(( tries * 5 ))s)..."
     done
-    sleep 5  # Laisser le service finir ses migrations DB
-    echo "  ✓ \${name} prêt"
+    echo "  ✓ \${name} prêt (HTTP \${code})"
 }
 
 # ── wait_url : attend qu'une URL HTTP réponde (timeout 10 min) ─────────
@@ -459,30 +501,30 @@ echo "╚═══════════════════════�
 echo ""
 
 echo "── [1/6] Attente du démarrage des services..."
-wait_arr "Prowlarr"    "\$P_URL"  "\$ARR_API_PROWLARR"
-wait_arr "Radarr"      "\$R_URL"  "\$ARR_API_RADARR"
-wait_arr "Sonarr"      "\$S_URL"  "\$ARR_API_SONARR"
-wait_arr "Lidarr"      "\$L_URL"  "\$ARR_API_LIDARR"
+wait_arr "Prowlarr"    "\$P_URL"  "${API_PROWLARR}"
+wait_arr "Radarr"      "\$R_URL"  "${API_RADARR}"
+wait_arr "Sonarr"      "\$S_URL"  "${API_SONARR}"
+wait_arr "Lidarr"      "\$L_URL"  "${API_LIDARR}"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
 wait_url "Bazarr"      "http://bazarr:6767"
 
 echo ""
 echo "── [2/6] Connexion Prowlarr → *arr + FlareSolverr..."
 
-api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://radarr:7878\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_RADARR\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
+api_post_v1 "\$P_URL" "${API_PROWLARR}" "applications" \
+    "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Radarr\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://radarr:7878\"},{\"name\":\"apiKey\",\"value\":\"${API_RADARR}\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060]}]}"
 echo "  ✓ Prowlarr → Radarr"
 
-api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://sonarr:8989\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SONARR\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]}]}"
+api_post_v1 "\$P_URL" "${API_PROWLARR}" "applications" \
+    "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Sonarr\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://sonarr:8989\"},{\"name\":\"apiKey\",\"value\":\"${API_SONARR}\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050]}]}"
 echo "  ✓ Prowlarr → Sonarr"
 
-api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "applications" \
-    "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://lidarr:8686\"},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_LIDARR\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
+api_post_v1 "\$P_URL" "${API_PROWLARR}" "applications" \
+    "{\"name\":\"Lidarr\",\"syncLevel\":\"fullSync\",\"implementationName\":\"Lidarr\",\"implementation\":\"Lidarr\",\"configContract\":\"LidarrSettings\",\"tags\":[],\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://prowlarr:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://lidarr:8686\"},{\"name\":\"apiKey\",\"value\":\"${API_LIDARR}\"},{\"name\":\"syncCategories\",\"value\":[3000,3010,3020,3030,3040]}]}"
 echo "  ✓ Prowlarr → Lidarr"
 
 # FlareSolverr — proxy pour contourner Cloudflare sur les indexeurs protégés
-api_post_v1 "\$P_URL" "\$ARR_API_PROWLARR" "indexerproxy" \
+api_post_v1 "\$P_URL" "${API_PROWLARR}" "indexerproxy" \
     "{\"name\":\"FlareSolverr\",\"implementationName\":\"FlareSolverr\",\"implementation\":\"FlareSolverr\",\"configContract\":\"FlareSolverrSettings\",\"supportsRss\":false,\"supportsSearch\":false,\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"http://arr-flaresolverr:8191\"},{\"name\":\"requestTimeout\",\"value\":60}]}"
 echo "  ✓ Prowlarr → FlareSolverr (http://arr-flaresolverr:8191)"
 
@@ -490,26 +532,38 @@ echo ""
 echo "── [3/6] Clients de téléchargement + dossiers racine..."
 
 qbt_client() {
+    # \$1 = préfixe du champ (movie/tv/music), \$2 = valeur catégorie SABnzbd
     echo "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementationName\":\"qBittorrent\",\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"${QBT_HOST}\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"username\",\"value\":\"\"},{\"name\":\"password\",\"value\":\"\"},{\"name\":\"\${1}Category\",\"value\":\"\$2\"},{\"name\":\"initialState\",\"value\":0}]}"
 }
 
 sab_client() {
-    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"\$ARR_API_SABNZBD\"},{\"name\":\"urlBase\",\"value\":\"/\"},{\"name\":\"\${1}Category\",\"value\":\"\$1\"}]}"
+    # \$1 = préfixe du champ (movie/tv/music), \$2 = valeur catégorie SABnzbd
+    echo "{\"name\":\"SABnzbd\",\"enable\":true,\"protocol\":\"usenet\",\"priority\":1,\"implementationName\":\"SABnzbd\",\"implementation\":\"Sabnzbd\",\"configContract\":\"SabnzbdSettings\",\"tags\":[],\"fields\":[{\"name\":\"host\",\"value\":\"sabnzbd\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"apiKey\",\"value\":\"${API_SABNZBD}\"},{\"name\":\"urlBase\",\"value\":\"\"},{\"name\":\"useSsl\",\"value\":false},{\"name\":\"\${1}Category\",\"value\":\"\$2\"}]}"
 }
 
-api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "downloadclient" "\$(qbt_client movie movies)"
-api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "downloadclient" "\$(sab_client movie)"
-api_post_v3 "\$R_URL" "\$ARR_API_RADARR" "rootfolder"     "{\"path\":\"/data/media/movies\"}"
+# Créer les catégories SABnzbd AVANT d'ajouter SABnzbd aux clients *arr
+# (les *arr valident l'existence de la catégorie lors du test de connexion)
+wait_url "SABnzbd" "http://sabnzbd:8080/api?mode=version&apikey=${API_SABNZBD}&output=json"
+for _cat in movies tv music books software; do
+    curl -sf -X POST "http://sabnzbd:8080/api" \
+        -d "mode=set_config&section=categories&keyword=\${_cat}&value=&apikey=${API_SABNZBD}&output=json" \
+        >/dev/null 2>&1 || true
+done
+echo "  ✓ SABnzbd : catégories créées (movies, tv, music, books, software)"
+
+api_post_v3 "\$R_URL" "${API_RADARR}" "downloadclient" "\$(qbt_client movie movies)"
+api_post_v3 "\$R_URL" "${API_RADARR}" "downloadclient" "\$(sab_client movie movies)"
+api_post_v3 "\$R_URL" "${API_RADARR}" "rootfolder"     "{\"path\":\"/data/media/movies\"}"
 echo "  ✓ Radarr configuré"
 
-api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "downloadclient" "\$(qbt_client series tv)"
-api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "downloadclient" "\$(sab_client series)"
-api_post_v3 "\$S_URL" "\$ARR_API_SONARR" "rootfolder"     "{\"path\":\"/data/media/tv\"}"
+api_post_v3 "\$S_URL" "${API_SONARR}" "downloadclient" "\$(qbt_client tv tv)"
+api_post_v3 "\$S_URL" "${API_SONARR}" "downloadclient" "\$(sab_client tv tv)"
+api_post_v3 "\$S_URL" "${API_SONARR}" "rootfolder"     "{\"path\":\"/data/media/tv\"}"
 echo "  ✓ Sonarr configuré"
 
-api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(qbt_client music music)"
-api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "downloadclient" "\$(sab_client music)"
-api_post_v1 "\$L_URL" "\$ARR_API_LIDARR" "rootfolder"     "{\"path\":\"/data/media/music\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
+api_post_v1 "\$L_URL" "${API_LIDARR}" "downloadclient" "\$(qbt_client music music)"
+api_post_v1 "\$L_URL" "${API_LIDARR}" "downloadclient" "\$(sab_client music music)"
+api_post_v1 "\$L_URL" "${API_LIDARR}" "rootfolder"     "{\"name\":\"Music\",\"path\":\"/data/media/music\",\"defaultMetadataProfileId\":1,\"defaultQualityProfileId\":1,\"defaultMonitorOption\":\"all\"}"
 echo "  ✓ Lidarr configuré"
 
 echo ""
@@ -532,10 +586,10 @@ set_lang_fr() {
         -d @- >/dev/null 2>&1 || true
 }
 
-set_lang_fr "\$P_URL" "\$ARR_API_PROWLARR" v1 && echo "  ✓ Prowlarr → français"
-set_lang_fr "\$R_URL" "\$ARR_API_RADARR"   v3 && echo "  ✓ Radarr → français"
-set_lang_fr "\$S_URL" "\$ARR_API_SONARR"   v3 && echo "  ✓ Sonarr → français"
-set_lang_fr "\$L_URL" "\$ARR_API_LIDARR"   v1 && echo "  ✓ Lidarr → français"
+set_lang_fr "\$P_URL" "${API_PROWLARR}" v1 && echo "  ✓ Prowlarr → français"
+set_lang_fr "\$R_URL" "${API_RADARR}"   v3 && echo "  ✓ Radarr → français"
+set_lang_fr "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → français"
+set_lang_fr "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → français"
 
 # Bazarr — créer un profil de sous-titres Français + Anglais
 BAZARR_URL="http://bazarr:6767"
@@ -596,10 +650,46 @@ else
         curl -sf -X POST "\$JF_URL/Startup/Complete" >/dev/null 2>&1 || true
         echo "  ✓ Wizard Jellyfin complété (HTTP wizard:\$JF_WIZARD_STATUS)"
 
-        JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
+        # Jellyfin avec PUID=0 crée l'user sous le nom système ("root"),
+        # ignorant silencieusement le champ Name du wizard.
+        # 1) Auth en "root" / mot de passe vide pour obtenir le token et l'ID
+        JF_AUTH_ROOT=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
             -H "Content-Type: application/json" \
             -H 'X-Emby-Authorization: MediaBrowser Client="Bootstrap", Device="Bootstrap", DeviceId="arr-bootstrap-1", Version="1.0.0"' \
-            -d "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_AUTH=""
+            -d '{"Username":"root","Pw":""}' 2>/dev/null) || JF_AUTH_ROOT=""
+        JF_TOKEN_ROOT=\$(echo "\$JF_AUTH_ROOT" | grep -o '"AccessToken":"[^"]*"' | head -1 | cut -d'"' -f4) || JF_TOKEN_ROOT=""
+        JF_USER_ID=\$(echo "\$JF_AUTH_ROOT" | grep -o '"Id":"[^"]*"' | head -1 | cut -d'"' -f4) || JF_USER_ID=""
+
+        if [[ -n "\$JF_TOKEN_ROOT" && -n "\$JF_USER_ID" ]]; then
+            # 2) Définir le mot de passe
+            curl -sf -X POST "\$JF_URL/Users/\$JF_USER_ID/Password" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN_ROOT\"" \
+                -d "{\"CurrentPw\":\"\",\"NewPw\":\"${JELLYFIN_PASSWORD}\"}" >/dev/null 2>&1 || true
+            # 3) Renommer l'utilisateur "root" → "${JELLYFIN_USER}"
+            JF_USER_OBJ=\$(curl -sf "\$JF_URL/Users/\$JF_USER_ID" \
+                -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN_ROOT\"" 2>/dev/null) || JF_USER_OBJ=""
+            if [[ -n "\$JF_USER_OBJ" ]]; then
+                echo "\$JF_USER_OBJ" \
+                | jq '.Name = "${JELLYFIN_USER}"' \
+                | curl -sf -X POST "\$JF_URL/Users/\$JF_USER_ID" \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN_ROOT\"" \
+                    -d @- >/dev/null 2>&1 || true
+                echo "  ✓ Jellyfin user renommé en ${JELLYFIN_USER}"
+            fi
+            # 4) Re-auth avec le nom et mot de passe définitifs
+            JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
+                -H "Content-Type: application/json" \
+                -H 'X-Emby-Authorization: MediaBrowser Client="Bootstrap", Device="Bootstrap", DeviceId="arr-bootstrap-1", Version="1.0.0"' \
+                -d "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_AUTH=""
+        else
+            # Fallback : auth directe (PUID != 0, utilisateur créé avec le bon nom)
+            JF_AUTH=\$(curl -sf -X POST "\$JF_URL/Users/AuthenticateByName" \
+                -H "Content-Type: application/json" \
+                -H 'X-Emby-Authorization: MediaBrowser Client="Bootstrap", Device="Bootstrap", DeviceId="arr-bootstrap-1", Version="1.0.0"' \
+                -d "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || JF_AUTH=""
+        fi
         JF_TOKEN=\$(echo "\$JF_AUTH" | grep -o '"AccessToken":"[^"]*"' | head -1 | cut -d'"' -f4) || JF_TOKEN=""
     else
         JF_TOKEN=""
@@ -607,16 +697,19 @@ else
 
     add_jf_lib() {
         local name=\$1 type=\$2 path=\$3
+        # Jellyfin 10.10+: name/collectionType/paths sont des QUERY PARAMS, pas du body JSON.
+        # Le body contient uniquement les LibraryOptions.
+        local encoded_name=\$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "\$name" 2>/dev/null || printf '%s' "\$name" | sed 's/ /%20/g;s/é/%C3%A9/g;s/è/%C3%A8/g;s/ê/%C3%AA/g;s/à/%C3%A0/g')
         if [[ -n "\$JF_TOKEN" ]]; then
-            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?refreshLibrary=false" \
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths%5B%5D=\${path}&refreshLibrary=false" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
-                -d "{\"Name\":\"\$name\",\"CollectionType\":\"\$type\",\"Paths\":[\"\$path\"],\"LibraryOptions\":{}}" \
+                -d '{"libraryOptions":{}}' \
                 >/dev/null 2>&1 || true
         else
-            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?refreshLibrary=false" \
+            curl -sf -X POST "\$JF_URL/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths%5B%5D=\${path}&refreshLibrary=false" \
                 -H "Content-Type: application/json" \
-                -d "{\"Name\":\"\$name\",\"CollectionType\":\"\$type\",\"Paths\":[\"\$path\"],\"LibraryOptions\":{}}" \
+                -d '{"libraryOptions":{}}' \
                 >/dev/null 2>&1 || true
         fi
     }
@@ -668,8 +761,9 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
 
     if [[ -n "\${JS_KEY}" ]]; then
-        # Synchroniser et activer les bibliothèques Jellyfin dans Jellyseerr
-        JS_LIB_IDS=\$(curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library?sync=true" \
+        # Activer les bibliothèques Jellyfin dans Jellyseerr
+        # Note : le paramètre ?sync=true n'existe plus en 2.7+ → on liste sans lui
+        JS_LIB_IDS=\$(curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library" \
             -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies 2>/dev/null \
             | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ',' | sed 's/,$//') || JS_LIB_IDS=""
         if [[ -n "\${JS_LIB_IDS}" ]]; then
@@ -678,19 +772,28 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
             echo "  ✓ Jellyseerr → bibliothèques Jellyfin activées"
         fi
 
+        # Récupérer le nom du profil qualité Radarr (ID 1) pour activeProfileName
+        R_PROFILE_NAME=\$(curl -sf "http://radarr:7878/api/v3/qualityprofile?apikey=${API_RADARR}" 2>/dev/null \
+            | jq -r '.[] | select(.id == 1) | .name // empty' 2>/dev/null) || R_PROFILE_NAME="Any"
+        [[ -z "\$R_PROFILE_NAME" ]] && R_PROFILE_NAME="Any"
+
+        S_PROFILE_NAME=\$(curl -sf "http://sonarr:8989/api/v3/qualityprofile?apikey=${API_SONARR}" 2>/dev/null \
+            | jq -r '.[] | select(.id == 1) | .name // empty' 2>/dev/null) || S_PROFILE_NAME="Any"
+        [[ -z "\$S_PROFILE_NAME" ]] && S_PROFILE_NAME="Any"
+
         # Ajouter Radarr dans Jellyseerr
-        # minimumAvailability requis depuis Jellyseerr 2.x ; is4k (pas is4kServer)
+        # minimumAvailability requis depuis Jellyseerr 2.x ; activeProfileName obligatoire
         curl -sf -X POST "\${JS_URL}/api/v1/settings/radarr" \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: \${JS_KEY}" \
-            -d "{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"\$ARR_API_RADARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeDirectory\":\"/data/media/movies\",\"minimumAvailability\":\"released\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
+            -d "{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"${API_RADARR}\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeProfileName\":\"\$R_PROFILE_NAME\",\"activeDirectory\":\"/data/media/movies\",\"minimumAvailability\":\"released\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}" \
             >/dev/null 2>&1 || true
 
         # Ajouter Sonarr dans Jellyseerr
         curl -sf -X POST "\${JS_URL}/api/v1/settings/sonarr" \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: \${JS_KEY}" \
-            -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"\$ARR_API_SONARR\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeAnimeProfileId\":1,\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false,\"enableSeasonFolders\":true}" \
+            -d "{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"${API_SONARR}\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeProfileName\":\"\$S_PROFILE_NAME\",\"activeAnimeProfileId\":1,\"activeAnimeProfileName\":\"\$S_PROFILE_NAME\",\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false,\"enableSeasonFolders\":true}" \
             >/dev/null 2>&1 || true
 
         # Langue française pour Jellyseerr
@@ -778,5 +881,42 @@ ${JF_CRED}
 ║  qBittorrent password : ${QBT_PASSWORD}                              ║
 ╚════════════════════════════════════════════════════════════════════════╝
 EOF
+
+# ── Jellyfin : créer les dossiers config+cache avec permissions correctes ─
+# L'image officielle jellyfin/jellyfin tourne en UID 1000. Si jellyfin-cache
+# n'existe pas avant docker compose up, Docker le crée en root:root et Jellyfin
+# plante immédiatement en ne pouvant pas écrire dans /cache.
+if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
+    JF_CFG_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
+    JF_CACHE_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin-cache"
+    mkdir -p "${JF_CFG_DIR}" "${JF_CACHE_DIR}"
+    chmod 777 "${JF_CFG_DIR}" "${JF_CACHE_DIR}"
+    echo "✓ Jellyfin dirs préparés avec permissions 777"
+fi
+
+# ── Fix COMPOSE_PROFILES : écrire .env dans le répertoire compose ────
+# caleoped ne transmet pas COMPOSE_PROFILES à docker compose → les profils
+# (novpn, jellyfin…) ne sont jamais activés sans ce fichier.
+COMPOSE_DIR="${CALEOPE_BASE_DIR}/apps-installed/${CALEOPE_APP_ID}"
+mkdir -p "${COMPOSE_DIR}"
+# ARR_PUID/PGID/TZ : résolus par docker compose depuis .env (pas app.env).
+# Sans ces vars, compose résout ${ARR_PUID} comme chaîne vide et linuxserver
+# utilise son défaut (UID 1000 = user "abc") qui ne peut pas écrire dans
+# les dossiers créés par root. On force PUID=0 (root) pour cohérence.
+cat > "${COMPOSE_DIR}/.env" <<DOTENVEOF
+COMPOSE_PROFILES=${COMPOSE_PROFILES}
+ARR_PUID=${PUID}
+ARR_PGID=${PGID}
+ARR_TZ=Europe/Paris
+DOTENVEOF
+echo "✓ .env → COMPOSE_PROFILES=${COMPOSE_PROFILES} ARR_PUID=${PUID} ARR_PGID=${PGID}"
+
+# ── Marquer le service bootstrap pour caleoped ───────────────────────────────
+# caleoped détecte ce fichier après docker compose up et exécute le service
+# one-shot arr-bootstrap (docker compose run --rm arr-bootstrap) AVANT d'afficher
+# les notes post-install. Cela garantit que le wizard Jellyfin et les connexions
+# inter-services sont terminés quand l'utilisateur voit ses identifiants.
+echo "arr-bootstrap" > "${CONFIG_DIR}/.bootstrap_service"
+echo "✓ Bootstrap service marqué : arr-bootstrap"
 
 echo "✓ Arr Stack préparé — bootstrap configuré"
