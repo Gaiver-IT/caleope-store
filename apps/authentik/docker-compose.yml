@@ -46,6 +46,8 @@ services:
       - AUTHENTIK_POSTGRESQL__NAME=authentik
       - AUTHENTIK_POSTGRESQL__USER=authentik
       - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+      - AUTHENTIK_WEB__WORKERS=4
+      - AUTHENTIK_WEB__THREADS=4
     volumes:
       - {{$.BaseDir}}/app-data/authentik/media:/media
       - {{$.BaseDir}}/app-data/authentik/custom-templates:/templates
