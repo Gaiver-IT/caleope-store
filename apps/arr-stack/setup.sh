@@ -680,6 +680,9 @@ else
             -H "Content-Type: application/json" \
             -d '{"ServerName":"Caleope","UICulture":"en-US","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
             >/dev/null 2>&1 || true
+        # IMPORTANT : le wizard Jellyfin 10.11+ a besoin d'un délai entre Configuration et User.
+        # Sans ce sleep, POST /Startup/User retourne 404 (wizard pas encore à l'étape user).
+        sleep 3
 
         # Étape 2 : création du premier utilisateur admin
         curl -sf -X POST "\$JF_URL/Startup/User" \
@@ -825,15 +828,31 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
 
     if [[ -n "\${JS_KEY}" ]]; then
-        # Activer les bibliothèques Jellyfin dans Jellyseerr
-        # Note : le paramètre ?sync=true n'existe plus en 2.7+ → on liste sans lui
-        JS_LIB_IDS=\$(curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library" \
-            -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies 2>/dev/null \
-            | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ',' | sed 's/,$//') || JS_LIB_IDS=""
+        # Activer les bibliothèques Jellyfin dans Jellyseerr.
+        # ATTENTION BUG Jellyseerr 2.7.3 : GET /settings/jellyfin/library sans ?enable=
+        # réinitialise TOUTES les bibliothèques à enabled:false (handler écrase le statut).
+        # → On récupère les IDs depuis Jellyfin (Library/MediaFolders) et on les passe
+        #   directement à ?enable= SANS appel GET préalable sans paramètre.
+        JS_LIB_IDS=""
+        if [[ -n "\$JF_TOKEN" ]]; then
+            # Attendre que les bibliothèques soient indexées (Library/MediaFolders peut
+            # retourner une liste vide juste après la création → on réessaie 6x / 5s)
+            for _jl in \$(seq 1 6); do
+                JS_LIB_IDS=\$(curl -sf "\$JF_URL/Library/MediaFolders" \
+                    -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null \
+                    | jq -r '.Items[] | select(.CollectionType == "movies" or .CollectionType == "tvshows" or .CollectionType == "music") | .Id' 2>/dev/null \
+                    | tr '\n' ',' | sed 's/,$//') || JS_LIB_IDS=""
+                [[ -n "\$JS_LIB_IDS" ]] && break
+                echo "  ⏳ bibliothèques Jellyfin pas encore visibles — attente 5s... (\$_jl/6)"
+                sleep 5
+            done
+        fi
         if [[ -n "\${JS_LIB_IDS}" ]]; then
             curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library?enable=\${JS_LIB_IDS}" \
                 -H "X-Api-Key: \${JS_KEY}" -b /tmp/js.cookies >/dev/null 2>&1 || true
-            echo "  ✓ Jellyseerr → bibliothèques Jellyfin activées"
+            echo "  ✓ Jellyseerr → bibliothèques Jellyfin activées (IDs: \${JS_LIB_IDS})"
+        else
+            echo "  ⚠ Jellyseerr : bibliothèques non trouvées dans Jellyfin — activation manuelle requise"
         fi
 
         # Récupérer le nom du profil qualité Radarr (ID 1) pour activeProfileName
