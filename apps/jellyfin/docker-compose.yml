@@ -3,6 +3,8 @@ services:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     restart: unless-stopped
+    env_file:
+      - {{$.BaseDir}}/app-config/jellyfin/app.env
     environment:
       - JELLYFIN_PublishedServerUrl=https://{{.Domain}}
     ports:
@@ -19,6 +21,7 @@ services:
       - "traefik.http.routers.jellyfin.entrypoints=web"
       - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
       - "traefik.docker.network=caleope-public"
+      - "traefik.http.routers.jellyfin.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
     networks:
       - caleope-public
 networks:

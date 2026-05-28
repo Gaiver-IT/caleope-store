@@ -138,6 +138,15 @@ PROMETHEUS_HOST_IP=${HOST_IP}
 EOF
 chmod 600 "${APP_CONFIG_DIR}/secrets.env"
 
+# Authentik ForwardAuth — activé automatiquement si Authentik est installé
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
+    echo "  → Authentik détecté, ForwardAuth activé sur Grafana"
+else
+    CALEOPE_AUTH_MIDDLEWARE=""
+fi
+echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${APP_CONFIG_DIR}/secrets.env"
+
 # ── Post-install ──
 cat > "${APP_CONFIG_DIR}/post-install.txt" << EOF
 ╔══════════════════════════════════════════════════════╗

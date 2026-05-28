@@ -1,0 +1,23 @@
+{
+  "id": "authentik",
+  "name": "Authentik",
+  "category": "security",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false,
+    "sso_provider": true
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 9000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/authentik/media",            "target": "/media" },
+    { "source": "app-data/authentik/custom-templates", "target": "/templates" },
+    { "source": "app-data/authentik/db",               "target": "/var/lib/postgresql/data" },
+    { "source": "app-data/authentik/redis",            "target": "/data" }
+  ],
+  "backup": { "enabled": true }
+}

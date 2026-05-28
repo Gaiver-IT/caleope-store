@@ -22,6 +22,8 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     ports:
       - "${CALEOPE_PORT_GRAFANA}:3000"
     environment:
@@ -42,6 +44,7 @@ services:
       - "traefik.http.routers.grafana.entrypoints=web"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
       - "traefik.docker.network=caleope-public"
+      - "traefik.http.routers.grafana.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
 
 networks:
   caleope-public:

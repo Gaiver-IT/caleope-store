@@ -27,6 +27,15 @@ ONLYOFFICE_DOMAIN=${ONLYOFFICE_DOMAIN}
 EOF
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
 
+# Authentik ForwardAuth — activé automatiquement si Authentik est installé
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
+    echo "  → Authentik détecté, ForwardAuth activé"
+else
+    CALEOPE_AUTH_MIDDLEWARE=""
+fi
+echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
+
 # Script de configuration automatique du connecteur OnlyOffice
 # Exécuté par le container nextcloud-bootstrap après démarrage de la stack
 cat > "${CALEOPE_BASE_DIR}/app-config/nextcloud/bootstrap.sh" << 'BOOTSTRAP'

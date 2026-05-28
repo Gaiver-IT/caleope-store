@@ -72,6 +72,7 @@ services:
       - "traefik.http.routers.nextcloud.entrypoints=web"
       - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
+      - "traefik.http.routers.nextcloud.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
     networks:
       - caleope-public
       - caleope-internal

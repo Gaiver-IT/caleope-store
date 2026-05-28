@@ -1,0 +1,104 @@
+services:
+  authentik-db:
+    image: postgres:16-alpine
+    container_name: authentik-db
+    restart: unless-stopped
+    env_file:
+      - {{$.BaseDir}}/app-config/authentik/secrets.env
+    environment:
+      - POSTGRES_DB=authentik
+      - POSTGRES_USER=authentik
+    volumes:
+      - {{$.BaseDir}}/app-data/authentik/db:/var/lib/postgresql/data
+    networks:
+      - caleope-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  authentik-redis:
+    image: redis:7-alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    volumes:
+      - {{$.BaseDir}}/app-data/authentik/redis:/data
+    networks:
+      - caleope-internal
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.12
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    env_file:
+      - {{$.BaseDir}}/app-config/authentik/secrets.env
+    environment:
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+    volumes:
+      - {{$.BaseDir}}/app-data/authentik/media:/media
+      - {{$.BaseDir}}/app-data/authentik/custom-templates:/templates
+    ports:
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authentik.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.authentik.entrypoints=web"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      - "traefik.docker.network=caleope-public"
+      # Middleware ForwardAuth partagé — référencé par les autres apps comme "authentik@docker"
+      - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.12
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    env_file:
+      - {{$.BaseDir}}/app-config/authentik/secrets.env
+    environment:
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_ERROR_REPORTING__ENABLED=false
+    volumes:
+      - {{$.BaseDir}}/app-data/authentik/media:/media
+      - {{$.BaseDir}}/app-data/authentik/custom-templates:/templates
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
