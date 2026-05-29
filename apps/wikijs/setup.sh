@@ -38,6 +38,11 @@ authentik_register_app() {
     local TOKEN AK_DOMAIN
     TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
     AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+    if [ -z "${AK_DOMAIN}" ]; then
+        local BASE_DOMAIN
+        BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
+        AK_DOMAIN="authentik.${BASE_DOMAIN}"
+    fi
     [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
 
     local BASE="https://${AK_DOMAIN}/api/v3"
