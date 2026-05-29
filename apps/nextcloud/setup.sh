@@ -184,7 +184,10 @@ print(json.dumps({
     echo "CLIENT_ID=${OIDC_CLIENT_ID}" >> "${DEBUG_LOG}"
     [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "ERREUR: Client ID/Secret vides" >> "${DEBUG_LOG}"; return 1; }
 
-    OIDC_DISCOVERY_URI="https://${AK_DOMAIN}/application/o/${APP_SLUG}/.well-known/openid-configuration"
+    # URL interne Docker (évite le hairpin NAT : le container Nextcloud ne peut pas
+    # joindre son propre domaine public). Nextcloud et authentik-server partagent
+    # le réseau caleope-public, donc http://authentik-server:9000 est joignable.
+    OIDC_DISCOVERY_URI="http://authentik-server:9000/application/o/${APP_SLUG}/.well-known/openid-configuration"
 
     # Créer l'Application dans Authentik
     python3 -c "
