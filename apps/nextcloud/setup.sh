@@ -244,6 +244,10 @@ occ "config:app:set onlyoffice jwt_secret                --value='${JWT_SECRET}'
 occ "config:app:set onlyoffice jwt_header                --value='Authorization'"
 echo "✓ OnlyOffice connecté à Nextcloud"
 
+# Autoriser les requêtes vers les IPs internes Docker (protection SSRF désactivée
+# pour les serveurs internes — nécessaire pour joindre authentik-server:9000)
+occ "config:system:set allow_local_remote_servers --value=true --type=boolean"
+
 # SSO OIDC — configuré seulement si Authentik a fourni les credentials
 if [ -n "${OIDC_CLIENT_ID:-}" ] && [ -n "${OIDC_CLIENT_SECRET:-}" ] && [ -n "${OIDC_DISCOVERY_URI:-}" ]; then
     echo "→ Configuration SSO OIDC (user_oidc)..."
