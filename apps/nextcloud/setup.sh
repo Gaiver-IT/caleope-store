@@ -64,6 +64,9 @@ import os, requests, sys
 r = requests.get("http://localhost:9000'"${endpoint}"'",
                   headers={"Authorization": "Bearer " + os.environ["AK_TOKEN"]},
                   timeout=10)
+sys.stderr.write("GET '"${endpoint}"' -> " + str(r.status_code) + "\n")
+if not r.ok:
+    sys.stderr.write(r.text[:500] + "\n")
 print(r.text if r.ok else "")
 ' 2>>"${DEBUG_LOG}" || echo ""
     }
