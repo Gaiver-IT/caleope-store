@@ -121,7 +121,7 @@ exit(0 if r.ok else 1)
     # Scopes OIDC standards — récupère tous les property mappings et filtre en Python
     local ALL_SCOPES S_OPENID S_EMAIL S_PROFILE
     ALL_SCOPES=$(ak_get "/api/v3/propertymappings/all/?ordering=name&page_size=200")
-    echo "ALL_SCOPES=${ALL_SCOPES}" >> "${DEBUG_LOG}"
+    echo "ALL_SCOPES count=$(echo "${ALL_SCOPES}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pagination',{}).get('count','?'))" 2>/dev/null)" >> "${DEBUG_LOG}"
     S_OPENID=$(echo "${ALL_SCOPES}" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
