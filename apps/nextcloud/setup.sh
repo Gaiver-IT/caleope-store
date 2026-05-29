@@ -110,9 +110,9 @@ exit(0 if r.ok else 1)
     echo "SIGNING_KEY=${SIGNING_KEY} RAW=${SIGNING_RAW}" >> "${DEBUG_LOG}"
     [ -n "${SIGNING_KEY}" ] || { echo "ERREUR: Clé de signature introuvable" >> "${DEBUG_LOG}"; return 1; }
 
-    # Scopes OIDC standards — récupère tout et filtre en Python (évite les problèmes d'URL-encoding du paramètre managed=)
+    # Scopes OIDC standards — récupère tous les property mappings et filtre en Python
     local ALL_SCOPES S_OPENID S_EMAIL S_PROFILE
-    ALL_SCOPES=$(ak_get "/api/v3/propertymappings/scope/?ordering=name&page_size=100")
+    ALL_SCOPES=$(ak_get "/api/v3/propertymappings/all/?ordering=name&page_size=200")
     echo "ALL_SCOPES=${ALL_SCOPES}" >> "${DEBUG_LOG}"
     S_OPENID=$(echo "${ALL_SCOPES}" | python3 -c "
 import sys,json
