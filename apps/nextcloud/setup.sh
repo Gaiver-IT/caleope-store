@@ -203,10 +203,82 @@ print(json.dumps({'name':'${APP_NAME}','slug':'${APP_SLUG}','provider':${PROVIDE
     return 0
 }
 
+# ── Certificat TLS interne pour la communication Docker → Authentik ──────────
+# Nextcloud joigne Authentik via extra_hosts → 172.17.0.1:443 → Traefik websecure.
+#
+# Cas 1 — Traefik seul (HTTP + HTTPS sur le même serveur) :
+#   Si Traefik n'a pas de certresolver (pas de Let's Encrypt), il présente son
+#   certificat par défaut qui n'a pas de SAN pour le domaine → GuzzleHTTP refuse.
+#
+# Cas 2 — Traefik + NPM externe (NPM termine le SSL côté public) :
+#   NPM gère le HTTPS public, mais le trafic inter-conteneurs passe quand même
+#   par 172.17.0.1:443 → Traefik websecure → cert par défaut sans SAN → même erreur.
+#
+# Solution commune : générer un cert auto-signé avec le bon SAN, le charger via
+# le file provider Traefik. N'interfère pas avec Let's Encrypt (Traefik priorise
+# le meilleur cert disponible pour chaque domaine).
+setup_authentik_tls_cert() {
+    local AK_DOMAIN="$1"
+    local TRAEFIK_CERTS_DIR="${CALEOPE_BASE_DIR}/data/traefik/certs"
+    local TRAEFIK_DYNAMIC_DIR="${CALEOPE_BASE_DIR}/data/traefik/dynamic"
+    local CERT_FILE="${TRAEFIK_CERTS_DIR}/authentik.crt"
+    local KEY_FILE="${TRAEFIK_CERTS_DIR}/authentik.key"
+    local TLS_CONFIG="${TRAEFIK_DYNAMIC_DIR}/authentik-tls.yml"
+
+    if [ ! -d "${TRAEFIK_DYNAMIC_DIR}" ]; then
+        echo "  ⚠ Répertoire Traefik introuvable (${TRAEFIK_DYNAMIC_DIR}) — certificat non généré"
+        return 0
+    fi
+
+    mkdir -p "${TRAEFIK_CERTS_DIR}"
+
+    # Génère le cert si absent ou expirant dans moins de 30 jours
+    if [ ! -f "${CERT_FILE}" ] || \
+       ! openssl x509 -checkend 2592000 -noout -in "${CERT_FILE}" 2>/dev/null; then
+        echo "  → Génération du certificat auto-signé (SAN: ${AK_DOMAIN})..."
+        openssl req -x509 -newkey rsa:2048 -days 3650 -nodes \
+            -keyout "${KEY_FILE}" \
+            -out    "${CERT_FILE}" \
+            -subj   "/CN=${AK_DOMAIN}" \
+            -addext "subjectAltName=DNS:${AK_DOMAIN}" \
+            2>/dev/null
+        chmod 600 "${KEY_FILE}"
+        echo "  ✓ Certificat généré : ${CERT_FILE}"
+    else
+        echo "  ✓ Certificat Authentik valide déjà présent"
+    fi
+
+    # Fichier de config Traefik (file provider) — référence le cert via le chemin
+    # interne au container (/certs/ → montage CALEOPE_BASE_DIR/data/traefik/certs/)
+    cat > "${TLS_CONFIG}" << TLSEOF
+tls:
+  certificates:
+    - certFile: /certs/authentik.crt
+      keyFile: /certs/authentik.key
+TLSEOF
+    echo "  ✓ Config Traefik file provider créée"
+
+    # Redémarre Traefik pour forcer la lecture du cert.
+    # Le file provider surveille les changements YAML mais ne re-lit pas le cert
+    # s'il était absent lors du premier chargement → restart nécessaire.
+    if docker ps --format '{{.Names}}' | grep -q '^traefik$'; then
+        echo "  → Rechargement de Traefik (brève interruption normale)..."
+        docker restart traefik >/dev/null 2>&1 \
+            && echo "  ✓ Traefik redémarré avec le nouveau certificat" \
+            || echo "  ⚠ Impossible de redémarrer Traefik — relancer manuellement : docker restart traefik"
+    fi
+}
+
 CALEOPE_AUTH_MIDDLEWARE=""
 OIDC_CLIENT_ID="" OIDC_CLIENT_SECRET="" OIDC_DISCOVERY_URI=""
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     REDIRECT_URI="https://${CALEOPE_DOMAIN}/apps/user_oidc/code"
+
+    # Cert TLS interne — doit être fait avant la création du stack Docker,
+    # car bootstrap.sh (qui tourne dans le container) extraira ce certificat
+    # via openssl s_client pour le déposer dans le bundle CA de Nextcloud.
+    setup_authentik_tls_cert "${AUTHENTIK_DOMAIN}"
+
     if authentik_setup_oidc "Nextcloud" "nextcloud-sso" "${REDIRECT_URI}"; then
         cat >> "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env" << OIDCENV
 OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
