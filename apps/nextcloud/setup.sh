@@ -263,9 +263,14 @@ if [ -n "${AUTHENTIK_DOMAIN:-}" ]; then
         | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' \
         > /tmp/authentik-cert.pem
     if [ -s /tmp/authentik-cert.pem ]; then
+        # Import via occ pour l'enregistrement officiel dans Nextcloud
         su -s /bin/bash www-data -c \
             "php /var/www/html/occ security:certificates:import /tmp/authentik-cert.pem" || true
-        echo "✓ Certificat Authentik importé dans Nextcloud"
+        # Ajout direct au bundle GuzzleHTTP en fallback (occ n'actualise pas toujours rootcerts.crt)
+        if [ -f /var/www/html/data/files_external/rootcerts.crt ]; then
+            cat /tmp/authentik-cert.pem >> /var/www/html/data/files_external/rootcerts.crt
+            echo "✓ Certificat Authentik ajouté au bundle CA ($(grep -c 'BEGIN CERTIFICATE' /var/www/html/data/files_external/rootcerts.crt) certs)"
+        fi
     else
         echo "  ⚠ Certificat Authentik non extrait (SSL peut être valide ou inaccessible)"
     fi
