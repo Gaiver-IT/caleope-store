@@ -252,6 +252,25 @@ echo "✓ OnlyOffice connecté à Nextcloud"
 # pour les serveurs internes — nécessaire pour joindre authentik-server:9000)
 occ "config:system:set allow_local_remote_servers --value=true --type=boolean"
 
+# Import du certificat SSL Authentik dans le magasin de confiance Nextcloud.
+# Nécessaire quand le reverse proxy utilise un certificat auto-signé : extra_hosts
+# redirige le domaine Authentik vers 172.17.0.1:443 (bridge Docker → hôte),
+# et si ce port présente un cert auto-signé, GuzzleHTTP refuse la connexion.
+if [ -n "${AUTHENTIK_DOMAIN:-}" ]; then
+    echo "→ Import du certificat SSL Authentik..."
+    echo | openssl s_client -connect "${AUTHENTIK_DOMAIN}:443" \
+        -servername "${AUTHENTIK_DOMAIN}" 2>/dev/null \
+        | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' \
+        > /tmp/authentik-cert.pem
+    if [ -s /tmp/authentik-cert.pem ]; then
+        su -s /bin/bash www-data -c \
+            "php /var/www/html/occ security:certificates:import /tmp/authentik-cert.pem" || true
+        echo "✓ Certificat Authentik importé dans Nextcloud"
+    else
+        echo "  ⚠ Certificat Authentik non extrait (SSL peut être valide ou inaccessible)"
+    fi
+fi
+
 # SSO OIDC — configuré seulement si Authentik a fourni les credentials
 if [ -n "${OIDC_CLIENT_ID:-}" ] && [ -n "${OIDC_CLIENT_SECRET:-}" ] && [ -n "${OIDC_DISCOVERY_URI:-}" ]; then
     echo "→ Configuration SSO OIDC (user_oidc)..."
