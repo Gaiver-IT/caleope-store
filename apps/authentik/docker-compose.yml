@@ -70,6 +70,13 @@ services:
       # Sans ça, Authentik génère des URLs http:// → 503 → ❌ sur le flow login
       - "traefik.http.middlewares.authentik-https.headers.customRequestHeaders.X-Forwarded-Proto=https"
       - "traefik.http.routers.authentik.middlewares=authentik-https"
+      # Router HTTPS — nécessaire pour que les containers internes (ex: Nextcloud)
+      # puissent joindre Authentik via HTTPS (extra_hosts → 172.17.0.1:443 → Traefik websecure)
+      - "traefik.http.routers.authentik-https.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.authentik-https.entrypoints=websecure"
+      - "traefik.http.routers.authentik-https.tls=true"
+      - "traefik.http.routers.authentik-https.service=authentik"
+      - "traefik.http.routers.authentik-https.middlewares=authentik-https"
       # Middleware ForwardAuth partagé — référencé par les autres apps comme "authentik@docker"
       - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
