@@ -12,9 +12,12 @@ DB_ROOT_PASS=$(openssl rand -hex 20)
 ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
 ONLYOFFICE_JWT=$(openssl rand -hex 20)
 
-# Domaine OnlyOffice dérivé du domaine de base depuis caleope.conf
+# Domaines dérivés du domaine de base depuis caleope.conf
 BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2)
 ONLYOFFICE_DOMAIN="onlyoffice.${BASE_DOMAIN}"
+# Domaine Authentik — utilisé dans extra_hosts du docker-compose pour contourner le hairpin NAT
+AUTHENTIK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2-)
+[ -n "${AUTHENTIK_DOMAIN}" ] || AUTHENTIK_DOMAIN="authentik.${BASE_DOMAIN}"
 
 cat > "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env" << EOF
 MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
@@ -24,6 +27,7 @@ NEXTCLOUD_ADMIN_PASSWORD=${ADMIN_PASS}
 JWT_ENABLED=true
 JWT_SECRET=${ONLYOFFICE_JWT}
 ONLYOFFICE_DOMAIN=${ONLYOFFICE_DOMAIN}
+AUTHENTIK_DOMAIN=${AUTHENTIK_DOMAIN}
 EOF
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
 
@@ -184,10 +188,10 @@ print(json.dumps({
     echo "CLIENT_ID=${OIDC_CLIENT_ID}" >> "${DEBUG_LOG}"
     [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "ERREUR: Client ID/Secret vides" >> "${DEBUG_LOG}"; return 1; }
 
-    # URL interne Docker (évite le hairpin NAT : le container Nextcloud ne peut pas
-    # joindre son propre domaine public). Nextcloud et authentik-server partagent
-    # le réseau caleope-public, donc http://authentik-server:9000 est joignable.
-    OIDC_DISCOVERY_URI="http://authentik-server:9000/application/o/${APP_SLUG}/.well-known/openid-configuration"
+    # URL publique : extra_hosts dans docker-compose pointe le domaine Authentik
+    # vers host-gateway (bridge Docker → NPM → Traefik → authentik-server),
+    # ce qui évite le hairpin NAT tout en gardant le bon hostname pour SSL/TLS.
+    OIDC_DISCOVERY_URI="https://${AK_DOMAIN}/application/o/${APP_SLUG}/.well-known/openid-configuration"
 
     # Créer l'Application dans Authentik
     python3 -c "

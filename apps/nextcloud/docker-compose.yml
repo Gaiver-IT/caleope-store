@@ -60,6 +60,8 @@ services:
       - NEXTCLOUD_TRUSTED_DOMAINS={{.Domain}} nextcloud localhost
       - OVERWRITEPROTOCOL=https
       - OVERWRITECLIURL=https://{{.Domain}}
+    extra_hosts:
+      - "${AUTHENTIK_DOMAIN}:host-gateway"
     ports:
       {{- range .Ports}}
       - "{{.Host}}:{{.Container}}"
@@ -87,6 +89,8 @@ services:
       - nextcloud-onlyoffice
     env_file:
       - {{$.BaseDir}}/app-config/nextcloud/secrets.env
+    extra_hosts:
+      - "${AUTHENTIK_DOMAIN}:host-gateway"
     volumes:
       - {{$.BaseDir}}/app-data/nextcloud/html:/var/www/html
       - {{$.BaseDir}}/app-config/nextcloud/bootstrap.sh:/bootstrap.sh:ro
