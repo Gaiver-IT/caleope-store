@@ -99,12 +99,17 @@ exit(0 if r.ok else 1)
     fi
     echo "API OK" >> "${DEBUG_LOG}"
 
-    # Flow d'autorisation
-    local FLOW_UUID
+    # Flow d'autorisation + flow d'invalidation (requis par Authentik 2024.x)
+    local FLOW_UUID INVALIDATION_FLOW_UUID
     FLOW_UUID=$(ak_get "/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
     echo "FLOW_UUID=${FLOW_UUID}" >> "${DEBUG_LOG}"
     [ -n "${FLOW_UUID}" ] || { echo "ERREUR: Flow introuvable" >> "${DEBUG_LOG}"; return 1; }
+
+    INVALIDATION_FLOW_UUID=$(ak_get "/api/v3/flows/instances/?slug=default-provider-invalidation-flow" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
+    echo "INVALIDATION_FLOW_UUID=${INVALIDATION_FLOW_UUID}" >> "${DEBUG_LOG}"
+    [ -n "${INVALIDATION_FLOW_UUID}" ] || { echo "ERREUR: Invalidation flow introuvable" >> "${DEBUG_LOG}"; return 1; }
 
     # Clé de signature JWT
     local SIGNING_KEY SIGNING_RAW
@@ -158,6 +163,7 @@ scopes=[s for s in ['${S_OPENID}','${S_EMAIL}','${S_PROFILE}'] if s]
 print(json.dumps({
     'name': '${APP_NAME} SSO',
     'authorization_flow': '${FLOW_UUID}',
+    'invalidation_flow': '${INVALIDATION_FLOW_UUID}',
     'client_type': 'confidential',
     'redirect_uris': [{'url': '${REDIRECT_URI}', 'matching_mode': 'strict'}],
     'sub_mode': 'hashed_user_id',
