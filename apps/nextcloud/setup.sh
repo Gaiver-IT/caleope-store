@@ -81,6 +81,9 @@ r = requests.post("http://localhost:9000'"${endpoint}"'",
                    headers={"Authorization": "Bearer " + os.environ["AK_TOKEN"],
                             "Content-Type": "application/json"},
                    json=body, timeout=10)
+sys.stderr.write("POST '"${endpoint}"' -> " + str(r.status_code) + "\n")
+if not r.ok:
+    sys.stderr.write(r.text[:1000] + "\n")
 print(r.text if r.ok else "")
 ' 2>>"${DEBUG_LOG}" || echo ""
     }
