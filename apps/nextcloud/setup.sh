@@ -16,7 +16,7 @@ ONLYOFFICE_JWT=$(openssl rand -hex 20)
 BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2)
 ONLYOFFICE_DOMAIN="onlyoffice.${BASE_DOMAIN}"
 # Domaine Authentik — utilisé dans extra_hosts du docker-compose pour contourner le hairpin NAT
-AUTHENTIK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2-)
+AUTHENTIK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
 [ -n "${AUTHENTIK_DOMAIN}" ] || AUTHENTIK_DOMAIN="authentik.${BASE_DOMAIN}"
 
 cat > "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env" << EOF
