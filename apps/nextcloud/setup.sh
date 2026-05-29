@@ -28,18 +28,16 @@ EOF
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
 
 # ── SSO OIDC via Authentik ───────────────────────────────────────────────────
-# Crée un OAuth2/OIDC Provider dans Authentik pour le SSO natif de Nextcloud.
-# Expose les vars globales : OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URI
+# Toutes les appels API passent par Python (requests) via docker exec
+# → évite le hairpin NAT (le host ne peut pas appeler son propre domaine public)
+# → évite la dépendance à curl dans le container Authentik
 authentik_setup_oidc() {
     local DEBUG_LOG="/tmp/caleope_nextcloud_sso.log"
     echo "=== $(date) ===" > "${DEBUG_LOG}"
     echo "ARGS: $*" >> "${DEBUG_LOG}"
-    echo "CALEOPE_BASE_DIR=${CALEOPE_BASE_DIR}" >> "${DEBUG_LOG}"
 
     local APP_NAME="$1" APP_SLUG="$2" REDIRECT_URI="$3"
     local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-
-    echo "AK_SECRETS=${AK_SECRETS}" >> "${DEBUG_LOG}"
     if [ ! -f "${AK_SECRETS}" ]; then
         echo "ERREUR: AK_SECRETS introuvable" >> "${DEBUG_LOG}"; return 1
     fi
@@ -48,91 +46,95 @@ authentik_setup_oidc() {
     TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
     AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
     if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN
-        BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN}"
+        local BASE_DOMAIN_AK
+        BASE_DOMAIN_AK=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
+        AK_DOMAIN="authentik.${BASE_DOMAIN_AK}"
     fi
     echo "TOKEN_SET=$([ -n "${TOKEN}" ] && echo oui || echo non)" >> "${DEBUG_LOG}"
     echo "AK_DOMAIN=${AK_DOMAIN}" >> "${DEBUG_LOG}"
-    if [ -z "${TOKEN}" ] || [ -z "${AK_DOMAIN}" ]; then
-        echo "ERREUR: TOKEN ou DOMAIN vide" >> "${DEBUG_LOG}"; return 1
-    fi
+    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || { echo "ERREUR: TOKEN ou DOMAIN vide" >> "${DEBUG_LOG}"; return 1; }
 
-    # Appeler l'API Authentik via docker exec pour éviter les problèmes de hairpin NAT
-    # (le host ne peut pas s'appeler lui-même via son domaine public)
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
+    local AK_CONTAINER="authentik-server"
 
-    ak_curl() {
-        docker exec authentik-server curl -sf --max-time 10 \
-            -H "${HA}" -H "${HJ}" "$@" "http://localhost:9000${1}"
+    # Helper GET : docker exec -e TOKEN → python3 requests
+    ak_get() {
+        local endpoint="$1"
+        docker exec -e "AK_TOKEN=${TOKEN}" "${AK_CONTAINER}" python3 -c '
+import os, requests, sys
+r = requests.get("http://localhost:9000'"${endpoint}"'",
+                  headers={"Authorization": "Bearer " + os.environ["AK_TOKEN"]},
+                  timeout=10)
+print(r.text if r.ok else "")
+' 2>>"${DEBUG_LOG}" || echo ""
+    }
+
+    # Helper POST : stdin → python3 requests (évite les problèmes d'échappement JSON)
+    ak_post() {
+        local endpoint="$1"
+        docker exec -i -e "AK_TOKEN=${TOKEN}" "${AK_CONTAINER}" python3 -c '
+import os, sys, requests, json
+body = json.load(sys.stdin)
+r = requests.post("http://localhost:9000'"${endpoint}"'",
+                   headers={"Authorization": "Bearer " + os.environ["AK_TOKEN"],
+                            "Content-Type": "application/json"},
+                   json=body, timeout=10)
+print(r.text if r.ok else "")
+' 2>>"${DEBUG_LOG}" || echo ""
     }
 
     echo "  → Connexion à l'API Authentik..."
-    if ! docker exec authentik-server curl -sf --max-time 5 \
-        -H "${HA}" "http://localhost:9000/api/v3/core/applications/" >/dev/null 2>&1; then
-        echo "ERREUR: API inaccessible via docker exec" >> "${DEBUG_LOG}"; return 1
+    if ! docker exec -e "AK_TOKEN=${TOKEN}" "${AK_CONTAINER}" python3 -c '
+import os, requests
+r = requests.get("http://localhost:9000/api/v3/core/applications/",
+                  headers={"Authorization": "Bearer " + os.environ["AK_TOKEN"]}, timeout=5)
+exit(0 if r.ok else 1)
+' 2>>"${DEBUG_LOG}"; then
+        echo "ERREUR: API inaccessible (python requests)" >> "${DEBUG_LOG}"; return 1
     fi
     echo "API OK" >> "${DEBUG_LOG}"
 
     # Flow d'autorisation
     local FLOW_UUID
-    FLOW_UUID=$(docker exec authentik-server curl -sf --max-time 10 \
-        -H "${HA}" \
-        "http://localhost:9000/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+    FLOW_UUID=$(ak_get "/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
     echo "FLOW_UUID=${FLOW_UUID}" >> "${DEBUG_LOG}"
     [ -n "${FLOW_UUID}" ] || { echo "ERREUR: Flow introuvable" >> "${DEBUG_LOG}"; return 1; }
 
     # Clé de signature JWT
     local SIGNING_KEY SIGNING_RAW
-    SIGNING_RAW=$(docker exec authentik-server curl -sf --max-time 10 \
-        -H "${HA}" \
-        "http://localhost:9000/api/v3/crypto/certificatekeypairs/?has_key=true&ordering=name" 2>>"${DEBUG_LOG}" || echo "")
-    SIGNING_KEY=$(echo "${SIGNING_RAW}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    echo "SIGNING_KEY=${SIGNING_KEY}" >> "${DEBUG_LOG}"
-    [ -n "${SIGNING_KEY}" ] || { echo "ERREUR: Clé de signature introuvable. Raw: ${SIGNING_RAW}" >> "${DEBUG_LOG}"; return 1; }
+    SIGNING_RAW=$(ak_get "/api/v3/crypto/certificatekeypairs/?has_key=true&ordering=name")
+    SIGNING_KEY=$(echo "${SIGNING_RAW}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
+    echo "SIGNING_KEY=${SIGNING_KEY} RAW=${SIGNING_RAW}" >> "${DEBUG_LOG}"
+    [ -n "${SIGNING_KEY}" ] || { echo "ERREUR: Clé de signature introuvable" >> "${DEBUG_LOG}"; return 1; }
 
     # Scopes OIDC standards (openid, email, profile)
     local S_OPENID S_EMAIL S_PROFILE
-    S_OPENID=$(docker exec authentik-server curl -sf --max-time 10 -H "${HA}" \
-        "http://localhost:9000/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-openid" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    S_EMAIL=$(docker exec authentik-server curl -sf --max-time 10 -H "${HA}" \
-        "http://localhost:9000/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-email" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    S_PROFILE=$(docker exec authentik-server curl -sf --max-time 10 -H "${HA}" \
-        "http://localhost:9000/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-profile" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+    S_OPENID=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-openid" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
+    S_EMAIL=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-email" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
+    S_PROFILE=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-profile" \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
     echo "SCOPES: openid=${S_OPENID} email=${S_EMAIL} profile=${S_PROFILE}" >> "${DEBUG_LOG}"
     [ -n "${S_OPENID}" ] || { echo "ERREUR: Scopes OIDC introuvables" >> "${DEBUG_LOG}"; return 1; }
 
-    # Construire la liste des scopes (filtrer les vides)
-    local SCOPES_JSON
-    SCOPES_JSON=$(python3 -c "
-import json
-scopes = [s for s in ['${S_OPENID}','${S_EMAIL}','${S_PROFILE}'] if s]
-print(json.dumps(scopes))
-")
-
-    # Créer ou récupérer le Provider OAuth2 (via docker exec pour éviter hairpin NAT)
+    # Provider OAuth2 — récupérer si existant, sinon créer
     local PROVIDER_RESP PROVIDER_PK
-    PROVIDER_PK=$(docker exec authentik-server curl -sf --max-time 10 -H "${HA}" \
-        "http://localhost:9000/api/v3/providers/oauth2/" \
+    PROVIDER_PK=$(ak_get "/api/v3/providers/oauth2/" \
         | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-m = [p for p in d.get('results',[]) if p['name']==\"${APP_NAME} SSO\"]
+import sys,json
+d=json.load(sys.stdin)
+m=[p for p in d.get('results',[]) if p['name']==\"${APP_NAME} SSO\"]
 print(m[0]['pk'] if m else '')
 " 2>/dev/null || echo "")
 
     if [ -n "${PROVIDER_PK}" ]; then
-        PROVIDER_RESP=$(docker exec authentik-server curl -sf --max-time 10 -H "${HA}" \
-            "http://localhost:9000/api/v3/providers/oauth2/${PROVIDER_PK}/" || echo "")
+        PROVIDER_RESP=$(ak_get "/api/v3/providers/oauth2/${PROVIDER_PK}/")
     else
         local BODY
         BODY=$(python3 -c "
 import json
+scopes=[s for s in ['${S_OPENID}','${S_EMAIL}','${S_PROFILE}'] if s]
 print(json.dumps({
     'name': '${APP_NAME} SSO',
     'authorization_flow': '${FLOW_UUID}',
@@ -141,32 +143,28 @@ print(json.dumps({
     'sub_mode': 'hashed_user_id',
     'include_claims_in_id_token': True,
     'signing_key': '${SIGNING_KEY}',
-    'property_mappings': ${SCOPES_JSON}
+    'property_mappings': scopes
 }))
 ")
         echo "POST body: ${BODY}" >> "${DEBUG_LOG}"
-        PROVIDER_RESP=$(docker exec authentik-server curl -sf --max-time 10 \
-            -X POST -H "${HA}" -H "${HJ}" \
-            "http://localhost:9000/api/v3/providers/oauth2/" \
-            -d "${BODY}" 2>>"${DEBUG_LOG}" || echo "")
+        PROVIDER_RESP=$(echo "${BODY}" | ak_post "/api/v3/providers/oauth2/")
         echo "Provider response: ${PROVIDER_RESP}" >> "${DEBUG_LOG}"
         PROVIDER_PK=$(echo "${PROVIDER_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
     fi
-    [ -n "${PROVIDER_PK}" ] || { echo "  ⚠ Erreur création OAuth2 Provider (voir /tmp/caleope_nextcloud_sso.log)"; return 1; }
+    [ -n "${PROVIDER_PK}" ] || { echo "ERREUR: Erreur création OAuth2 Provider" >> "${DEBUG_LOG}"; echo "  ⚠ Erreur OAuth2 Provider (voir /tmp/caleope_nextcloud_sso.log)"; return 1; }
 
     OIDC_CLIENT_ID=$(echo "${PROVIDER_RESP}"     | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))"     2>/dev/null || echo "")
     OIDC_CLIENT_SECRET=$(echo "${PROVIDER_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
     echo "CLIENT_ID=${OIDC_CLIENT_ID}" >> "${DEBUG_LOG}"
-    [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "  ⚠ Client ID/Secret introuvables (voir /tmp/caleope_nextcloud_sso.log)"; return 1; }
+    [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "ERREUR: Client ID/Secret vides" >> "${DEBUG_LOG}"; return 1; }
 
     OIDC_DISCOVERY_URI="https://${AK_DOMAIN}/application/o/${APP_SLUG}/.well-known/openid-configuration"
 
     # Créer l'Application dans Authentik
-    docker exec authentik-server curl -sf --max-time 10 \
-        -X POST -H "${HA}" -H "${HJ}" \
-        "http://localhost:9000/api/v3/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
+    python3 -c "
+import json
+print(json.dumps({'name':'${APP_NAME}','slug':'${APP_SLUG}','provider':${PROVIDER_PK}}))
+" | ak_post "/api/v3/core/applications/" >/dev/null || true
 
     echo "  → SSO OIDC configuré dans Authentik ✓"
     return 0
@@ -174,8 +172,6 @@ print(json.dumps({
 
 CALEOPE_AUTH_MIDDLEWARE=""
 OIDC_CLIENT_ID="" OIDC_CLIENT_SECRET="" OIDC_DISCOVERY_URI=""
-echo "CHECK apps-installed/authentik: ${CALEOPE_BASE_DIR}/apps-installed/authentik" > /tmp/nc_pre_oidc.log
-[ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ] && echo "EXISTS=oui" >> /tmp/nc_pre_oidc.log || echo "EXISTS=non" >> /tmp/nc_pre_oidc.log
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     REDIRECT_URI="https://${CALEOPE_DOMAIN}/apps/user_oidc/code"
     if authentik_setup_oidc "Nextcloud" "nextcloud-sso" "${REDIRECT_URI}"; then
@@ -185,7 +181,7 @@ OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
 OIDC_DISCOVERY_URI=${OIDC_DISCOVERY_URI}
 OIDCENV
     else
-        echo "  ⚠ SSO OIDC désactivé (configuration Authentik échouée)"
+        echo "  ⚠ SSO OIDC désactivé (voir /tmp/caleope_nextcloud_sso.log)"
     fi
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
