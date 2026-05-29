@@ -107,14 +107,28 @@ exit(0 if r.ok else 1)
     echo "SIGNING_KEY=${SIGNING_KEY} RAW=${SIGNING_RAW}" >> "${DEBUG_LOG}"
     [ -n "${SIGNING_KEY}" ] || { echo "ERREUR: Clé de signature introuvable" >> "${DEBUG_LOG}"; return 1; }
 
-    # Scopes OIDC standards (openid, email, profile)
-    local S_OPENID S_EMAIL S_PROFILE
-    S_OPENID=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-openid" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
-    S_EMAIL=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-email" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
-    S_PROFILE=$(ak_get "/api/v3/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-profile" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null || echo "")
+    # Scopes OIDC standards — récupère tout et filtre en Python (évite les problèmes d'URL-encoding du paramètre managed=)
+    local ALL_SCOPES S_OPENID S_EMAIL S_PROFILE
+    ALL_SCOPES=$(ak_get "/api/v3/propertymappings/scope/?ordering=name&page_size=100")
+    echo "ALL_SCOPES=${ALL_SCOPES}" >> "${DEBUG_LOG}"
+    S_OPENID=$(echo "${ALL_SCOPES}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+m=[p for p in d.get('results',[]) if 'scope-openid' in str(p.get('managed',''))]
+print(m[0]['pk'] if m else '')
+" 2>/dev/null || echo "")
+    S_EMAIL=$(echo "${ALL_SCOPES}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+m=[p for p in d.get('results',[]) if 'scope-email' in str(p.get('managed',''))]
+print(m[0]['pk'] if m else '')
+" 2>/dev/null || echo "")
+    S_PROFILE=$(echo "${ALL_SCOPES}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+m=[p for p in d.get('results',[]) if 'scope-profile' in str(p.get('managed',''))]
+print(m[0]['pk'] if m else '')
+" 2>/dev/null || echo "")
     echo "SCOPES: openid=${S_OPENID} email=${S_EMAIL} profile=${S_PROFILE}" >> "${DEBUG_LOG}"
     [ -n "${S_OPENID}" ] || { echo "ERREUR: Scopes OIDC introuvables" >> "${DEBUG_LOG}"; return 1; }
 
