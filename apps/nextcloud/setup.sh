@@ -83,6 +83,19 @@ authentik_setup_oidc() {
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
     [ -n "${S_OPENID}" ] || { echo "  ⚠ Scopes OIDC introuvables"; return 1; }
 
+    local DEBUG_LOG="/tmp/caleope_nextcloud_sso.log"
+    echo "=== $(date) ===" > "${DEBUG_LOG}"
+    echo "FLOW=${FLOW_UUID} KEY=${SIGNING_KEY}" >> "${DEBUG_LOG}"
+    echo "SCOPES: openid=${S_OPENID} email=${S_EMAIL} profile=${S_PROFILE}" >> "${DEBUG_LOG}"
+
+    # Construire la liste des scopes (filtrer les vides)
+    local SCOPES_JSON
+    SCOPES_JSON=$(python3 -c "
+import json
+scopes = [s for s in ['${S_OPENID}','${S_EMAIL}','${S_PROFILE}'] if s]
+print(json.dumps(scopes))
+")
+
     # Créer ou récupérer le Provider OAuth2
     local PROVIDER_RESP PROVIDER_PK
     PROVIDER_PK=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/providers/oauth2/" \
@@ -94,27 +107,34 @@ print(m[0]['pk'] if m else '')
 " 2>/dev/null || echo "")
 
     if [ -n "${PROVIDER_PK}" ]; then
-        PROVIDER_RESP=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/providers/oauth2/${PROVIDER_PK}/")
+        PROVIDER_RESP=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/providers/oauth2/${PROVIDER_PK}/" || echo "")
     else
+        # Authentik 2024.x : redirect_uris est un tableau d'objets
+        local BODY
+        BODY=$(python3 -c "
+import json
+print(json.dumps({
+    'name': '${APP_NAME} SSO',
+    'authorization_flow': '${FLOW_UUID}',
+    'client_type': 'confidential',
+    'redirect_uris': [{'url': '${REDIRECT_URI}', 'matching_mode': 'strict'}],
+    'sub_mode': 'hashed_user_id',
+    'include_claims_in_id_token': True,
+    'signing_key': '${SIGNING_KEY}',
+    'property_mappings': ${SCOPES_JSON}
+}))
+")
+        echo "POST body: ${BODY}" >> "${DEBUG_LOG}"
         PROVIDER_RESP=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-            "${BASE}/providers/oauth2/" \
-            -d "{
-                \"name\": \"${APP_NAME} SSO\",
-                \"authorization_flow\": \"${FLOW_UUID}\",
-                \"client_type\": \"confidential\",
-                \"redirect_uris\": \"${REDIRECT_URI}\",
-                \"sub_mode\": \"hashed_user_id\",
-                \"include_claims_in_id_token\": true,
-                \"signing_key\": \"${SIGNING_KEY}\",
-                \"property_mappings\": [\"${S_OPENID}\", \"${S_EMAIL}\", \"${S_PROFILE}\"]
-            }" 2>/dev/null || echo "")
+            "${BASE}/providers/oauth2/" -d "${BODY}" 2>>"${DEBUG_LOG}" || echo "")
+        echo "Provider response: ${PROVIDER_RESP}" >> "${DEBUG_LOG}"
         PROVIDER_PK=$(echo "${PROVIDER_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
     fi
-    [ -n "${PROVIDER_PK}" ] || { echo "  ⚠ Erreur création OAuth2 Provider"; return 1; }
+    [ -n "${PROVIDER_PK}" ] || { echo "  ⚠ Erreur création OAuth2 Provider (voir /tmp/caleope_nextcloud_sso.log)"; return 1; }
 
-    OIDC_CLIENT_ID=$(echo "${PROVIDER_RESP}"    | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))"     2>/dev/null || echo "")
+    OIDC_CLIENT_ID=$(echo "${PROVIDER_RESP}"     | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))"     2>/dev/null || echo "")
     OIDC_CLIENT_SECRET=$(echo "${PROVIDER_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
-    [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "  ⚠ Client ID/Secret introuvables"; return 1; }
+    [ -n "${OIDC_CLIENT_ID}" ] && [ -n "${OIDC_CLIENT_SECRET}" ] || { echo "  ⚠ Client ID/Secret introuvables (voir /tmp/caleope_nextcloud_sso.log)"; return 1; }
 
     OIDC_DISCOVERY_URI="https://${AK_DOMAIN}/application/o/${APP_SLUG}/.well-known/openid-configuration"
 
