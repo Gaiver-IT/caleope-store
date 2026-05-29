@@ -31,9 +31,18 @@ chmod 600 "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
 # Crée un OAuth2/OIDC Provider dans Authentik pour le SSO natif de Nextcloud.
 # Expose les vars globales : OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URI
 authentik_setup_oidc() {
+    local DEBUG_LOG="/tmp/caleope_nextcloud_sso.log"
+    echo "=== $(date) ===" > "${DEBUG_LOG}"
+    echo "ARGS: $*" >> "${DEBUG_LOG}"
+    echo "CALEOPE_BASE_DIR=${CALEOPE_BASE_DIR}" >> "${DEBUG_LOG}"
+
     local APP_NAME="$1" APP_SLUG="$2" REDIRECT_URI="$3"
     local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
+
+    echo "AK_SECRETS=${AK_SECRETS}" >> "${DEBUG_LOG}"
+    if [ ! -f "${AK_SECRETS}" ]; then
+        echo "ERREUR: AK_SECRETS introuvable" >> "${DEBUG_LOG}"; return 1
+    fi
 
     local TOKEN AK_DOMAIN
     TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
@@ -43,32 +52,43 @@ authentik_setup_oidc() {
         BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
         AK_DOMAIN="authentik.${BASE_DOMAIN}"
     fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
+    echo "TOKEN_SET=$([ -n "${TOKEN}" ] && echo oui || echo non)" >> "${DEBUG_LOG}"
+    echo "AK_DOMAIN=${AK_DOMAIN}" >> "${DEBUG_LOG}"
+    if [ -z "${TOKEN}" ] || [ -z "${AK_DOMAIN}" ]; then
+        echo "ERREUR: TOKEN ou DOMAIN vide" >> "${DEBUG_LOG}"; return 1
+    fi
 
     local BASE="https://${AK_DOMAIN}/api/v3"
     local HA="Authorization: Bearer ${TOKEN}"
     local HJ="Content-Type: application/json"
 
+    echo "API_BASE=${BASE}" >> "${DEBUG_LOG}"
     echo "  → Connexion à l'API Authentik (max 60s)..."
     local i=0
     until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || { echo "  ⚠ Authentik non joignable"; return 1; }
+        i=$((i+1))
+        echo "API tentative ${i}/12" >> "${DEBUG_LOG}"
+        [ $i -lt 12 ] || { echo "ERREUR: API timeout" >> "${DEBUG_LOG}"; return 1; }
         sleep 5
     done
+    echo "API OK" >> "${DEBUG_LOG}"
 
     # Flow d'autorisation
     local FLOW_UUID
     FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
         "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || { echo "  ⚠ Flow Authentik introuvable"; return 1; }
+    echo "FLOW_UUID=${FLOW_UUID}" >> "${DEBUG_LOG}"
+    [ -n "${FLOW_UUID}" ] || { echo "ERREUR: Flow introuvable" >> "${DEBUG_LOG}"; return 1; }
 
     # Clé de signature JWT
     local SIGNING_KEY
-    SIGNING_KEY=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/crypto/certificatekeypairs/?has_key=true&ordering=name" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${SIGNING_KEY}" ] || { echo "  ⚠ Clé de signature introuvable"; return 1; }
+    local SIGNING_RAW
+    SIGNING_RAW=$(curl -sf --max-time 10 -H "${HA}" \
+        "${BASE}/crypto/certificatekeypairs/?has_key=true&ordering=name" 2>>"${DEBUG_LOG}")
+    SIGNING_KEY=$(echo "${SIGNING_RAW}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+    echo "SIGNING_KEY=${SIGNING_KEY}" >> "${DEBUG_LOG}"
+    [ -n "${SIGNING_KEY}" ] || { echo "ERREUR: Clé de signature introuvable. Réponse: ${SIGNING_RAW}" >> "${DEBUG_LOG}"; return 1; }
 
     # Scopes OIDC standards (openid, email, profile)
     local S_OPENID S_EMAIL S_PROFILE
@@ -81,12 +101,8 @@ authentik_setup_oidc() {
     S_PROFILE=$(curl -sf --max-time 10 -H "${HA}" \
         "${BASE}/propertymappings/scope/?managed=goauthentik.io%2Fproviders%2Foauth2%2Fscope-profile" \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${S_OPENID}" ] || { echo "  ⚠ Scopes OIDC introuvables"; return 1; }
-
-    local DEBUG_LOG="/tmp/caleope_nextcloud_sso.log"
-    echo "=== $(date) ===" > "${DEBUG_LOG}"
-    echo "FLOW=${FLOW_UUID} KEY=${SIGNING_KEY}" >> "${DEBUG_LOG}"
     echo "SCOPES: openid=${S_OPENID} email=${S_EMAIL} profile=${S_PROFILE}" >> "${DEBUG_LOG}"
+    [ -n "${S_OPENID}" ] || { echo "ERREUR: Scopes OIDC introuvables" >> "${DEBUG_LOG}"; return 1; }
 
     # Construire la liste des scopes (filtrer les vides)
     local SCOPES_JSON
@@ -150,6 +166,8 @@ print(json.dumps({
 
 CALEOPE_AUTH_MIDDLEWARE=""
 OIDC_CLIENT_ID="" OIDC_CLIENT_SECRET="" OIDC_DISCOVERY_URI=""
+echo "CHECK apps-installed/authentik: ${CALEOPE_BASE_DIR}/apps-installed/authentik" > /tmp/nc_pre_oidc.log
+[ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ] && echo "EXISTS=oui" >> /tmp/nc_pre_oidc.log || echo "EXISTS=non" >> /tmp/nc_pre_oidc.log
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     REDIRECT_URI="https://${CALEOPE_DOMAIN}/apps/user_oidc/code"
     if authentik_setup_oidc "Nextcloud" "nextcloud-sso" "${REDIRECT_URI}"; then
