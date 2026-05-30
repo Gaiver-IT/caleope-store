@@ -5,55 +5,40 @@ CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/fluxer-discord-bridge/db"
 
-# Les tokens ne peuvent pas être générés automatiquement — l'utilisateur
-# doit les renseigner manuellement après l'install via post-install.txt.
-cat > "${CONFIG_DIR}/secrets.env" << 'ENVEOF'
-# ─────────────────────────────────────────────────────────────────────────────
-# Fluxer-Discord Bridge — Tokens à renseigner avant le premier démarrage
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Token du bot Discord
-# Créer un bot : https://discord.com/developers/applications
-# Permissions requises : Manage Roles, Manage Webhooks, Send Messages, Read Message History
-DISCORD_TOKEN=
-
-# Token du bot Fluxer
-# Permissions requises : Manage Roles, Manage Webhooks, Send Messages, Read Message History
-FLUXER_TOKEN=
-
-# Préfixe des commandes du bridge (défaut : brdg;)
-# Exemple : brdg;help  brdg;link  brdg;unlink
-CMD_PREFIX=brdg;
-ENVEOF
+# Les tokens sont fournis interactivement par le CLI via params.json
+# et passés ici en tant que CALEOPE_PARAM_DISCORD_TOKEN, etc.
+cat > "${CONFIG_DIR}/secrets.env" << EOF
+DISCORD_TOKEN=${CALEOPE_PARAM_DISCORD_TOKEN:-}
+FLUXER_TOKEN=${CALEOPE_PARAM_FLUXER_TOKEN:-}
+CMD_PREFIX=${CALEOPE_PARAM_CMD_PREFIX:-brdg;}
+EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
+
+# Vérification que les tokens ont bien été fournis
+MISSING=()
+[ -z "${CALEOPE_PARAM_DISCORD_TOKEN:-}" ] && MISSING+=("DISCORD_TOKEN")
+[ -z "${CALEOPE_PARAM_FLUXER_TOKEN:-}"  ] && MISSING+=("FLUXER_TOKEN")
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "  ⚠ Tokens manquants : ${MISSING[*]}"
+    echo "  Édite ${CONFIG_DIR}/secrets.env"
+    echo "  puis : caleope restart ${CALEOPE_APP_ID}"
+fi
 
 cat > "${CONFIG_DIR}/post-install.txt" << EOF
 
   ┌──────────────────────────────────────────────────────────────┐
-  │       Fluxer-Discord Bridge — Configuration requise          │
+  │          Fluxer-Discord Bridge — Démarré                     │
   ├──────────────────────────────────────────────────────────────┤
-  │  ⚠  Le service tourne mais les bots ne peuvent pas           │
-  │     s'authentifier sans leurs tokens.                        │
+  │  Teste dans Discord ou Fluxer :                              │
+  │    ${CALEOPE_PARAM_CMD_PREFIX:-brdg;}help                    │
   │                                                              │
-  │  1. Édite le fichier de secrets :                            │
-  │     ${CONFIG_DIR}/secrets.env    │
+  │  Commandes utiles :                                          │
+  │    caleope logs fluxer-discord-bridge                        │
+  │    caleope restart fluxer-discord-bridge                     │
   │                                                              │
-  │  2. Remplis les valeurs :                                    │
-  │     DISCORD_TOKEN=<ton token Discord>                        │
-  │       → discord.com/developers/applications                  │
-  │     FLUXER_TOKEN=<ton token Fluxer>                          │
-  │     CMD_PREFIX=brdg;  (ou ton préfixe personnalisé)          │
-  │                                                              │
-  │  3. Redémarre le service :                                   │
-  │     caleope restart fluxer-discord-bridge                    │
-  │                                                              │
-  │  4. Teste dans Discord ou Fluxer :                           │
-  │     brdg;help                                                │
-  │                                                              │
-  │  Permissions requises sur les deux bots :                    │
-  │    Manage Roles, Manage Webhooks,                            │
-  │    Send Messages, Read Message History                       │
+  │  Config : ${CONFIG_DIR}/secrets.env  │
   └──────────────────────────────────────────────────────────────┘
 EOF
 
-echo "✓ Fluxer-Discord Bridge préparé — renseigne les tokens dans secrets.env puis : caleope restart fluxer-discord-bridge"
+echo "✓ Fluxer-Discord Bridge configuré"
