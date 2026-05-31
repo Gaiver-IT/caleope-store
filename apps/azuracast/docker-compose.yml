@@ -26,27 +26,18 @@ services:
       - {{.BaseDir}}/app-data/azuracast/backups:/var/azuracast/backups
       - {{.BaseDir}}/app-data/azuracast/acme:/var/azuracast/acme
     ports:
-      # Port web — géré par Caleope (app.json → host: 8099, dynamic: false)
-      # Affiché dans `caleope list`, accessible via http://IP:8099 sans domaine.
+      # Ports alloués dynamiquement par Caleope (visibles dans `caleope list`) :
+      #   web     → host:dynamique → container:80  (UI admin)
+      #   sftp    → host:dynamique → container:2022 (upload musique)
+      #   icecast → host:dynamique → container:dynamique (Icecast configuré par bootstrap)
+      # NOTE icecast : host=container obligatoire (Icecast annonce le port dans les URLs de flux).
       {{- range .Ports}}
+      {{- if eq .Name "icecast"}}
+      - "{{.Host}}:{{.Host}}"
+      {{- else}}
       - "{{.Host}}:{{.Container}}"
       {{- end}}
-      # SFTP — upload de fichiers audio via client SFTP (FileZilla, etc.)
-      - "2022:2022"
-      # Port streaming Icecast — doit être accessible directement par les auditeurs.
-      # IMPORTANT : host port = container port (Icecast annonce le port dans les URLs de flux).
-      # Plage 8500+ : évite les conflits avec les services courants (8000-8200, 8080, 8096…).
-      - "8500:8500"
-      # Pour plus d'une station, décommenter les ports suivants et les ajouter dans le pare-feu :
-      # - "8505:8505"   # Station 1 — flux backup
-      # - "8510:8510"   # Station 2
-      # - "8515:8515"   # Station 2 — backup
-      # - "8520:8520"   # Station 3
-      # - "8525:8525"   # Station 3 — backup
-      # - "8530:8530"   # Station 4
-      # - "8535:8535"   # Station 4 — backup
-      # - "8540:8540"   # Station 5
-      # - "8545:8545"   # Station 5 — backup
+      {{- end}}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.azuracast.rule=Host(`{{.Domain}}`)"

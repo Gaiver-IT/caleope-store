@@ -63,7 +63,11 @@ else
     echo "  (mode non-interactif → accès via domaine par défaut)"
 fi
 
-WEB_PORT=8099   # port statique défini dans app.json — affichage uniquement
+# Ports alloués par Caleope — passés via env vars CALEOPE_PORT_<NOM>
+# Fallbacks raisonnables si jamais le script tourne hors Caleope.
+WEB_PORT="${CALEOPE_PORT_WEB:-8099}"
+SFTP_PORT="${CALEOPE_PORT_SFTP:-2022}"
+ICECAST_PORT="${CALEOPE_PORT_ICECAST:-8500}"
 
 if [[ "${USE_DOMAIN}" == "true" ]]; then
     AZURACAST_BASE_URL="https://${CALEOPE_DOMAIN}"
@@ -107,13 +111,19 @@ cat > "${CONFIG_DIR}/secrets.env" <<EOF
 APPLICATION_ENV=production
 AZURACAST_VERSION=latest
 
-# Ports internes AzuraCast (ne pas modifier sauf conflit)
+# Ports internes AzuraCast (côté container — ne pas modifier)
 AZURACAST_HTTP_PORT=80
 # AZURACAST_HTTPS_PORT=443 : nginx a besoin d'une valeur valide pour générer sa config.
 # Le port 443 n'est PAS exposé sur l'hôte (Traefik gère le SSL), AzuraCast utilise
 # ses certs auto-signés internes — les auditeurs/admin passent uniquement par le port 80.
 AZURACAST_HTTPS_PORT=443
 AZURACAST_SFTP_PORT=2022
+
+# Port Icecast alloué dynamiquement par Caleope.
+# IMPORTANT : ce port doit être identique côté hôte ET côté container
+# car Icecast annonce ce numéro de port dans les URLs de flux aux auditeurs.
+# Le bootstrap crée la station AzuraCast avec ce port pour que Icecast l'écoute.
+CALEOPE_PORT_ICECAST=${ICECAST_PORT}
 
 # URL publique — utilisée pour les liens de flux et les emails
 AZURACAST_BASE_URL=${AZURACAST_BASE_URL}
@@ -147,6 +157,9 @@ ADMIN_EMAIL="${AZURACAST_ADMIN_EMAIL:-admin@azuracast.local}"
 ADMIN_PASSWORD="${AZURACAST_ADMIN_PASSWORD:-changeme}"
 STATION_NAME="${AZURACAST_STATION_NAME:-Ma Radio}"
 STATION_SHORT="${AZURACAST_STATION_SHORT:-maradio}"
+# Port Icecast : lu depuis secrets.env (écrit par setup.sh via CALEOPE_PORT_ICECAST)
+# Doit correspondre au port exposé côté hôte (host=container dans docker-compose).
+ICECAST_PORT="${CALEOPE_PORT_ICECAST:-8500}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
@@ -235,7 +248,7 @@ else
                 \"short_name\": \"${STATION_SHORT}\",
                 \"frontend_type\": \"icecast\",
                 \"backend_type\": \"liquidsoap\",
-                \"frontend_config\": {\"port\": 8500},
+                \"frontend_config\": {\"port\": ${ICECAST_PORT}},
                 \"is_public\": false,
                 \"enable_requests\": true,
                 \"request_delay\": 5,
@@ -245,7 +258,7 @@ else
         if [[ -n "${STATION_RESP}" ]]; then
             STATION_ID=$(echo "${STATION_RESP}" | jq -r '.id // empty' 2>/dev/null) || STATION_ID=""
             echo "  ✓ Station '${STATION_NAME}' créée (ID: ${STATION_ID:-?})"
-            echo "    Port Icecast : 8500 (HTTP) — accessible par tes auditeurs"
+            echo "    Port Icecast : ${ICECAST_PORT} (HTTP) — accessible par tes auditeurs"
         else
             echo "  ⚠ Création de station échouée — à créer manuellement dans l'interface"
         fi
@@ -287,14 +300,15 @@ $([ -n "${ACCESS_DIRECT}" ] && echo "║                    ${ACCESS_DIRECT_NOTE
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  📻 Station radio : ${STATION_NAME}
 ║
-║  Port streaming Icecast (à ouvrir dans le pare-feu) :
-║    8500  → Station 1  (ex: http://<IP>:8500/${STATION_SHORT}.mp3)
+║  Ports alloués dynamiquement (voir aussi : caleope list) :
+║    Web   : ${WEB_PORT}   → interface admin
+║    SFTP  : ${SFTP_PORT}  → upload de musique (FileZilla, etc.)
+║    Radio : ${ICECAST_PORT}  → flux Icecast (à ouvrir dans le pare-feu)
 ║
-║  Pour ajouter des stations, décommenter les ports dans docker-compose.yml
-║  (8505, 8510, 8515…) et ouvrir les ports correspondants dans le pare-feu.
+║  Exemple flux : http://<IP-serveur>:${ICECAST_PORT}/${STATION_SHORT}.mp3
 ║
 ║  Upload de musique via SFTP :
-║    Hôte  : <IP-du-serveur>   Port : 2022
+║    Hôte  : <IP-du-serveur>   Port : ${SFTP_PORT}
 ║    Login : (défini dans AzuraCast → Station → SFTP Users)
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  ⚠️  PREMIER DÉMARRAGE                                               ║
@@ -322,5 +336,10 @@ echo ""
 echo "   Station     : ${STATION_NAME}"
 echo "   Admin email : ${ADMIN_EMAIL}"
 echo "   Admin mdp   : ${ADMIN_PASSWORD}"
+echo ""
+echo "   Ports alloués :"
+echo "     Web   (UI admin)   : ${WEB_PORT}"
+echo "     SFTP  (upload)     : ${SFTP_PORT}"
+echo "     Radio (Icecast)    : ${ICECAST_PORT}"
 echo ""
 echo "   ⚠  Le premier démarrage prend 3-5 minutes (init base de données)."
