@@ -50,13 +50,18 @@ else
     echo "  (mode non-interactif → accès via domaine par défaut)"
 fi
 
+WEB_PORT=8099   # port d'accès direct (hôte → container:80)
+
 if [[ "${USE_DOMAIN}" == "true" ]]; then
     AZURACAST_BASE_URL="https://${CALEOPE_DOMAIN}"
-    echo "  ✓ URL publique : ${AZURACAST_BASE_URL}"
+    echo "  ✓ URL publique  : ${AZURACAST_BASE_URL}"
+    echo "  ✓ Accès direct  : http://${SERVER_IP:-<IP>}:${WEB_PORT} (si pas de domaine disponible)"
 else
-    # Le port web sera attribué dynamiquement par Caleope (port .Ports[0].Host)
-    # On utilise un placeholder ; le post-install.txt précise la marche à suivre
-    AZURACAST_BASE_URL="http://${SERVER_IP:-<IP-DU-SERVEUR>}:<PORT-WEB>"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Port web direct [${WEB_PORT}] : " _WP || _WP=""
+        [[ -n "${_WP}" ]] && WEB_PORT="${_WP}"
+    fi
+    AZURACAST_BASE_URL="http://${SERVER_IP:-<IP-DU-SERVEUR>}:${WEB_PORT}"
     echo "  ✓ Accès local : ${AZURACAST_BASE_URL}"
 fi
 
@@ -98,6 +103,10 @@ AZURACAST_HTTP_PORT=80
 # AZURACAST_HTTPS_PORT vide → SSL géré par Traefik (ou non utilisé)
 AZURACAST_HTTPS_PORT=
 AZURACAST_SFTP_PORT=2022
+
+# Port d'accès web direct (host → container:80)
+# Changer si 8099 est déjà utilisé sur ce serveur.
+AZURACAST_WEB_PORT=${WEB_PORT}
 
 # URL publique — utilisée pour les liens de flux et les emails
 AZURACAST_BASE_URL=${AZURACAST_BASE_URL}
@@ -243,10 +252,14 @@ echo "  ✓ Bootstrap créé"
 # ── post-install.txt ─────────────────────────────────────────────────
 if [[ "${USE_DOMAIN}" == "true" ]]; then
     ACCESS_URL="https://${CALEOPE_DOMAIN}"
-    ACCESS_NOTE="(via Traefik — assure-toi que le DNS pointe vers ce serveur)"
+    ACCESS_NOTE="(via Traefik)"
+    ACCESS_DIRECT="http://${SERVER_IP:-<IP-serveur>}:${WEB_PORT}"
+    ACCESS_DIRECT_NOTE="(accès direct sans domaine)"
 else
-    ACCESS_URL="http://${SERVER_IP:-<IP>}:<voir ci-dessous>"
-    ACCESS_NOTE="(le port web exact est affiché par 'caleope install')"
+    ACCESS_URL="http://${SERVER_IP:-<IP-serveur>}:${WEB_PORT}"
+    ACCESS_NOTE="(accès direct — pas de domaine)"
+    ACCESS_DIRECT=""
+    ACCESS_DIRECT_NOTE=""
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
@@ -255,16 +268,18 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  URL web         : ${ACCESS_URL}
 ║                    ${ACCESS_NOTE}
+$([ -n "${ACCESS_DIRECT}" ] && echo "║  Accès direct    : ${ACCESS_DIRECT}")
+$([ -n "${ACCESS_DIRECT}" ] && echo "║                    ${ACCESS_DIRECT_NOTE}")
 ║
 ║  Login admin     : ${ADMIN_EMAIL}
 ║  Mot de passe    : ${ADMIN_PASSWORD}
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  📻 Station radio : ${STATION_NAME}
 ║
-║  Ports streaming (Icecast) — à ouvrir dans ton pare-feu :
-║    8000  → flux HTTP  (ex: http://<IP>:8000/radio.mp3)
-║    8005  → flux HTTPS (si activé)
-║    (8010, 8015, 8020… pour les stations suivantes)
+║  Ports streaming Icecast (à ouvrir dans le pare-feu) :
+║    8000  → Station 1 — flux HTTP  (ex: http://<IP>:8000/radio.mp3)
+║    8005  → Station 1 — flux backup
+║    8010, 8015 → Station 2     8020, 8025 → Station 3 ...
 ║
 ║  Upload de musique via SFTP :
 ║    Hôte  : <IP-du-serveur>   Port : 2022

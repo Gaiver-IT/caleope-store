@@ -1,17 +1,16 @@
 ##
 ## AZURACAST — Serveur de radio en ligne
 ##
-## Un seul service : accessible via Traefik (domaine) ET en direct (IP:port).
-## • Traefik achemine azuracast.{{.Domain}} → port 80 du container (via caleope-public)
-## • Le port web est aussi exposé directement sur un port dynamique assigné par Caleope
-##   (utile si pas de domaine configuré, ou pour accès local)
-##
-## Ports de streaming radio (Icecast) — toujours exposés en direct (pas via Traefik) :
-##   Station 1 : 8000 / 8005   Station 2 : 8010 / 8015   Station 3 : 8020 / 8025
-##   Station 4 : 8030 / 8035   Station 5 : 8040 / 8045
-## Pour plus de 5 stations, ajouter les ports suivants (8050, 8055, ...) ici ET dans le pare-feu.
-##
-## SFTP (upload de musique) : port 2022
+## Ports :
+## • Web UI via Traefik        → azuracast.{{.Domain}} (HTTP sur port 80 du container)
+## • Web UI accès direct       → AZURACAST_WEB_PORT (défaut 8099) — configurable dans secrets.env
+##   (Pratique sans domaine ; le port dynamique Caleope est intentionnellement absent
+##    pour éviter tout conflit avec la plage 8000-8045 des flux radio)
+## • Streaming Icecast (radio) → toujours en direct (les auditeurs s'y connectent) :
+##     Station 1 : 8000 / 8005   Station 2 : 8010 / 8015   Station 3 : 8020 / 8025
+##     Station 4 : 8030 / 8035   Station 5 : 8040 / 8045
+##   Pour plus de 5 stations, ajouter les ports suivants (8050, 8055, …) ici et dans le pare-feu.
+## • SFTP (upload audio)       → port 2022
 ##
 
 services:
@@ -29,10 +28,10 @@ services:
       - {{.BaseDir}}/app-data/azuracast/backups:/var/azuracast/backups
       - {{.BaseDir}}/app-data/azuracast/acme:/var/azuracast/acme
     ports:
-      # Port web — assigné dynamiquement par Caleope (accès direct sans domaine)
-      {{- range .Ports}}
-      - "{{.Host}}:{{.Container}}"
-      {{- end}}
+      # Port web — accès direct sans domaine (configurable via AZURACAST_WEB_PORT dans secrets.env)
+      # IMPORTANT : ce port est volontairement statique (pas de port dynamique Caleope)
+      # pour éviter tout conflit avec la plage 8000-8045 des flux Icecast.
+      - "${AZURACAST_WEB_PORT:-8099}:80"
       # SFTP — upload de fichiers audio via client SFTP (FileZilla, etc.)
       - "2022:2022"
       # Ports streaming Icecast — doivent être accessibles directement par les auditeurs
