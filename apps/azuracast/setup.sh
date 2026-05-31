@@ -63,17 +63,13 @@ else
     echo "  (mode non-interactif → accès via domaine par défaut)"
 fi
 
-WEB_PORT=8099   # port d'accès direct (hôte → container:80)
+WEB_PORT=8099   # port statique défini dans app.json — affichage uniquement
 
 if [[ "${USE_DOMAIN}" == "true" ]]; then
     AZURACAST_BASE_URL="https://${CALEOPE_DOMAIN}"
     echo "  ✓ URL publique  : ${AZURACAST_BASE_URL}"
     echo "  ✓ Accès direct  : http://${SERVER_IP:-<IP>}:${WEB_PORT} (si pas de domaine disponible)"
 else
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        read -rp "  Port web direct [${WEB_PORT}] : " _WP || _WP=""
-        [[ -n "${_WP}" ]] && WEB_PORT="${_WP}"
-    fi
     AZURACAST_BASE_URL="http://${SERVER_IP:-<IP-DU-SERVEUR>}:${WEB_PORT}"
     echo "  ✓ Accès local : ${AZURACAST_BASE_URL}"
 fi
@@ -118,10 +114,6 @@ AZURACAST_HTTP_PORT=80
 # ses certs auto-signés internes — les auditeurs/admin passent uniquement par le port 80.
 AZURACAST_HTTPS_PORT=443
 AZURACAST_SFTP_PORT=2022
-
-# Port d'accès web direct (host → container:80)
-# Changer si 8099 est déjà utilisé sur ce serveur.
-AZURACAST_WEB_PORT=${WEB_PORT}
 
 # URL publique — utilisée pour les liens de flux et les emails
 AZURACAST_BASE_URL=${AZURACAST_BASE_URL}
@@ -295,10 +287,11 @@ $([ -n "${ACCESS_DIRECT}" ] && echo "║                    ${ACCESS_DIRECT_NOTE
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  📻 Station radio : ${STATION_NAME}
 ║
-║  Ports streaming Icecast (à ouvrir dans le pare-feu) :
-║    8500  → Station 1 — flux HTTP  (ex: http://<IP>:8500/radio.mp3)
-║    8505  → Station 1 — flux backup
-║    8510, 8515 → Station 2     8520, 8525 → Station 3 ...
+║  Port streaming Icecast (à ouvrir dans le pare-feu) :
+║    8500  → Station 1  (ex: http://<IP>:8500/${STATION_SHORT}.mp3)
+║
+║  Pour ajouter des stations, décommenter les ports dans docker-compose.yml
+║  (8505, 8510, 8515…) et ouvrir les ports correspondants dans le pare-feu.
 ║
 ║  Upload de musique via SFTP :
 ║    Hôte  : <IP-du-serveur>   Port : 2022

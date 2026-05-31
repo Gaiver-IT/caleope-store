@@ -11,7 +11,9 @@
     "privileged": false
   },
   "network": { "public": true, "internal": true },
-  "ports": [],
+  "ports": [
+    { "name": "web", "container": 80, "host": 8099, "dynamic": false }
+  ],
   "volumes": [
     { "source": "app-data/azuracast/stations", "target": "/var/azuracast/stations" },
     { "source": "app-data/azuracast/geoip",    "target": "/var/azuracast/geoip"    },

@@ -8,20 +8,20 @@ Ces ports doivent être accessibles par les auditeurs directement (pas via Traef
 | Port | Protocole | Usage |
 |------|-----------|-------|
 | 2022 | TCP | SFTP — upload des fichiers audio |
-| 8099 | TCP | Web UI accès direct (sans domaine) — configurable via `AZURACAST_WEB_PORT` |
-| 8500 | TCP | Icecast — Station 1 (flux principal) |
-| 8505 | TCP | Icecast — Station 1 (flux backup) |
-| 8510 | TCP | Icecast — Station 2 |
-| 8515 | TCP | Icecast — Station 2 (backup) |
-| 8520 | TCP | Icecast — Station 3 |
-| 8525 | TCP | Icecast — Station 3 (backup) |
-| 8530 | TCP | Icecast — Station 4 |
-| 8535 | TCP | Icecast — Station 4 (backup) |
-| 8540 | TCP | Icecast — Station 5 |
-| 8545 | TCP | Icecast — Station 5 (backup) |
+| 8099 | TCP | Web UI accès direct (sans domaine) — visible dans `caleope list` |
+| 8500 | TCP | Icecast — Station 1 (flux principal, activé par défaut) |
 
-> Pour plus de 5 stations, ajouter les ports 8550, 8555, 8560… dans
-> `docker-compose.yml` et dans les règles pare-feu.
+> **Pour plusieurs stations**, décommenter les ports suivants dans `docker-compose.yml`
+> et les ajouter dans les règles pare-feu :
+>
+> | Port | Usage |
+> |------|-------|
+> | 8505 | Station 1 — flux backup |
+> | 8510 / 8515 | Station 2 / backup |
+> | 8520 / 8525 | Station 3 / backup |
+> | 8530 / 8535 | Station 4 / backup |
+> | 8540 / 8545 | Station 5 / backup |
+> | 8550, 8555… | Stations 6+ |
 
 > **Pourquoi 8500+ ?** La plage 8000-8200 est très utilisée par les services
 > courants (nginx, web apps, Jellyfin 8096, qBittorrent 8080…). La plage 8500+

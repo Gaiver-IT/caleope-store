@@ -3,14 +3,11 @@
 ##
 ## Ports :
 ## • Web UI via Traefik        → azuracast.{{.Domain}} (HTTP sur port 80 du container)
-## • Web UI accès direct       → AZURACAST_WEB_PORT (défaut 8099) — configurable dans secrets.env
-##   (Pratique sans domaine ; le port dynamique Caleope est intentionnellement absent
-##    pour éviter tout conflit avec la plage 8500-8545 des flux radio)
-## • Streaming Icecast (radio) → toujours en direct (les auditeurs s'y connectent) :
-##     Station 1 : 8500 / 8505   Station 2 : 8510 / 8515   Station 3 : 8520 / 8525
-##     Station 4 : 8530 / 8535   Station 5 : 8540 / 8545
+## • Web UI accès direct       → port 8099 (géré par Caleope, visible dans `caleope list`)
+## • Streaming Icecast (radio) → port 8500 par défaut (1 station)
+##   Pour plusieurs stations, décommenter les ports 8505-8545 dans la section `ports` ci-dessous
+##   et les ajouter dans les règles pare-feu.
 ##   Plage 8500+ choisie pour éviter les conflits avec les services courants (8000-8200).
-##   Pour plus de 5 stations, ajouter les ports suivants (8550, 8555, …) ici et dans le pare-feu.
 ## • SFTP (upload audio)       → port 2022
 ##
 
@@ -29,26 +26,27 @@ services:
       - {{.BaseDir}}/app-data/azuracast/backups:/var/azuracast/backups
       - {{.BaseDir}}/app-data/azuracast/acme:/var/azuracast/acme
     ports:
-      # Port web — accès direct sans domaine (configurable via AZURACAST_WEB_PORT dans secrets.env)
-      # IMPORTANT : ce port est volontairement statique (pas de port dynamique Caleope)
-      # pour éviter tout conflit avec la plage 8000-8045 des flux Icecast.
-      - "${AZURACAST_WEB_PORT:-8099}:80"
+      # Port web — géré par Caleope (app.json → host: 8099, dynamic: false)
+      # Affiché dans `caleope list`, accessible via http://IP:8099 sans domaine.
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
       # SFTP — upload de fichiers audio via client SFTP (FileZilla, etc.)
       - "2022:2022"
-      # Ports streaming Icecast — doivent être accessibles directement par les auditeurs.
-      # Plage 8500-8545 : évite les conflits avec les services courants (8000-8200, 8080, 8096…).
+      # Port streaming Icecast — doit être accessible directement par les auditeurs.
       # IMPORTANT : host port = container port (Icecast annonce le port dans les URLs de flux).
-      # Pour changer la plage, modifier ici ET reconfigurer les stations dans l'admin AzuraCast.
+      # Plage 8500+ : évite les conflits avec les services courants (8000-8200, 8080, 8096…).
       - "8500:8500"
-      - "8505:8505"
-      - "8510:8510"
-      - "8515:8515"
-      - "8520:8520"
-      - "8525:8525"
-      - "8530:8530"
-      - "8535:8535"
-      - "8540:8540"
-      - "8545:8545"
+      # Pour plus d'une station, décommenter les ports suivants et les ajouter dans le pare-feu :
+      # - "8505:8505"   # Station 1 — flux backup
+      # - "8510:8510"   # Station 2
+      # - "8515:8515"   # Station 2 — backup
+      # - "8520:8520"   # Station 3
+      # - "8525:8525"   # Station 3 — backup
+      # - "8530:8530"   # Station 4
+      # - "8535:8535"   # Station 4 — backup
+      # - "8540:8540"   # Station 5
+      # - "8545:8545"   # Station 5 — backup
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.azuracast.rule=Host(`{{.Domain}}`)"
