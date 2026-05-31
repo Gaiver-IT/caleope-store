@@ -6,6 +6,19 @@ trap 'echo "❌ setup.sh : erreur ligne ${LINENO} — ${BASH_COMMAND}" >&2' ERR
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 mkdir -p "${CONFIG_DIR}"
 
+# ── Nettoyage des containers défaillants ─────────────────────────────
+# Si une installation précédente a échoué (ex: conflit de ports), les containers
+# peuvent rester en état "exited" ou "created" avec des ports toujours réservés.
+# On les supprime proprement avant de recréer.
+for _ct in azuracast azuracast-bootstrap; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${_ct}$"; then
+        echo "→ Nettoyage du container '${_ct}' (installation précédente)..."
+        docker stop "${_ct}" 2>/dev/null || true
+        docker rm   "${_ct}" 2>/dev/null || true
+        echo "  ✓ Container '${_ct}' supprimé"
+    fi
+done
+
 # ── Dossiers de données ───────────────────────────────────────────────
 echo "→ Création de la structure de dossiers..."
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/azuracast/stations"
@@ -217,6 +230,9 @@ else
     else
         # ── Créer la station par défaut ──────────────────────────────
         echo "  → Création de la station '${STATION_NAME}'..."
+        # frontend_config.port : port Icecast de la station.
+        # Doit correspondre exactement au port exposé dans docker-compose (8500:8500).
+        # Si host port ≠ container port, l'URL annoncée par AzuraCast serait incorrecte.
         STATION_RESP=$(curl -sf -X POST "${AZ_URL}/api/admin/stations" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: ${AZ_TOKEN}" \
@@ -225,6 +241,7 @@ else
                 \"short_name\": \"${STATION_SHORT}\",
                 \"frontend_type\": \"icecast\",
                 \"backend_type\": \"liquidsoap\",
+                \"frontend_config\": {\"port\": 8500},
                 \"is_public\": false,
                 \"enable_requests\": true,
                 \"request_delay\": 5,
@@ -234,7 +251,7 @@ else
         if [[ -n "${STATION_RESP}" ]]; then
             STATION_ID=$(echo "${STATION_RESP}" | jq -r '.id // empty' 2>/dev/null) || STATION_ID=""
             echo "  ✓ Station '${STATION_NAME}' créée (ID: ${STATION_ID:-?})"
-            echo "    Port Icecast : 8000 (HTTP) — accessible par tes auditeurs"
+            echo "    Port Icecast : 8500 (HTTP) — accessible par tes auditeurs"
         else
             echo "  ⚠ Création de station échouée — à créer manuellement dans l'interface"
         fi
@@ -277,9 +294,9 @@ $([ -n "${ACCESS_DIRECT}" ] && echo "║                    ${ACCESS_DIRECT_NOTE
 ║  📻 Station radio : ${STATION_NAME}
 ║
 ║  Ports streaming Icecast (à ouvrir dans le pare-feu) :
-║    8000  → Station 1 — flux HTTP  (ex: http://<IP>:8000/radio.mp3)
-║    8005  → Station 1 — flux backup
-║    8010, 8015 → Station 2     8020, 8025 → Station 3 ...
+║    8500  → Station 1 — flux HTTP  (ex: http://<IP>:8500/radio.mp3)
+║    8505  → Station 1 — flux backup
+║    8510, 8515 → Station 2     8520, 8525 → Station 3 ...
 ║
 ║  Upload de musique via SFTP :
 ║    Hôte  : <IP-du-serveur>   Port : 2022

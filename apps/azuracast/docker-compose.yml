@@ -5,11 +5,12 @@
 ## • Web UI via Traefik        → azuracast.{{.Domain}} (HTTP sur port 80 du container)
 ## • Web UI accès direct       → AZURACAST_WEB_PORT (défaut 8099) — configurable dans secrets.env
 ##   (Pratique sans domaine ; le port dynamique Caleope est intentionnellement absent
-##    pour éviter tout conflit avec la plage 8000-8045 des flux radio)
+##    pour éviter tout conflit avec la plage 8500-8545 des flux radio)
 ## • Streaming Icecast (radio) → toujours en direct (les auditeurs s'y connectent) :
-##     Station 1 : 8000 / 8005   Station 2 : 8010 / 8015   Station 3 : 8020 / 8025
-##     Station 4 : 8030 / 8035   Station 5 : 8040 / 8045
-##   Pour plus de 5 stations, ajouter les ports suivants (8050, 8055, …) ici et dans le pare-feu.
+##     Station 1 : 8500 / 8505   Station 2 : 8510 / 8515   Station 3 : 8520 / 8525
+##     Station 4 : 8530 / 8535   Station 5 : 8540 / 8545
+##   Plage 8500+ choisie pour éviter les conflits avec les services courants (8000-8200).
+##   Pour plus de 5 stations, ajouter les ports suivants (8550, 8555, …) ici et dans le pare-feu.
 ## • SFTP (upload audio)       → port 2022
 ##
 
@@ -34,17 +35,20 @@ services:
       - "${AZURACAST_WEB_PORT:-8099}:80"
       # SFTP — upload de fichiers audio via client SFTP (FileZilla, etc.)
       - "2022:2022"
-      # Ports streaming Icecast — doivent être accessibles directement par les auditeurs
-      - "8000:8000"
-      - "8005:8005"
-      - "8010:8010"
-      - "8015:8015"
-      - "8020:8020"
-      - "8025:8025"
-      - "8030:8030"
-      - "8035:8035"
-      - "8040:8040"
-      - "8045:8045"
+      # Ports streaming Icecast — doivent être accessibles directement par les auditeurs.
+      # Plage 8500-8545 : évite les conflits avec les services courants (8000-8200, 8080, 8096…).
+      # IMPORTANT : host port = container port (Icecast annonce le port dans les URLs de flux).
+      # Pour changer la plage, modifier ici ET reconfigurer les stations dans l'admin AzuraCast.
+      - "8500:8500"
+      - "8505:8505"
+      - "8510:8510"
+      - "8515:8515"
+      - "8520:8520"
+      - "8525:8525"
+      - "8530:8530"
+      - "8535:8535"
+      - "8540:8540"
+      - "8545:8545"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.azuracast.rule=Host(`{{.Domain}}`)"
