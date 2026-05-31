@@ -1,0 +1,88 @@
+##
+## AZURACAST — Serveur de radio en ligne
+##
+## Un seul service : accessible via Traefik (domaine) ET en direct (IP:port).
+## • Traefik achemine azuracast.{{.Domain}} → port 80 du container (via caleope-public)
+## • Le port web est aussi exposé directement sur un port dynamique assigné par Caleope
+##   (utile si pas de domaine configuré, ou pour accès local)
+##
+## Ports de streaming radio (Icecast) — toujours exposés en direct (pas via Traefik) :
+##   Station 1 : 8000 / 8005   Station 2 : 8010 / 8015   Station 3 : 8020 / 8025
+##   Station 4 : 8030 / 8035   Station 5 : 8040 / 8045
+## Pour plus de 5 stations, ajouter les ports suivants (8050, 8055, ...) ici ET dans le pare-feu.
+##
+## SFTP (upload de musique) : port 2022
+##
+
+services:
+
+  # ── AZURACAST — serveur radio tout-en-un ────────────────────────────
+  azuracast:
+    image: ghcr.io/azuracast/azuracast:${AZURACAST_VERSION:-latest}
+    container_name: azuracast
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/azuracast/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/azuracast/stations:/var/azuracast/stations
+      - {{.BaseDir}}/app-data/azuracast/geoip:/var/azuracast/geoip
+      - {{.BaseDir}}/app-data/azuracast/backups:/var/azuracast/backups
+      - {{.BaseDir}}/app-data/azuracast/acme:/var/azuracast/acme
+    ports:
+      # Port web — assigné dynamiquement par Caleope (accès direct sans domaine)
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+      # SFTP — upload de fichiers audio via client SFTP (FileZilla, etc.)
+      - "2022:2022"
+      # Ports streaming Icecast — doivent être accessibles directement par les auditeurs
+      - "8000:8000"
+      - "8005:8005"
+      - "8010:8010"
+      - "8015:8015"
+      - "8020:8020"
+      - "8025:8025"
+      - "8030:8030"
+      - "8035:8035"
+      - "8040:8040"
+      - "8045:8045"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.azuracast.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.azuracast.entrypoints=web"
+      - "traefik.http.services.azuracast.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - caleope-public
+      - azuracast-internal
+
+  # ── BOOTSTRAP — configuration initiale (s'exécute une seule fois) ───
+  azuracast-bootstrap:
+    image: alpine:3.19
+    container_name: azuracast-bootstrap
+    restart: "no"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache curl bash jq >/dev/null 2>&1 && bash /bootstrap.sh
+    volumes:
+      - {{.BaseDir}}/app-config/azuracast/bootstrap.sh:/bootstrap.sh:ro
+    depends_on:
+      - azuracast
+    networks:
+      - azuracast-internal
+
+networks:
+  caleope-public:
+    external: true
+  azuracast-internal:
+    driver: bridge
