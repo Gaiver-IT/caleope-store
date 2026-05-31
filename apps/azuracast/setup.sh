@@ -113,8 +113,10 @@ AZURACAST_VERSION=latest
 
 # Ports internes AzuraCast (ne pas modifier sauf conflit)
 AZURACAST_HTTP_PORT=80
-# AZURACAST_HTTPS_PORT vide → SSL géré par Traefik (ou non utilisé)
-AZURACAST_HTTPS_PORT=
+# AZURACAST_HTTPS_PORT=443 : nginx a besoin d'une valeur valide pour générer sa config.
+# Le port 443 n'est PAS exposé sur l'hôte (Traefik gère le SSL), AzuraCast utilise
+# ses certs auto-signés internes — les auditeurs/admin passent uniquement par le port 80.
+AZURACAST_HTTPS_PORT=443
 AZURACAST_SFTP_PORT=2022
 
 # Port d'accès web direct (host → container:80)
