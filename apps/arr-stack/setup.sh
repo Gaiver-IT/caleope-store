@@ -655,7 +655,10 @@ add_public_indexer() {
         echo "  ℹ '\${_name}' déjà présent — ignoré"
         return 0
     fi
-    curl -sf -X POST "\$P_URL/api/v1/indexer" \
+    # Prowlarr valide l'URL lors du POST. Pour les sites CloudFlare (1337x, eztv…),
+    # la validation échoue → on tente d'abord avec enable:true, puis en cas d'erreur
+    # on retente avec enable:false (désactivé = pas de test de connexion).
+    _resp=\$(curl -s -w "\n%{http_code}" -X POST "\$P_URL/api/v1/indexer" \
         -H "X-Api-Key: ${API_PROWLARR}" \
         -H "Content-Type: application/json" \
         -d "{
@@ -674,8 +677,39 @@ add_public_indexer() {
                 {\"name\": \"baseSettings.limitsUnit\", \"value\": 0},
                 {\"name\": \"torrentBaseSettings.preferMagnetUrl\", \"value\": false}
             ]
-        }" >/dev/null 2>&1 || true
-    echo "  ✓ Indexeur '\${_name}' ajouté"
+        }" 2>/dev/null) || _resp=""
+    _http_code=\$(echo "\$_resp" | tail -1)
+    if [[ "\$_http_code" == "201" || "\$_http_code" == "200" ]]; then
+        echo "  ✓ Indexeur '\${_name}' ajouté"
+    else
+        # Échec (souvent CloudFlare) → retenter avec enable:false pour contourner le test
+        _resp2=\$(curl -s -w "\n%{http_code}" -X POST "\$P_URL/api/v1/indexer" \
+            -H "X-Api-Key: ${API_PROWLARR}" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"name\": \"\${_name}\",
+                \"definitionName\": \"\${_def}\",
+                \"implementation\": \"Cardigann\",
+                \"configContract\": \"CardigannSettings\",
+                \"protocol\": \"torrent\",
+                \"enable\": false,
+                \"priority\": 25,
+                \"appProfileId\": 1,
+                \"tags\": [],
+                \"fields\": [
+                    {\"name\": \"definitionFile\", \"value\": \"\${_def}\"},
+                    {\"name\": \"baseUrl\", \"value\": \"\${_url}\"},
+                    {\"name\": \"baseSettings.limitsUnit\", \"value\": 0},
+                    {\"name\": \"torrentBaseSettings.preferMagnetUrl\", \"value\": false}
+                ]
+            }" 2>/dev/null) || _resp2=""
+        _http_code2=\$(echo "\$_resp2" | tail -1)
+        if [[ "\$_http_code2" == "201" || "\$_http_code2" == "200" ]]; then
+            echo "  ✓ Indexeur '\${_name}' ajouté (désactivé — réactiver dans Prowlarr après config FlareSolverr)"
+        else
+            echo "  ⚠ Indexeur '\${_name}' non ajouté (HTTP \${_http_code2}) — ajouter manuellement dans Prowlarr"
+        fi
+    fi
 }
 
 # 1337x : trackers général (films, séries, musique) — protégé Cloudflare → FlareSolverr
