@@ -607,6 +607,52 @@ _FS_CFG=\$(curl -sf -H "X-Api-Key: ${API_PROWLARR}" "\$P_URL/api/v1/indexerproxy
 echo "  ✓ FlareSolverr testé — statut actif dans Prowlarr"
 
 echo ""
+echo "── [2.5/6] Indexeurs publics par défaut (sans compte requis)..."
+# Ces indexeurs sont publics et ne nécessitent pas de compte.
+# Ils sont ajoutés comme point de départ — l'utilisateur ajoutera ensuite
+# ses indexeurs préférés (YGGTorrent, BetaSeries, etc.) dans Prowlarr.
+# On vérifie si l'indexeur existe déjà (idempotence sur --force reinstall).
+_existing_defs=\$(curl -sf -H "X-Api-Key: ${API_PROWLARR}" "\$P_URL/api/v1/indexer" 2>/dev/null \
+    | python3 -c "import sys,json; print(','.join(i.get('definitionName','') for i in json.load(sys.stdin)))" \
+    2>/dev/null) || _existing_defs=""
+
+add_public_indexer() {
+    local _name="\$1" _def="\$2" _url="\$3"
+    if echo "\$_existing_defs" | grep -q "\$_def"; then
+        echo "  ℹ '\${_name}' déjà présent — ignoré"
+        return 0
+    fi
+    curl -sf -X POST "\$P_URL/api/v1/indexer" \
+        -H "X-Api-Key: ${API_PROWLARR}" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"name\": \"\${_name}\",
+            \"definitionName\": \"\${_def}\",
+            \"implementation\": \"Cardigann\",
+            \"configContract\": \"CardigannSettings\",
+            \"protocol\": \"torrent\",
+            \"enable\": true,
+            \"priority\": 25,
+            \"appProfileId\": 1,
+            \"tags\": [],
+            \"fields\": [
+                {\"name\": \"definitionFile\", \"value\": \"\${_def}\"},
+                {\"name\": \"baseUrl\", \"value\": \"\${_url}\"},
+                {\"name\": \"baseSettings.limitsUnit\", \"value\": 0},
+                {\"name\": \"torrentBaseSettings.preferMagnetUrl\", \"value\": false}
+            ]
+        }" >/dev/null 2>&1 || true
+    echo "  ✓ Indexeur '\${_name}' ajouté"
+}
+
+# 1337x : trackers général (films, séries, musique) — protégé Cloudflare → FlareSolverr
+add_public_indexer "1337x" "1337x" "https://1337x.to/"
+# YTS : films uniquement, haute qualité, pas de Cloudflare
+add_public_indexer "YTS"   "yts"   "https://yts.mx/"
+# EZTV : séries TV uniquement, pas de Cloudflare
+add_public_indexer "EZTV"  "eztv"  "https://eztv.re/"
+
+echo ""
 echo "── [3/6] Clients de téléchargement + dossiers racine..."
 
 qbt_client() {
@@ -954,13 +1000,18 @@ else
 fi
 
 echo ""
-echo "╔══════════════════════════════════════════════════════╗"
-echo "║  ✅  Bootstrap terminé avec succès !               ║"
-echo "║                                                    ║"
-echo "║  Reste à faire manuellement (2 étapes) :          ║"
-echo "║  • Prowlarr → Indexers → Add (YGGTorrent, etc.)  ║"
-echo "║  • Bazarr   → Providers → activer sous-titres    ║"
-echo "╚══════════════════════════════════════════════════════╝"
+echo "╔═════════════════════════════════════════════════════════╗"
+echo "║  ✅  Bootstrap terminé avec succès !                  ║"
+echo "║                                                       ║"
+echo "║  Indexeurs ajoutés automatiquement :                 ║"
+echo "║  • 1337x (général) • YTS (films) • EZTV (séries)    ║"
+echo "║                                                       ║"
+echo "║  Reste à faire manuellement :                        ║"
+echo "║  • Prowlarr → ajouter tes indexeurs perso            ║"
+echo "║    (YGGTorrent, BetaSeries, etc. — nécessitent login)║"
+echo "║  • Bazarr → Providers → activer sous-titres          ║"
+echo "║    (tous nécessitent un compte externe)              ║"
+echo "╚═════════════════════════════════════════════════════════╝"
 BOOTSTRAP
 chmod +x "${CONFIG_DIR}/bootstrap.sh"
 
@@ -1007,19 +1058,21 @@ ${JF_LINE}
 ║  qBittorrent  : https://qbt.${CALEOPE_DOMAIN}                        ║
 ║  SABnzbd      : https://sabnzbd.${CALEOPE_DOMAIN}                    ║
 ╠════════════════════════════════════════════════════════════════════════╣
-║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT                            ║
-║  • Prowlarr → Radarr, Sonarr, Lidarr + FlareSolverr                  ║
+║  🤖 CONFIGURÉ AUTOMATIQUEMENT                                         ║
+║  • Prowlarr → Radarr, Sonarr, Lidarr (fullSync) + FlareSolverr       ║
+║  • Indexeurs publics : 1337x · YTS (films) · EZTV (séries)           ║
 ║  • qBittorrent + SABnzbd → tous les *arr                              ║
 ║  • Dossiers racine Films/Séries/Musique                               ║
-║  • Langue française sur tous les services                             ║
+║  • Langue française partout                                           ║
 ║  • Bazarr → profil sous-titres Français + Anglais                    ║
 $([ "${JELLYFIN_EMBEDDED}" == "true" ] && echo "║  • Jellyfin → bibliothèques + compte admin + Jellyseerr             ║")
 ${VPN_LINE}
 ╠════════════════════════════════════════════════════════════════════════╣
-║  À FAIRE (2 étapes) :                                                 ║
+║  À FAIRE MANUELLEMENT :                                               ║
 ║  1. DNS : *.${CALEOPE_DOMAIN} → IP du serveur                        ║
-║  2. Prowlarr → Indexers → Add   (YGGTorrent, BetaSeries…)            ║
-║  3. Bazarr   → Providers → activer tes sources de sous-titres        ║
+║  2. Prowlarr → ajouter tes indexeurs perso (YGGTorrent, etc.)        ║
+║  3. Bazarr → Providers → activer tes sources de sous-titres          ║
+║     (tous nécessitent un compte externe — OpenSubtitles, etc.)        ║
 ${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
