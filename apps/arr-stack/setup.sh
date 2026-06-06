@@ -102,7 +102,29 @@ JELLYFIN_INT_URL=""
 JELLYFIN_PASSWORD=""
 JELLYFIN_USER="admin"
 
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
+# Lire le mode depuis CALEOPE_PARAM_JELLYFIN_MODE si fourni (API / mode non-interactif)
+_JELLYFIN_MODE="${CALEOPE_PARAM_JELLYFIN_MODE:-}"
+_JELLYFIN_EXT_URL="${CALEOPE_PARAM_JELLYFIN_URL:-}"
+
+if [[ -n "${_JELLYFIN_MODE}" ]]; then
+    # Mode fourni via API — court-circuiter le wizard interactif
+    if [[ "${_JELLYFIN_MODE}" == "embedded" ]]; then
+        JELLYFIN_EMBEDDED=true
+        JELLYFIN_INT_URL="http://jellyfin:8096"
+        JELLYFIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
+        echo "  ✓ Jellyfin embarqué dans la stack (mode API)"
+        echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
+    elif [[ "${_JELLYFIN_MODE}" == "external" ]]; then
+        JELLYFIN_EMBEDDED=false
+        JELLYFIN_INT_URL="${_JELLYFIN_EXT_URL}"
+        echo "  ✓ Jellyfin externe : ${JELLYFIN_INT_URL} (mode API)"
+    else
+        # none ou toute autre valeur → pas de Jellyfin
+        JELLYFIN_EMBEDDED=false
+        JELLYFIN_INT_URL=""
+        echo "  ✓ Sans Jellyfin (mode API)"
+    fi
+elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
     # Jellyfin déjà en cours
     echo "  ℹ  Jellyfin détecté (container existant)"
     _JF_REUSE="O"
@@ -182,97 +204,127 @@ VPN_SERVER_COUNTRIES=""
 COMPOSE_PROFILES="novpn"
 QBT_HOST="qbittorrent"
 
-_VPN_ANSWER="N"
-if [[ "${INTERACTIVE}" == "true" ]]; then
-    read -rp "  Activer un VPN ? [o/N] : " _VPN_ANSWER || _VPN_ANSWER="N"
-else
-    echo "  (mode non-interactif → VPN désactivé par défaut)"
-fi
+# Lire depuis CALEOPE_PARAM_* si fournis (mode API / non-interactif)
+_VPN_ENABLED="${CALEOPE_PARAM_VPN_ENABLED:-}"
+_VPN_PROVIDER="${CALEOPE_PARAM_VPN_PROVIDER:-}"
+_VPN_TYPE="${CALEOPE_PARAM_VPN_TYPE:-}"
+_VPN_WG_KEY="${CALEOPE_PARAM_VPN_WG_PRIVATE_KEY:-}"
+_VPN_WG_ADDR="${CALEOPE_PARAM_VPN_WG_ADDRESSES:-}"
+_VPN_OVPN_USER="${CALEOPE_PARAM_VPN_OPENVPN_USER:-}"
+_VPN_OVPN_PASS="${CALEOPE_PARAM_VPN_OPENVPN_PASSWORD:-}"
+_VPN_COUNTRIES="${CALEOPE_PARAM_VPN_SERVER_COUNTRIES:-}"
 
-if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
-      "${_VPN_ANSWER,,}" == "y" || "${_VPN_ANSWER,,}" == "yes" ]]; then
-
-    VPN_ENABLED=true
-    COMPOSE_PROFILES="vpn"
-    QBT_HOST="arr-gluetun"
-
-    echo ""
-    echo "  Fournisseur VPN :"
-    echo "    1) ProtonVPN  (recommandé)"
-    echo "    2) Mullvad"
-    echo "    3) NordVPN"
-    echo "    4) Private Internet Access (PIA)"
-    echo "    5) Surfshark"
-    echo "    6) ExpressVPN"
-    echo "    7) Autre (compatible Gluetun)"
-    _PROVIDER_CHOICE="1"
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        read -rp "  Choix [1-7] : " _PROVIDER_CHOICE || _PROVIDER_CHOICE="1"
-    fi
-
-    case "${_PROVIDER_CHOICE}" in
-        1) VPN_PROVIDER="protonvpn" ;;
-        2) VPN_PROVIDER="mullvad" ;;
-        3) VPN_PROVIDER="nordvpn" ;;
-        4) VPN_PROVIDER="private internet access" ;;
-        5) VPN_PROVIDER="surfshark" ;;
-        6) VPN_PROVIDER="expressvpn" ;;
-        7)
-            VPN_PROVIDER=""
-            if [[ "${INTERACTIVE}" == "true" ]]; then
-                read -rp "  Nom du fournisseur Gluetun (ex: ivpn) : " VPN_PROVIDER || VPN_PROVIDER=""
-            fi
-            ;;
-        *) VPN_PROVIDER="protonvpn" ;;
-    esac
-
-    echo ""
-    echo "  Protocole :"
-    echo "    1) WireGuard  (recommandé — plus rapide, plus simple)"
-    echo "    2) OpenVPN    (plus compatible, légèrement plus lent)"
-    _PROTO_CHOICE="1"
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        read -rp "  Choix [1/2] : " _PROTO_CHOICE || _PROTO_CHOICE="1"
-    fi
-
-    if [[ "${_PROTO_CHOICE}" == "2" ]]; then
-        VPN_TYPE="openvpn"
-        echo ""
-        echo "  ── Identifiants OpenVPN ──────────────────────────────────────"
-        if [[ "${INTERACTIVE}" == "true" ]]; then
-            read -rp "  Nom d'utilisateur : " VPN_OPENVPN_USER || VPN_OPENVPN_USER=""
-            read -rsp "  Mot de passe      : " VPN_OPENVPN_PASSWORD || VPN_OPENVPN_PASSWORD=""
-            echo ""
-        fi
+if [[ -n "${_VPN_ENABLED}" ]]; then
+    # Mode fourni via API — court-circuiter le wizard interactif
+    if [[ "${_VPN_ENABLED}" == "true" ]]; then
+        VPN_ENABLED=true
+        COMPOSE_PROFILES="vpn"
+        QBT_HOST="arr-gluetun"
+        VPN_PROVIDER="${_VPN_PROVIDER:-protonvpn}"
+        VPN_TYPE="${_VPN_TYPE:-wireguard}"
+        VPN_WG_PRIVATE_KEY="${_VPN_WG_KEY}"
+        VPN_WG_ADDRESSES="${_VPN_WG_ADDR}"
+        VPN_OPENVPN_USER="${_VPN_OVPN_USER}"
+        VPN_OPENVPN_PASSWORD="${_VPN_OVPN_PASS}"
+        VPN_SERVER_COUNTRIES="${_VPN_COUNTRIES}"
+        echo "  ✓ VPN configuré (mode API) : ${VPN_PROVIDER} / ${VPN_TYPE}"
     else
-        VPN_TYPE="wireguard"
-        echo ""
-        echo "  ── Clé WireGuard ─────────────────────────────────────────────"
-        if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
-            echo "  → account.proton.me → VPN → Télécharger → WireGuard"
-            echo "    Sélectionne le serveur souhaité (SecureCore inclus)"
-            echo "    Copie les champs PrivateKey et Address de la section [Interface]"
-        elif [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
-            echo "  → mullvad.net/account/wireguard-config"
-        fi
-        echo ""
-        if [[ "${INTERACTIVE}" == "true" ]]; then
-            read -rp "  Clé privée WireGuard (PrivateKey) : " VPN_WG_PRIVATE_KEY || VPN_WG_PRIVATE_KEY=""
-            read -rp "  Adresse WireGuard (Address, ex: 10.2.0.2/32) : " \
-                VPN_WG_ADDRESSES || VPN_WG_ADDRESSES=""
-        fi
+        # false ou toute autre valeur → VPN désactivé
+        echo "  ✓ VPN désactivé (mode API)"
+    fi
+else
+    _VPN_ANSWER="N"
+    if [[ "${INTERACTIVE}" == "true" ]]; then
+        read -rp "  Activer un VPN ? [o/N] : " _VPN_ANSWER || _VPN_ANSWER="N"
+    else
+        echo "  (mode non-interactif → VPN désactivé par défaut)"
     fi
 
-    echo ""
-    if [[ "${INTERACTIVE}" == "true" ]]; then
-        echo "  Pays de sortie VPN — nom complet en anglais (ex: Germany, France, Netherlands)"
-        if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
-            echo "  → SecureCore IS→DE : entrer 'Germany'  (pays de sortie uniquement)"
+    if [[ "${_VPN_ANSWER,,}" == "o" || "${_VPN_ANSWER,,}" == "oui" || \
+          "${_VPN_ANSWER,,}" == "y" || "${_VPN_ANSWER,,}" == "yes" ]]; then
+
+        VPN_ENABLED=true
+        COMPOSE_PROFILES="vpn"
+        QBT_HOST="arr-gluetun"
+
+        echo ""
+        echo "  Fournisseur VPN :"
+        echo "    1) ProtonVPN  (recommandé)"
+        echo "    2) Mullvad"
+        echo "    3) NordVPN"
+        echo "    4) Private Internet Access (PIA)"
+        echo "    5) Surfshark"
+        echo "    6) ExpressVPN"
+        echo "    7) Autre (compatible Gluetun)"
+        _PROVIDER_CHOICE="1"
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            read -rp "  Choix [1-7] : " _PROVIDER_CHOICE || _PROVIDER_CHOICE="1"
         fi
-        read -rp "  Pays du serveur VPN (optionnel, Entrée pour ignorer) : " \
-            VPN_SERVER_COUNTRIES || VPN_SERVER_COUNTRIES=""
+
+        case "${_PROVIDER_CHOICE}" in
+            1) VPN_PROVIDER="protonvpn" ;;
+            2) VPN_PROVIDER="mullvad" ;;
+            3) VPN_PROVIDER="nordvpn" ;;
+            4) VPN_PROVIDER="private internet access" ;;
+            5) VPN_PROVIDER="surfshark" ;;
+            6) VPN_PROVIDER="expressvpn" ;;
+            7)
+                VPN_PROVIDER=""
+                if [[ "${INTERACTIVE}" == "true" ]]; then
+                    read -rp "  Nom du fournisseur Gluetun (ex: ivpn) : " VPN_PROVIDER || VPN_PROVIDER=""
+                fi
+                ;;
+            *) VPN_PROVIDER="protonvpn" ;;
+        esac
+
+        echo ""
+        echo "  Protocole :"
+        echo "    1) WireGuard  (recommandé — plus rapide, plus simple)"
+        echo "    2) OpenVPN    (plus compatible, légèrement plus lent)"
+        _PROTO_CHOICE="1"
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            read -rp "  Choix [1/2] : " _PROTO_CHOICE || _PROTO_CHOICE="1"
+        fi
+
+        if [[ "${_PROTO_CHOICE}" == "2" ]]; then
+            VPN_TYPE="openvpn"
+            echo ""
+            echo "  ── Identifiants OpenVPN ──────────────────────────────────────"
+            if [[ "${INTERACTIVE}" == "true" ]]; then
+                read -rp "  Nom d'utilisateur : " VPN_OPENVPN_USER || VPN_OPENVPN_USER=""
+                read -rsp "  Mot de passe      : " VPN_OPENVPN_PASSWORD || VPN_OPENVPN_PASSWORD=""
+                echo ""
+            fi
+        else
+            VPN_TYPE="wireguard"
+            echo ""
+            echo "  ── Clé WireGuard ─────────────────────────────────────────────"
+            if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
+                echo "  → account.proton.me → VPN → Télécharger → WireGuard"
+                echo "    Sélectionne le serveur souhaité (SecureCore inclus)"
+                echo "    Copie les champs PrivateKey et Address de la section [Interface]"
+            elif [[ "${VPN_PROVIDER}" == "mullvad" ]]; then
+                echo "  → mullvad.net/account/wireguard-config"
+            fi
+            echo ""
+            if [[ "${INTERACTIVE}" == "true" ]]; then
+                read -rp "  Clé privée WireGuard (PrivateKey) : " VPN_WG_PRIVATE_KEY || VPN_WG_PRIVATE_KEY=""
+                read -rp "  Adresse WireGuard (Address, ex: 10.2.0.2/32) : " \
+                    VPN_WG_ADDRESSES || VPN_WG_ADDRESSES=""
+            fi
+        fi
+
+        echo ""
+        if [[ "${INTERACTIVE}" == "true" ]]; then
+            echo "  Pays de sortie VPN — nom complet en anglais (ex: Germany, France, Netherlands)"
+            if [[ "${VPN_PROVIDER}" == "protonvpn" ]]; then
+                echo "  → SecureCore IS→DE : entrer 'Germany'  (pays de sortie uniquement)"
+            fi
+            read -rp "  Pays du serveur VPN (optionnel, Entrée pour ignorer) : " \
+                VPN_SERVER_COUNTRIES || VPN_SERVER_COUNTRIES=""
+        fi
+        echo "  ✓ VPN configuré : ${VPN_PROVIDER} / ${VPN_TYPE}"
     fi
-    echo "  ✓ VPN configuré : ${VPN_PROVIDER} / ${VPN_TYPE}"
 fi
 
 # Ajouter le profil jellyfin si embarqué

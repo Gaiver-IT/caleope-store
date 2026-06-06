@@ -1,0 +1,28 @@
+[
+  {
+    "id": "STATION_NAME",
+    "label": "Nom de ta station radio",
+    "description": "Ex: Radio Caleope, Ma Radio, Fun Radio Local…",
+    "type": "string",
+    "required": false,
+    "default": "Ma Radio"
+  },
+  {
+    "id": "DOMAIN_MODE",
+    "label": "Mode d'accès",
+    "description": "domain = via Traefik avec nom de domaine | local = accès direct IP:PORT",
+    "type": "select",
+    "options": ["domain", "local"],
+    "required": false,
+    "default": "domain"
+  },
+  {
+    "id": "SERVER_IP",
+    "label": "Adresse IP du serveur",
+    "description": "Requis si mode=local. Ex: 192.168.1.10",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "when": "DOMAIN_MODE=local"
+  }
+]

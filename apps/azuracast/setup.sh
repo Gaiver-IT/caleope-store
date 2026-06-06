@@ -53,7 +53,17 @@ if [ -t 0 ]; then
     INTERACTIVE=true
 fi
 
-if [[ "${INTERACTIVE}" == "true" ]]; then
+# Lire depuis CALEOPE_PARAM_* si fournis (mode API / non-interactif)
+if [[ -n "${CALEOPE_PARAM_DOMAIN_MODE:-}" ]]; then
+    if [[ "${CALEOPE_PARAM_DOMAIN_MODE}" == "local" ]]; then
+        USE_DOMAIN=false
+        SERVER_IP="${CALEOPE_PARAM_SERVER_IP:-}"
+        echo "  ✓ Mode local (mode API) — IP : ${SERVER_IP:-<non définie>}"
+    else
+        USE_DOMAIN=true
+        echo "  ✓ Mode domaine (mode API)"
+    fi
+elif [[ "${INTERACTIVE}" == "true" ]]; then
     read -rp "  Utiliser un nom de domaine ? [O/n] : " _DOM_ANSWER || _DOM_ANSWER="O"
     if [[ "${_DOM_ANSWER,,}" == "n" || "${_DOM_ANSWER,,}" == "non" ]]; then
         USE_DOMAIN=false
@@ -87,7 +97,15 @@ echo "└───────────────────────�
 STATION_NAME="Ma Radio"
 STATION_SHORT="maradio"
 
-if [[ "${INTERACTIVE}" == "true" ]]; then
+if [[ -n "${CALEOPE_PARAM_STATION_NAME:-}" ]]; then
+    STATION_NAME="${CALEOPE_PARAM_STATION_NAME}"
+    # Générer un slug court : minuscules, sans espaces ni accents
+    STATION_SHORT=$(echo "${STATION_NAME}" | tr '[:upper:]' '[:lower:]' \
+        | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null \
+        | sed 's/[^a-z0-9]//g' | cut -c1-16) || STATION_SHORT="maradio"
+    [[ -z "${STATION_SHORT}" ]] && STATION_SHORT="maradio"
+    echo "  ✓ Station (mode API) : ${STATION_NAME} (slug: ${STATION_SHORT})"
+elif [[ "${INTERACTIVE}" == "true" ]]; then
     read -rp "  Nom de ta station (ex: Radio Caleope) : " _STATION || _STATION=""
     if [[ -n "${_STATION}" ]]; then
         STATION_NAME="${_STATION}"

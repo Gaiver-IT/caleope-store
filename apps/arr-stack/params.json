@@ -1,0 +1,91 @@
+[
+  {
+    "id": "JELLYFIN_MODE",
+    "label": "Mode Jellyfin",
+    "description": "embedded = inclure Jellyfin dans la stack | external = utiliser un Jellyfin existant | none = sans Jellyfin",
+    "type": "select",
+    "options": ["embedded", "external", "none"],
+    "required": false,
+    "default": "embedded"
+  },
+  {
+    "id": "JELLYFIN_URL",
+    "label": "URL de ton Jellyfin existant",
+    "description": "Requis si mode=external. Ex: http://192.168.1.x:8096",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "when": "JELLYFIN_MODE=external"
+  },
+  {
+    "id": "VPN_ENABLED",
+    "label": "Activer le VPN pour qBittorrent",
+    "description": "Isole le trafic torrent derrière Gluetun (ProtonVPN, Mullvad, NordVPN…)",
+    "type": "bool",
+    "required": false,
+    "default": "false"
+  },
+  {
+    "id": "VPN_PROVIDER",
+    "label": "Fournisseur VPN",
+    "description": "Nom tel qu'utilisé par Gluetun",
+    "type": "select",
+    "options": ["protonvpn", "mullvad", "nordvpn", "private internet access", "surfshark", "expressvpn"],
+    "required": false,
+    "default": "protonvpn",
+    "when": "VPN_ENABLED=true"
+  },
+  {
+    "id": "VPN_TYPE",
+    "label": "Protocole VPN",
+    "description": "WireGuard est recommandé — plus rapide et plus simple",
+    "type": "select",
+    "options": ["wireguard", "openvpn"],
+    "required": false,
+    "default": "wireguard",
+    "when": "VPN_ENABLED=true"
+  },
+  {
+    "id": "VPN_WG_PRIVATE_KEY",
+    "label": "Clé privée WireGuard",
+    "description": "Champ PrivateKey du fichier .conf WireGuard (account.proton.me → VPN → WireGuard)",
+    "type": "secret",
+    "required": false,
+    "default": "",
+    "when": "VPN_TYPE=wireguard"
+  },
+  {
+    "id": "VPN_WG_ADDRESSES",
+    "label": "Adresse WireGuard",
+    "description": "Champ Address du fichier .conf — ex: 10.2.0.2/32",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "when": "VPN_TYPE=wireguard"
+  },
+  {
+    "id": "VPN_OPENVPN_USER",
+    "label": "Nom d'utilisateur OpenVPN",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "when": "VPN_TYPE=openvpn"
+  },
+  {
+    "id": "VPN_OPENVPN_PASSWORD",
+    "label": "Mot de passe OpenVPN",
+    "type": "secret",
+    "required": false,
+    "default": "",
+    "when": "VPN_TYPE=openvpn"
+  },
+  {
+    "id": "VPN_SERVER_COUNTRIES",
+    "label": "Pays du serveur VPN",
+    "description": "Optionnel — nom anglais (ex: France, Germany, Netherlands)",
+    "type": "string",
+    "required": false,
+    "default": "",
+    "when": "VPN_ENABLED=true"
+  }
+]
