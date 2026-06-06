@@ -954,12 +954,13 @@ else
 fi
 
 echo ""
-echo "╔══════════════════════════════════════════════════╗"
-echo "║  ✅  Bootstrap terminé avec succès !             ║"
-echo "║                                                  ║"
-echo "║  Reste à faire manuellement :                    ║"
-echo "║  • Prowlarr → ajouter tes indexeurs             ║"
-echo "╚══════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║  ✅  Bootstrap terminé avec succès !               ║"
+echo "║                                                    ║"
+echo "║  Reste à faire manuellement (2 étapes) :          ║"
+echo "║  • Prowlarr → Indexers → Add (YGGTorrent, etc.)  ║"
+echo "║  • Bazarr   → Providers → activer sous-titres    ║"
+echo "╚══════════════════════════════════════════════════════╝"
 BOOTSTRAP
 chmod +x "${CONFIG_DIR}/bootstrap.sh"
 
@@ -985,8 +986,10 @@ fi
 # (si Jellyfin est embarqué, le bootstrap l'auto-configure)
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     JS_TODO=""
+    _NEXT_STEP=3
 else
-    JS_TODO="║  3. Jellyseerr → connecter Jellyfin (http://<ip>:8096)               ║"
+    _NEXT_STEP=4
+    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin existant               ║"
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
@@ -1005,11 +1008,18 @@ ${JF_LINE}
 ║  SABnzbd      : https://sabnzbd.${CALEOPE_DOMAIN}                    ║
 ╠════════════════════════════════════════════════════════════════════════╣
 ║  🤖 CONNEXIONS CONFIGURÉES AUTOMATIQUEMENT                            ║
+║  • Prowlarr → Radarr, Sonarr, Lidarr + FlareSolverr                  ║
+║  • qBittorrent + SABnzbd → tous les *arr                              ║
+║  • Dossiers racine Films/Séries/Musique                               ║
+║  • Langue française sur tous les services                             ║
+║  • Bazarr → profil sous-titres Français + Anglais                    ║
+$([ "${JELLYFIN_EMBEDDED}" == "true" ] && echo "║  • Jellyfin → bibliothèques + compte admin + Jellyseerr             ║")
 ${VPN_LINE}
 ╠════════════════════════════════════════════════════════════════════════╣
-║  À FAIRE :                                                            ║
-║  1. DNS : *.${CALEOPE_DOMAIN} → IP du serveur (ou entrées par app)   ║
-║  2. Prowlarr → Indexers → Add                                         ║
+║  À FAIRE (2 étapes) :                                                 ║
+║  1. DNS : *.${CALEOPE_DOMAIN} → IP du serveur                        ║
+║  2. Prowlarr → Indexers → Add   (YGGTorrent, BetaSeries…)            ║
+║  3. Bazarr   → Providers → activer tes sources de sous-titres        ║
 ${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
