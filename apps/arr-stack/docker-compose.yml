@@ -327,8 +327,10 @@ services:
     env_file: app.env
     volumes:
       - {{.BaseDir}}/app-config/arr-stack/bootstrap.sh:/bootstrap.sh:ro
+      - {{.BaseDir}}/app-data/arr-stack/config/bazarr:/bazarr-config
     networks:
       - arr-internal
+      - caleope-public
     depends_on:
       - prowlarr
       - radarr

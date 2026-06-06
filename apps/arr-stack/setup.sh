@@ -760,25 +760,38 @@ set_lang_fr "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → français"
 set_lang_fr "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → français"
 
 # Bazarr — créer un profil de sous-titres Français + Anglais
-# auth_method=none dans config.yaml → pas de clé API requise pour les appels internes.
+# L'API Bazarr expose uniquement GET /api/system/languages/profiles.
+# Pour créer un profil, on passe par POST /api/system/settings avec le
+# champ form-data "languages-profiles" (format JSON attendu par Bazarr).
+# La clé API est lue depuis config.yaml (générée par Bazarr au 1er démarrage).
 BAZARR_URL="http://bazarr:6767"
-curl -sf -X POST "\$BAZARR_URL/api/bazarr/languagesprofiles" \
-    -H "Content-Type: application/json" \
-    -d '{"name":"Français + Anglais","cutoff":null,"items":[{"id":1,"language":"fr","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}]}' \
-    >/dev/null 2>&1 || true
-# Récupérer l'ID du profil créé
-BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/bazarr/languagesprofiles" 2>/dev/null \
-    | jq -r '.[] | select(.name == "Français + Anglais") | .profileid // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
-if [[ -n "\$BAZARR_PROFILE_ID" && "\$BAZARR_PROFILE_ID" != "null" ]]; then
-    curl -sf -X POST "\$BAZARR_URL/api/bazarr/series/all" \
-        -H "Content-Type: application/json" \
-        -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
-    curl -sf -X POST "\$BAZARR_URL/api/bazarr/movies/all" \
-        -H "Content-Type: application/json" \
-        -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
-    echo "  ✓ Bazarr → profil sous-titres Français + Anglais"
+# Lire la clé API depuis config.yaml : "auth:\n  apikey: <key>"
+BAZARR_REAL_KEY=\$(awk '/^auth:/{in_a=1} in_a && /apikey:/{gsub(/.*apikey: */,""); print; exit}' \
+    /bazarr-config/config/config.yaml 2>/dev/null | tr -d ' \r') || BAZARR_REAL_KEY=""
+
+BAZARR_PROFILE_ID=""
+if [[ -n "\$BAZARR_REAL_KEY" ]]; then
+    _BAZARR_PROFILE='[{"profileId":1,"name":"Français + Anglais","cutoff":null,"items":[{"id":1,"language":"fr","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}],"mustContain":[],"mustNotContain":[],"originalFormat":0,"tag":null}]'
+    curl -sf -X POST "\$BAZARR_URL/api/system/settings" \
+        -H "X-API-KEY: \$BAZARR_REAL_KEY" \
+        -F 'enabled-languages=["fr","en"]' \
+        -F "languages-profiles=\$_BAZARR_PROFILE" >/dev/null 2>&1 || true
+
+    BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/system/languages/profiles" \
+        -H "X-API-KEY: \$BAZARR_REAL_KEY" 2>/dev/null \
+        | jq -r '.[] | select(.name == "Français + Anglais") | .profileId // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
+
+    if [[ -n "\$BAZARR_PROFILE_ID" ]]; then
+        curl -sf -X POST "\$BAZARR_URL/api/series" -H "X-API-KEY: \$BAZARR_REAL_KEY" \
+            -G --data-urlencode "profileid=\$BAZARR_PROFILE_ID" >/dev/null 2>&1 || true
+        curl -sf -X POST "\$BAZARR_URL/api/movies" -H "X-API-KEY: \$BAZARR_REAL_KEY" \
+            -G --data-urlencode "profileid=\$BAZARR_PROFILE_ID" >/dev/null 2>&1 || true
+        echo "  ✓ Bazarr → profil sous-titres Français + Anglais"
+    else
+        echo "  ⚠ Bazarr : profil créé mais ID non confirmé (vérifier dans l'UI)"
+    fi
 else
-    echo "  ⚠ Bazarr : profil de langue non créé (configuration manuelle)"
+    echo "  ⚠ Bazarr : clé API non trouvée dans config.yaml — configuration manuelle"
 fi
 
 echo ""
@@ -786,6 +799,8 @@ echo "── [5/6] Jellyfin — configuration des bibliothèques..."
 
 if [[ -z "\$JF_URL" ]]; then
     echo "  ⚠ Pas d'URL Jellyfin — étape ignorée"
+elif [[ "${JELLYFIN_EMBEDDED}" != "true" ]]; then
+    echo "  ℹ Jellyfin externe — bibliothèques déjà configurées, étape ignorée"
 else
     wait_url "Jellyfin" "\$JF_URL/health" || wait_url "Jellyfin" "\$JF_URL"
 
