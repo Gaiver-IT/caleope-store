@@ -80,7 +80,6 @@ API_RADARR=$(openssl rand -hex 16)
 API_SONARR=$(openssl rand -hex 16)
 API_LIDARR=$(openssl rand -hex 16)
 API_SABNZBD=$(openssl rand -hex 16)
-QBT_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
 BAZARR_API_KEY=$(openssl rand -hex 16)
 
 # ── Détection mode interactif ─────────────────────────────────────────
@@ -357,7 +356,6 @@ ARR_API_RADARR=${API_RADARR}
 ARR_API_SONARR=${API_SONARR}
 ARR_API_LIDARR=${API_LIDARR}
 ARR_API_SABNZBD=${API_SABNZBD}
-ARR_QBT_PASSWORD=${QBT_PASSWORD}
 ARR_QBT_HOST=${QBT_HOST}
 
 # Profils Docker Compose actifs
@@ -1111,7 +1109,7 @@ ${VPN_LINE}
 ${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
-║  qBittorrent password : ${QBT_PASSWORD}                              ║
+║  qBittorrent : accès sans mot de passe (auth réseau local)           ║
 ╚════════════════════════════════════════════════════════════════════════╝
 EOF
 
