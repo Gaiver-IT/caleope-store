@@ -81,6 +81,7 @@ API_SONARR=$(openssl rand -hex 16)
 API_LIDARR=$(openssl rand -hex 16)
 API_SABNZBD=$(openssl rand -hex 16)
 QBT_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
+BAZARR_API_KEY=$(openssl rand -hex 16)
 
 # ── Détection mode interactif ─────────────────────────────────────────
 # Sans terminal (binaire non mis à jour), on applique les valeurs par défaut.
@@ -131,9 +132,16 @@ elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
     if [[ "${INTERACTIVE}" == "true" ]]; then
         read -rp "  Utiliser ce Jellyfin existant ? [O/n] : " _JF_REUSE || _JF_REUSE="O"
     else
-        # En non-interactif : un container jellyfin orphelin d'un ancien install
-        # ne doit pas bloquer l'embarquement — on réembedde systématiquement.
-        _JF_REUSE="n"
+        # En non-interactif : si Jellyfin est géré par Caleope (app installée séparément),
+        # on le réutilise comme externe plutôt que de le détruire.
+        # Si c'est un orphelin (pas dans le runtime Caleope), on le remplace.
+        if [[ -f "${CALEOPE_BASE_DIR}/runtime/apps/jellyfin.json" ]]; then
+            _JF_REUSE="O"
+            echo "  ℹ Jellyfin géré par Caleope détecté → réutilisé comme instance externe"
+        else
+            _JF_REUSE="n"
+            echo "  ℹ Container jellyfin orphelin → remplacement par la stack"
+        fi
     fi
     if [[ "${_JF_REUSE,,}" == "n" || "${_JF_REUSE,,}" == "non" ]]; then
         # Supprimer le container orphelin pour éviter un conflit de nom
@@ -363,8 +371,25 @@ ARR_VPN_WG_ADDRESSES=${VPN_WG_ADDRESSES}
 ARR_VPN_OPENVPN_USER=${VPN_OPENVPN_USER}
 ARR_VPN_OPENVPN_PASSWORD=${VPN_OPENVPN_PASSWORD}
 ARR_VPN_SERVER_COUNTRIES=${VPN_SERVER_COUNTRIES}
+
+# Clé API Bazarr — pré-générée avant le démarrage du container pour que
+# le bootstrap puisse l'utiliser via la variable d'environnement.
+# Bazarr la lit depuis config/config.yaml (pré-écrit par setup.sh ci-dessous).
+BAZARR_API_KEY=${BAZARR_API_KEY}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
+
+# ── Bazarr — pré-écrire la clé API dans config.yaml ──────────────────
+# Bazarr génère sa clé API dans config/config.yaml au premier démarrage.
+# On la pré-écrit avec une valeur connue pour que le bootstrap puisse
+# l'utiliser via BAZARR_API_KEY (passé en env via secrets.env).
+BAZARR_CONFIG_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/bazarr/config"
+mkdir -p "${BAZARR_CONFIG_DIR}"
+cat > "${BAZARR_CONFIG_DIR}/config.yaml" <<BAZARRYAML
+general:
+  apikey: ${BAZARR_API_KEY}
+BAZARRYAML
+echo "  ✓ Bazarr API key pré-configurée"
 
 # ── config.xml *arr ───────────────────────────────────────────────────
 write_arr_config() {
@@ -727,21 +752,27 @@ set_lang_fr "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → français"
 set_lang_fr "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → français"
 
 # Bazarr — créer un profil de sous-titres Français + Anglais
+# La clé API Bazarr est pré-générée par setup.sh et disponible via BAZARR_API_KEY (secrets.env env_file).
 BAZARR_URL="http://bazarr:6767"
+BAZARR_HDR="X-API-KEY: \${BAZARR_API_KEY}"
 curl -sf -X POST "\$BAZARR_URL/api/bazarr/languagesprofiles" \
     -H "Content-Type: application/json" \
+    -H "\$BAZARR_HDR" \
     -d '{"name":"Français + Anglais","cutoff":null,"items":[{"id":1,"language":"fr","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}]}' \
     >/dev/null 2>&1 || true
 # Récupérer l'ID du profil créé
-BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/bazarr/languagesprofiles" 2>/dev/null \
+BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/bazarr/languagesprofiles" \
+    -H "\$BAZARR_HDR" 2>/dev/null \
     | jq -r '.[] | select(.name == "Français + Anglais") | .profileid // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
 if [[ -n "\$BAZARR_PROFILE_ID" && "\$BAZARR_PROFILE_ID" != "null" ]]; then
     # Appliquer à toutes les séries et films existants (et futurs via défaut)
     curl -sf -X POST "\$BAZARR_URL/api/bazarr/series/all" \
         -H "Content-Type: application/json" \
+        -H "\$BAZARR_HDR" \
         -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
     curl -sf -X POST "\$BAZARR_URL/api/bazarr/movies/all" \
         -H "Content-Type: application/json" \
+        -H "\$BAZARR_HDR" \
         -d "{\"profileid\": \$BAZARR_PROFILE_ID}" >/dev/null 2>&1 || true
     echo "  ✓ Bazarr → profil sous-titres Français + Anglais"
 else
