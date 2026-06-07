@@ -18,6 +18,24 @@
     "when": "JELLYFIN_MODE=external"
   },
   {
+    "id": "JELLYFIN_EXT_USER",
+    "label": "Utilisateur admin Jellyfin",
+    "description": "Compte admin Jellyfin — requis pour auto-configurer Jellyseerr",
+    "type": "string",
+    "required": false,
+    "default": "admin",
+    "when": "JELLYFIN_MODE=external"
+  },
+  {
+    "id": "JELLYFIN_EXT_PASSWORD",
+    "label": "Mot de passe admin Jellyfin",
+    "description": "Mot de passe admin Jellyfin — requis pour auto-configurer Jellyseerr",
+    "type": "secret",
+    "required": false,
+    "default": "",
+    "when": "JELLYFIN_MODE=external"
+  },
+  {
     "id": "VPN_ENABLED",
     "label": "Activer le VPN pour qBittorrent",
     "description": "Isole le trafic torrent derrière Gluetun (ProtonVPN, Mullvad, NordVPN…)",

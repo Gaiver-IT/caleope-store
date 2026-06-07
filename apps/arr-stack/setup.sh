@@ -117,6 +117,8 @@ if [[ -n "${_JELLYFIN_MODE}" ]]; then
     elif [[ "${_JELLYFIN_MODE}" == "external" ]]; then
         JELLYFIN_EMBEDDED=false
         JELLYFIN_INT_URL="${_JELLYFIN_EXT_URL}"
+        JELLYFIN_USER="${CALEOPE_PARAM_JELLYFIN_EXT_USER:-admin}"
+        JELLYFIN_PASSWORD="${CALEOPE_PARAM_JELLYFIN_EXT_PASSWORD:-}"
         echo "  ✓ Jellyfin externe : ${JELLYFIN_INT_URL} (mode API)"
     else
         # none ou toute autre valeur → pas de Jellyfin
@@ -136,6 +138,15 @@ elif [[ -f "${CALEOPE_BASE_DIR}/runtime/apps/jellyfin.json" ]]; then
     if [[ "${INTERACTIVE}" == "true" ]]; then
         read -rp "  URL interne Jellyfin si différente [${JELLYFIN_INT_URL}] : " _JF_URL_OVERRIDE || _JF_URL_OVERRIDE=""
         [[ -n "${_JF_URL_OVERRIDE}" ]] && JELLYFIN_INT_URL="${_JF_URL_OVERRIDE}"
+        echo "  → Identifiants Jellyfin pour auto-configurer Jellyseerr (laisser vide = config manuelle)"
+        read -rp "  Utilisateur admin Jellyfin [admin] : " _JF_USER_IN || _JF_USER_IN=""
+        [[ -n "${_JF_USER_IN}" ]] && JELLYFIN_USER="${_JF_USER_IN}"
+        read -rsp "  Mot de passe admin Jellyfin : " JELLYFIN_PASSWORD || JELLYFIN_PASSWORD=""
+        echo ""
+    else
+        # Non-interactif : lire depuis les params si disponibles
+        JELLYFIN_USER="${CALEOPE_PARAM_JELLYFIN_EXT_USER:-admin}"
+        JELLYFIN_PASSWORD="${CALEOPE_PARAM_JELLYFIN_EXT_PASSWORD:-}"
     fi
 elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
     # Jellyfin en cours mais pas géré par Caleope (orphelin ou autre install)
@@ -988,13 +999,30 @@ JS_INIT=\$(curl -sf "\${JS_URL}/api/v1/settings/public" 2>/dev/null \
 
 if [[ "\${JS_INIT}" == "true" ]]; then
     echo "  ℹ Jellyseerr déjà initialisé — ignoré"
-elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
-    # Connexion Jellyseerr via le compte Jellyfin admin créé à l'install
+elif [[ -n "${JELLYFIN_PASSWORD}" ]]; then
+    # Connexion Jellyseerr → Jellyfin (embedded ou externe avec credentials fournis)
     # serverType:2 = MediaServerType.JELLYFIN (requis depuis Jellyseerr 2.x)
+    # Extraire hostname et port depuis JELLYFIN_INT_URL (ex: http://jellyfin:8096)
+    _JS_JF_HOST=\$(python3 -c "
+import sys
+url = '${JELLYFIN_INT_URL}' or 'http://jellyfin:8096'
+url = url.replace('http://','').replace('https://','').split('/')[0]
+print(url.split(':')[0])
+" 2>/dev/null || echo "jellyfin")
+    _JS_JF_PORT=\$(python3 -c "
+import sys
+url = '${JELLYFIN_INT_URL}' or 'http://jellyfin:8096'
+url = url.replace('http://','').replace('https://','').split('/')[0]
+parts = url.split(':')
+print(parts[1] if len(parts) > 1 else '8096')
+" 2>/dev/null || echo "8096")
+    _JS_JF_SSL="false"
+    [[ "${JELLYFIN_INT_URL}" == https* ]] && _JS_JF_SSL="true"
+
     curl -sf -X POST "\${JS_URL}/api/v1/auth/jellyfin" \
         -H "Content-Type: application/json" \
         -c /tmp/js.cookies -b /tmp/js.cookies \
-        -d '{"hostname":"jellyfin","port":8096,"useSsl":false,"urlBase":"","serverType":2,"username":"${JELLYFIN_USER}","password":"${JELLYFIN_PASSWORD}"}' \
+        -d "{\"hostname\":\"\${_JS_JF_HOST}\",\"port\":\${_JS_JF_PORT},\"useSsl\":\${_JS_JF_SSL},\"urlBase\":\"\",\"serverType\":2,\"username\":\"${JELLYFIN_USER}\",\"password\":\"${JELLYFIN_PASSWORD}\"}" \
         >/dev/null 2>&1 || true
 
     # Marquer Jellyseerr comme initialisé (évite "validation failed" au premier accès)
@@ -1077,8 +1105,11 @@ elif [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
         echo "    URL Jellyfin à entrer : http://jellyfin:8096"
     fi
 else
-    echo "  ℹ Jellyfin externe — configure Jellyseerr manuellement"
-    echo "    URL Jellyfin à entrer dans le wizard : ${JELLYFIN_INT_URL:-http://<ip-jellyfin>:8096}"
+    echo "  ℹ Jellyfin non configuré ou credentials non fournis"
+    echo "    Configure Jellyseerr manuellement : https://jellyseerr.${CALEOPE_DOMAIN}"
+    if [[ -n "${JELLYFIN_INT_URL}" ]]; then
+        echo "    URL Jellyfin : ${JELLYFIN_INT_URL}"
+    fi
 fi
 
 echo ""
@@ -1115,14 +1146,14 @@ else
     VPN_LINE="║  🔓 VPN : désactivé                                                  ║"
 fi
 
-# Item "Jellyseerr → configurer" affiché seulement si Jellyfin est externe
-# (si Jellyfin est embarqué, le bootstrap l'auto-configure)
-if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
+# Item "Jellyseerr → configurer" : affiché si Jellyfin externe SANS credentials
+# (avec credentials, le bootstrap auto-configure Jellyseerr même pour externe)
+if [[ "${JELLYFIN_EMBEDDED}" == "true" || -n "${JELLYFIN_PASSWORD}" ]]; then
     JS_TODO=""
     _NEXT_STEP=3
 else
     _NEXT_STEP=4
-    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin existant               ║"
+    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin (${JELLYFIN_INT_URL:-URL:8096})               ║"
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
