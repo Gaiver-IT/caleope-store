@@ -10,6 +10,11 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 echo "→ Préparation de Jellyfin..."
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}/"{config,cache,media}
 
+# Pré-créer les répertoires médias arr-stack (montés en :ro dans le compose).
+# Si arr-stack n'est pas encore installé, ces dossiers seront vides mais présents.
+# Quand arr-stack s'installe, il y dépose Films/Séries/Musique téléchargés.
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack/data/media/"{movies,tv,music}
+
 # ── Credentials admin ─────────────────────────────────────────────────
 # Si un secrets.env existe déjà (réinstall), on conserve les mêmes credentials
 # pour ne pas casser les apps qui s'y connectent (arr-stack, Jellyseerr…).
@@ -157,6 +162,55 @@ curl -sf -X POST "\${JF_URL}/Startup/RemoteAccess" \
 
 # Étape 4 : Finalisation wizard
 curl -sf -X POST "\${JF_URL}/Startup/Complete" >/dev/null 2>&1 || true
+echo "  ✓ Wizard complété"
+
+# ── Création des bibliothèques par défaut ─────────────────────────────
+# Après Startup/Complete, on s'authentifie pour créer les bibliothèques.
+# Paths : /arr-media/* = app-data/arr-stack/data/media/* (monté en :ro)
+#         Ces paths sont ceux qu'arr-stack utilise pour Radarr/Sonarr/Lidarr.
+echo ""
+echo "→ Création des bibliothèques par défaut..."
+
+# Attendre que Jellyfin recharge après wizard (peut redémarrer en interne)
+sleep 5
+
+JF_TOKEN=""
+for _auth_try in \$(seq 1 10); do
+    JF_AUTH=\$(curl -sf -X POST "\${JF_URL}/Users/AuthenticateByName" \
+        -H "Content-Type: application/json" \
+        -H 'X-Emby-Authorization: MediaBrowser Client="Bootstrap", Device="Bootstrap", DeviceId="jf-bootstrap-1", Version="1.0.0"' \
+        -d '{"Username":"${JELLYFIN_USER}","Pw":"${JELLYFIN_PASSWORD}"}' 2>/dev/null) || JF_AUTH=""
+    JF_TOKEN=\$(echo "\$JF_AUTH" | grep -o '"AccessToken":"[^"]*"' | head -1 | cut -d'"' -f4) || JF_TOKEN=""
+    [[ -n "\$JF_TOKEN" ]] && break
+    sleep 3
+done
+
+if [[ -n "\$JF_TOKEN" ]]; then
+    add_jf_lib() {
+        local name=\$1 type=\$2 path=\$3
+        local encoded_name=\$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "\$name" 2>/dev/null || echo "\$name")
+        # Idempotence : vérifier si la biblio existe déjà
+        local existing=\$(curl -sf "\${JF_URL}/Library/VirtualFolders" \
+            -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join(x['Name'] for x in d))" 2>/dev/null) || existing=""
+        if echo "\$existing" | grep -q "\$name"; then
+            echo "  ℹ Bibliothèque '\$name' déjà présente"
+            return 0
+        fi
+        curl -sf -X POST "\${JF_URL}/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths=\${path}&refreshLibrary=false" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
+            -d '{"libraryOptions":{}}' >/dev/null 2>&1 || true
+        echo "  ✓ Bibliothèque '\$name' → \$path"
+    }
+    # Bibliothèques pointant sur les répertoires arr-stack (partagés avec Radarr/Sonarr/Lidarr)
+    add_jf_lib "Films"   "movies"  "/arr-media/movies"
+    add_jf_lib "Séries"  "tvshows" "/arr-media/tv"
+    add_jf_lib "Musique" "music"   "/arr-media/music"
+    echo "  ✓ Bibliothèques créées (liées à app-data/arr-stack/data/media/)"
+else
+    echo "  ⚠ Auth Jellyfin échouée — bibliothèques à créer manuellement"
+fi
 
 echo ""
 echo "╔════════════════════════════════════════════════╗"
