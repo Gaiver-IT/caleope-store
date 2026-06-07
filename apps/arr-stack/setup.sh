@@ -137,18 +137,32 @@ elif [[ -f "${CALEOPE_BASE_DIR}/runtime/apps/jellyfin.json" ]]; then
     _JELLYFIN_CALEOPE_MANAGED=true
     JELLYFIN_INT_URL="http://jellyfin:8096"
     echo "  ✓ Jellyfin existant réutilisé comme instance externe : ${JELLYFIN_INT_URL}"
-    if [[ "${INTERACTIVE}" == "true" ]]; then
+    # Priorité 1 : lire les credentials depuis le secrets.env de l'app Jellyfin Caleope
+    # (générés automatiquement par son setup.sh — zero interaction nécessaire)
+    _JF_SECRETS="${CALEOPE_BASE_DIR}/app-config/jellyfin/secrets.env"
+    if [[ -f "${_JF_SECRETS}" ]]; then
+        _JF_U=$(grep "^JELLYFIN_USER=" "${_JF_SECRETS}" 2>/dev/null | cut -d= -f2- | tr -d '"') || _JF_U=""
+        _JF_P=$(grep "^JELLYFIN_PASSWORD=" "${_JF_SECRETS}" 2>/dev/null | cut -d= -f2- | tr -d '"') || _JF_P=""
+        [[ -n "${_JF_U}" ]] && JELLYFIN_USER="${_JF_U}"
+        [[ -n "${_JF_P}" ]] && JELLYFIN_PASSWORD="${_JF_P}"
+        if [[ -n "${JELLYFIN_PASSWORD}" ]]; then
+            echo "  ✓ Credentials Jellyfin lus depuis app-config/jellyfin/secrets.env → Jellyseerr sera auto-configuré"
+        fi
+    fi
+    # Priorité 2 : params Caleope (si pas de secrets.env)
+    if [[ -z "${JELLYFIN_PASSWORD}" ]]; then
+        JELLYFIN_USER="${CALEOPE_PARAM_JELLYFIN_EXT_USER:-${JELLYFIN_USER}}"
+        JELLYFIN_PASSWORD="${CALEOPE_PARAM_JELLYFIN_EXT_PASSWORD:-}"
+    fi
+    # Priorité 3 : prompt interactif (fallback si vraiment rien)
+    if [[ -z "${JELLYFIN_PASSWORD}" && "${INTERACTIVE}" == "true" ]]; then
+        echo "  → Identifiants Jellyfin pour auto-configurer Jellyseerr (laisser vide = config manuelle)"
         read -rp "  URL interne Jellyfin si différente [${JELLYFIN_INT_URL}] : " _JF_URL_OVERRIDE || _JF_URL_OVERRIDE=""
         [[ -n "${_JF_URL_OVERRIDE}" ]] && JELLYFIN_INT_URL="${_JF_URL_OVERRIDE}"
-        echo "  → Identifiants Jellyfin pour auto-configurer Jellyseerr (laisser vide = config manuelle)"
         read -rp "  Utilisateur admin Jellyfin [admin] : " _JF_USER_IN || _JF_USER_IN=""
         [[ -n "${_JF_USER_IN}" ]] && JELLYFIN_USER="${_JF_USER_IN}"
         read -rsp "  Mot de passe admin Jellyfin : " JELLYFIN_PASSWORD || JELLYFIN_PASSWORD=""
         echo ""
-    else
-        # Non-interactif : lire depuis les params si disponibles
-        JELLYFIN_USER="${CALEOPE_PARAM_JELLYFIN_EXT_USER:-admin}"
-        JELLYFIN_PASSWORD="${CALEOPE_PARAM_JELLYFIN_EXT_PASSWORD:-}"
     fi
 elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jellyfin$'; then
     # Jellyfin en cours mais pas géré par Caleope (orphelin ou autre install)

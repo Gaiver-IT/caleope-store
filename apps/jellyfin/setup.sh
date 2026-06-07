@@ -1,11 +1,158 @@
 #!/bin/bash
 set -euo pipefail
+trap 'echo "❌ setup.sh jellyfin : erreur ligne ${LINENO} — ${BASH_COMMAND}" >&2' ERR
+
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/jellyfin"
+DATA_DIR="${CALEOPE_BASE_DIR}/app-data/jellyfin"
+JF_CFG="${DATA_DIR}/config"
+_SECRETS="${CONFIG_DIR}/secrets.env"
+
 echo "→ Préparation de Jellyfin..."
+mkdir -p "${CONFIG_DIR}" "${DATA_DIR}/"{config,cache,media}
 
-mkdir -p "${CALEOPE_BASE_DIR}/app-data/jellyfin/"{config,cache,media}
-mkdir -p "${CALEOPE_BASE_DIR}/app-config/jellyfin"
+# ── Credentials admin ─────────────────────────────────────────────────
+# Si un secrets.env existe déjà (réinstall), on conserve les mêmes credentials
+# pour ne pas casser les apps qui s'y connectent (arr-stack, Jellyseerr…).
+JELLYFIN_USER="admin"
+JELLYFIN_PASSWORD=""
+if [[ -f "${_SECRETS}" ]]; then
+    _PREV_USER=$(grep "^JELLYFIN_USER=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- | tr -d '"') || _PREV_USER=""
+    _PREV_PASS=$(grep "^JELLYFIN_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- | tr -d '"') || _PREV_PASS=""
+    [[ -n "${_PREV_USER}" ]] && JELLYFIN_USER="${_PREV_USER}"
+    [[ -n "${_PREV_PASS}" ]] && JELLYFIN_PASSWORD="${_PREV_PASS}"
+    echo "  ✓ Credentials existants conservés (réinstall)"
+fi
+[[ -z "${JELLYFIN_PASSWORD}" ]] && \
+    JELLYFIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
+# Sauvegarder les credentials : lisibles par les autres apps Caleope (arr-stack…)
+cat > "${_SECRETS}" <<SECEOF
+JELLYFIN_USER=${JELLYFIN_USER}
+JELLYFIN_PASSWORD=${JELLYFIN_PASSWORD}
+SECEOF
+chmod 600 "${_SECRETS}"
+echo "  ✓ Credentials sauvegardés dans app-config/jellyfin/secrets.env"
+echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
+
+# ── Nettoyage wizard (réinstall) ─────────────────────────────────────
+# Même logique que arr-stack/setup.sh pour le Jellyfin embarqué
+if [[ -f "${JF_CFG}/data/jellyfin.db" || -d "${JF_CFG}/root" ]]; then
+    echo "→ Nettoyage configuration Jellyfin précédente..."
+    docker run --rm -v "${JF_CFG}:/jf" alpine:3.19 \
+        sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
+        >/dev/null 2>&1 || true
+    echo "  ✓ Données Jellyfin précédentes supprimées"
+fi
+if [[ -f "${JF_CFG}/config/system.xml" ]]; then
+    docker run --rm -v "${JF_CFG}:/jf" alpine:3.19 \
+        sh -c "sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; true" \
+        >/dev/null 2>&1 || true
+    echo "  ✓ Flag wizard Jellyfin réinitialisé"
+fi
+
+# ── Pré-configuration ────────────────────────────────────────────────
+mkdir -p "${JF_CFG}/config"
+chmod 777 "${DATA_DIR}/config" "${DATA_DIR}/cache"
+
+# network.xml : désactiver HTTPS interne (géré par Traefik)
+if [[ ! -f "${JF_CFG}/config/network.xml" ]]; then
+    cat > "${JF_CFG}/config/network.xml" <<NETXML
+<?xml version="1.0" encoding="utf-8"?>
+<NetworkConfiguration>
+  <BaseUrl></BaseUrl>
+  <EnableHttps>false</EnableHttps>
+  <RequireHttps>false</RequireHttps>
+  <EnableRemoteAccess>true</EnableRemoteAccess>
+</NetworkConfiguration>
+NETXML
+fi
+
+# ── Bootstrap script ─────────────────────────────────────────────────
+# Ce script tourne dans un container Alpine au 1er démarrage.
+# Il complète le wizard Jellyfin via l'API /Startup/* (10.11+).
+cat > "${CONFIG_DIR}/bootstrap.sh" <<BOOTSTRAP
+#!/bin/bash
+exec > /dev/stdout 2>&1
+
+JF_URL="http://jellyfin:8096"
+
+wait_url() {
+    local name=\$1 url=\$2 tries=0
+    echo "→ Attente \${name}..."
+    until curl -sf --connect-timeout 5 --max-time 10 -o /dev/null "\${url}" 2>/dev/null; do
+        sleep 5; tries=\$((tries+1))
+        [[ \$tries -ge 72 ]] && { echo "  ⚠ Timeout Jellyfin (6 min) — on continue"; return 0; }
+        [[ \$((tries%6)) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$((tries*5))s)..."
+    done
+    echo "  ✓ \${name} prêt"
+}
+
+echo "╔══════════════════════════════════════════╗"
+echo "║  Jellyfin — Bootstrap automatique        ║"
+echo "╚══════════════════════════════════════════╝"
+
+wait_url "Jellyfin" "\${JF_URL}/health"
+
+# Attendre que le wizard soit prêt (peut être en 503 quelques secondes)
+echo "→ Vérification état wizard..."
+JF_WIZARD_STATUS="000"
+for _i in \$(seq 1 24); do
+    JF_WIZARD_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" "\${JF_URL}/Startup/Configuration" 2>/dev/null) || JF_WIZARD_STATUS="000"
+    [[ "\${JF_WIZARD_STATUS}" != "503" && "\${JF_WIZARD_STATUS}" != "000" ]] && break
+    echo "  ⏳ Wizard pas encore prêt (HTTP \${JF_WIZARD_STATUS}) — attente 10s... (\${_i}/24)"
+    sleep 10
+done
+
+if [[ "\${JF_WIZARD_STATUS}" == "404" ]]; then
+    echo "  ℹ Wizard déjà complété — Jellyfin déjà configuré, rien à faire"
+    exit 0
+fi
+
+echo "→ Configuration automatique du wizard Jellyfin..."
+
+# Étape 1 : Nom serveur + langue
+curl -sf -X POST "\${JF_URL}/Startup/Configuration" \
+    -H "Content-Type: application/json" \
+    -d '{"ServerName":"Caleope","UICulture":"fr-FR","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
+    >/dev/null 2>&1 || true
+
+# Étape 2 : Créer le compte admin (retry — Jellyfin 10.11+ a besoin d'un délai)
+_jf_ok=false
+for _r in \$(seq 1 20); do
+    _sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/User" \
+        -H "Content-Type: application/json" \
+        -d '{"Name":"${JELLYFIN_USER}","Password":"${JELLYFIN_PASSWORD}"}' 2>/dev/null) || _sc="000"
+    [[ "\${_sc}" == "204" || "\${_sc}" == "200" ]] && { _jf_ok=true; break; }
+    sleep 3
+done
+if \${_jf_ok}; then
+    echo "  ✓ Compte admin '${JELLYFIN_USER}' créé"
+else
+    echo "  ⚠ Création compte échouée — le wizard devra être complété manuellement"
+fi
+
+# Étape 3 : Accès distant
+curl -sf -X POST "\${JF_URL}/Startup/RemoteAccess" \
+    -H "Content-Type: application/json" \
+    -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
+    >/dev/null 2>&1 || true
+
+# Étape 4 : Finalisation wizard
+curl -sf -X POST "\${JF_URL}/Startup/Complete" >/dev/null 2>&1 || true
+
+echo ""
+echo "╔════════════════════════════════════════════════╗"
+echo "║  ✅  Jellyfin configuré automatiquement !      ║"
+echo "║  Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}   ║"
+echo "╚════════════════════════════════════════════════╝"
+BOOTSTRAP
+chmod +x "${CONFIG_DIR}/bootstrap.sh"
+
+# Marquer le service bootstrap pour caleoped
+echo "jellyfin-bootstrap" > "${CONFIG_DIR}/.bootstrap_service"
+echo "  ✓ Bootstrap configuré"
+
+# ── Auto-enregistrement dans Authentik ──────────────────────────────
 authentik_register_app() {
     local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
     local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
@@ -25,7 +172,6 @@ authentik_register_app() {
     local HA="Authorization: Bearer ${TOKEN}"
     local HJ="Content-Type: application/json"
 
-    echo "  → Connexion à l'API Authentik (max 60s)..."
     local i=0
     until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
         i=$((i+1)); [ $i -lt 12 ] || { echo "  ⚠ Authentik non joignable"; return 1; }
@@ -93,9 +239,30 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     fi
 fi
 
-cat > "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env" << EOF
+cat > "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env" <<ENV
 CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}
-EOF
+ENV
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
 
-echo "✓ Jellyfin prêt"
+# ── post-install.txt ─────────────────────────────────────────────────
+cat > "${CONFIG_DIR}/post-install.txt" <<EOF
+╔══════════════════════════════════════════════════════════════╗
+║               Jellyfin — Accès et credentials               ║
+╠══════════════════════════════════════════════════════════════╣
+║  Interface : https://jellyfin.${CALEOPE_DOMAIN}             ║
+╠══════════════════════════════════════════════════════════════╣
+║  Compte admin    : ${JELLYFIN_USER}                         ║
+║  Mot de passe    : ${JELLYFIN_PASSWORD}                     ║
+║  (stocké dans app-config/jellyfin/secrets.env)              ║
+╠══════════════════════════════════════════════════════════════╣
+║  🤖 CONFIGURÉ AUTOMATIQUEMENT                               ║
+║  • Wizard de démarrage complété (compte admin créé)         ║
+║  • Langue française (métadonnées + interface)               ║
+╠══════════════════════════════════════════════════════════════╣
+║  À FAIRE :                                                  ║
+║  1. Ajouter tes bibliothèques médias dans Paramètres        ║
+║  2. Créer des comptes pour tes utilisateurs                 ║
+╚══════════════════════════════════════════════════════════════╝
+EOF
+
+echo "✓ Jellyfin prêt — démarrage en cours..."
