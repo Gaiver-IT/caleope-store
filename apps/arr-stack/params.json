@@ -1,5 +1,14 @@
 [
   {
+    "id": "LANGUAGE",
+    "label": "Langue préférée",
+    "description": "Langue de l'interface et des médias téléchargés (audio, sous-titres, métadonnées). Utilisée dans Radarr, Sonarr, Lidarr, Bazarr et Jellyfin.",
+    "type": "select",
+    "options": ["fr", "en", "de", "es", "it", "pt", "nl", "pl", "ja"],
+    "required": false,
+    "default": "fr"
+  },
+  {
     "id": "JELLYFIN_MODE",
     "label": "Mode Jellyfin",
     "description": "embedded = inclure Jellyfin dans la stack | external = utiliser un Jellyfin existant | none = sans Jellyfin",

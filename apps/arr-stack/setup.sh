@@ -85,6 +85,47 @@ API_LIDARR=$(openssl rand -hex 16)
 API_SABNZBD=$(openssl rand -hex 16)
 BAZARR_API_KEY=$(openssl rand -hex 16)
 
+# ── Langue préférée ───────────────────────────────────────────────────
+# Utilisée pour l'UI et les préférences de téléchargement (audio, sous-titres)
+# Codes : fr, en, de, es, it, pt, nl, pl, ja
+PREFERRED_LANGUAGE="${CALEOPE_PARAM_LANGUAGE:-fr}"
+
+# Mapping langue → noms utilisés par les APIs *arr
+lang_to_arr_name() {
+    case "$1" in
+        fr) echo "French" ;;
+        en) echo "English" ;;
+        de) echo "German" ;;
+        es) echo "Spanish" ;;
+        it) echo "Italian" ;;
+        pt) echo "Portuguese" ;;
+        nl) echo "Dutch" ;;
+        pl) echo "Polish" ;;
+        ja) echo "Japanese" ;;
+        *)  echo "French" ;;   # fallback
+    esac
+}
+PREFERRED_LANGUAGE_NAME=$(lang_to_arr_name "${PREFERRED_LANGUAGE}")
+
+# Mapping langue → code Jellyfin (culture)
+lang_to_jellyfin_culture() {
+    case "$1" in
+        fr) echo "fr-FR" ;;
+        en) echo "en-US" ;;
+        de) echo "de-DE" ;;
+        es) echo "es-ES" ;;
+        it) echo "it-IT" ;;
+        pt) echo "pt-PT" ;;
+        nl) echo "nl-NL" ;;
+        pl) echo "pl-PL" ;;
+        ja) echo "ja-JP" ;;
+        *)  echo "fr-FR" ;;
+    esac
+}
+PREFERRED_LANGUAGE_CULTURE=$(lang_to_jellyfin_culture "${PREFERRED_LANGUAGE}")
+
+echo "  → Langue préférée : ${PREFERRED_LANGUAGE} (${PREFERRED_LANGUAGE_NAME})"
+
 # ── Détection mode interactif ─────────────────────────────────────────
 # Sans terminal (binaire non mis à jour), on applique les valeurs par défaut.
 INTERACTIVE=false
@@ -852,42 +893,90 @@ api_post_v1 "\$L_URL" "${API_LIDARR}" "rootfolder"     "{\"name\":\"Music\",\"pa
 echo "  ✓ Lidarr configuré"
 
 echo ""
-echo "── [4/6] Langue française..."
+echo "── [4/6] Langue : ${PREFERRED_LANGUAGE_NAME}..."
 
-# set_lang_fr <url> <apikey> <apiversion>
-# Récupère l'ID de "French" dans l'API de l'app et met à jour l'UI language.
-set_lang_fr() {
+# PREFERRED_LANGUAGE = code ISO (fr, en, de…) interpolé depuis setup.sh
+# PREFERRED_LANGUAGE_NAME = nom *arr (French, English…)
+# PREFERRED_LANGUAGE_CULTURE = code Jellyfin (fr-FR, en-US…)
+
+# set_lang <url> <apikey> <apiversion>
+# Récupère l'ID de la langue préférée dans l'API de l'app et met à jour l'UI language.
+set_lang() {
     local url=\$1 key=\$2 ver=\$3
-    local fr_id
-    fr_id=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/language" 2>/dev/null \
-        | jq -r '.[] | select(.name == "French") | .id // empty' 2>/dev/null)
-    [[ -z "\$fr_id" || "\$fr_id" == "null" ]] && return 0
+    local lang_id
+    lang_id=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/language" 2>/dev/null \
+        | jq -r '.[] | select(.name == "${PREFERRED_LANGUAGE_NAME}") | .id // empty' 2>/dev/null)
+    [[ -z "\$lang_id" || "\$lang_id" == "null" ]] && return 0
     local ui_cfg
     ui_cfg=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/config/ui" 2>/dev/null)
     [[ -z "\$ui_cfg" ]] && return 0
-    echo "\$ui_cfg" | jq --argjson lang "\$fr_id" '.uiLanguage = \$lang' \
+    echo "\$ui_cfg" | jq --argjson lang "\$lang_id" '.uiLanguage = \$lang' \
     | curl -sf -X PUT "\$url/api/\$ver/config/ui" \
         -H "X-Api-Key: \$key" -H "Content-Type: application/json" \
         -d @- >/dev/null 2>&1 || true
+    # Configurer aussi la langue préférée dans les profils de qualité
+    local profiles
+    profiles=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/qualityprofile" 2>/dev/null) || profiles=""
+    if [[ -n "\$profiles" ]]; then
+        echo "\$profiles" | jq -r '.[].id' 2>/dev/null | while read pid; do
+            local profile
+            profile=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/qualityprofile/\$pid" 2>/dev/null)
+            [[ -z "\$profile" ]] && continue
+            # Mettre à jour language + ajouter Custom Format Audio si pas déjà fait
+            local updated
+            updated=\$(echo "\$profile" | jq --argjson lid "\$lang_id" --arg lname "${PREFERRED_LANGUAGE_NAME}" '
+                if has("language") then .language = {"id": \$lid, "name": \$lname} else . end' 2>/dev/null)
+            [[ -n "\$updated" ]] && curl -sf -X PUT "\$url/api/\$ver/qualityprofile/\$pid" \
+                -H "X-Api-Key: \$key" -H "Content-Type: application/json" \
+                -d "\$updated" >/dev/null 2>&1 || true
+        done
+    fi
+    # Custom Format préférence audio langue
+    local cf_name="Audio ${PREFERRED_LANGUAGE_NAME}"
+    local existing_cf
+    existing_cf=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/customformat" 2>/dev/null \
+        | jq -r --arg n "\$cf_name" '.[] | select(.name == \$n) | .id // empty' 2>/dev/null) || existing_cf=""
+    if [[ -z "\$existing_cf" ]]; then
+        local cf_resp
+        cf_resp=\$(curl -sf -X POST "\$url/api/\$ver/customformat" \
+            -H "X-Api-Key: \$key" -H "Content-Type: application/json" \
+            -d "{\"name\":\"\$cf_name\",\"includeCustomFormatWhenRenaming\":false,\"specifications\":[{\"name\":\"Langue\",\"implementation\":\"LanguageSpecification\",\"negate\":false,\"required\":false,\"fields\":[{\"name\":\"value\",\"value\":\$lang_id}]}]}" 2>/dev/null) || cf_resp=""
+        local cf_id
+        cf_id=\$(echo "\$cf_resp" | jq -r '.id // empty' 2>/dev/null) || cf_id=""
+        if [[ -n "\$cf_id" ]]; then
+            # Ajouter score +500 dans tous les profils
+            echo "\$profiles" | jq -r '.[].id' 2>/dev/null | while read pid; do
+                local p
+                p=\$(curl -sf -H "X-Api-Key: \$key" "\$url/api/\$ver/qualityprofile/\$pid" 2>/dev/null)
+                [[ -z "\$p" ]] && continue
+                local pu
+                pu=\$(echo "\$p" | jq --argjson cid "\$cf_id" --arg cn "\$cf_name" \
+                    'if (.formatItems | map(.format) | contains([\$cid])) then .
+                     else .formatItems += [{"format":\$cid,"name":\$cn,"score":500}] end' 2>/dev/null)
+                [[ -n "\$pu" ]] && curl -sf -X PUT "\$url/api/\$ver/qualityprofile/\$pid" \
+                    -H "X-Api-Key: \$key" -H "Content-Type: application/json" \
+                    -d "\$pu" >/dev/null 2>&1 || true
+            done
+        fi
+    fi
 }
 
-# Prowlarr : uiLanguage est une chaîne "fr", pas un entier comme Radarr/Sonarr/Lidarr.
-# L'endpoint /language n'existe pas dans Prowlarr v1 → set_lang_fr ne fait rien.
-# On gère Prowlarr séparément avec la valeur string directement.
+# Prowlarr : uiLanguage est une chaîne ISO ("fr", "en"…), pas un entier.
+# L'endpoint /language n'existe pas dans Prowlarr v1.
 _pw_ui=\$(curl -sf -H "X-Api-Key: ${API_PROWLARR}" "\$P_URL/api/v1/config/ui" 2>/dev/null) || _pw_ui=""
 if [[ -n "\$_pw_ui" ]]; then
-    echo "\$_pw_ui" | jq '.uiLanguage = "fr"' \
+    echo "\$_pw_ui" | jq --arg lang "${PREFERRED_LANGUAGE}" '.uiLanguage = \$lang' \
     | curl -sf -X PUT "\$P_URL/api/v1/config/ui" \
         -H "X-Api-Key: ${API_PROWLARR}" -H "Content-Type: application/json" \
         -d @- >/dev/null 2>&1 || true
-    echo "  ✓ Prowlarr → français"
+    echo "  ✓ Prowlarr → ${PREFERRED_LANGUAGE}"
 fi
 
-set_lang_fr "\$R_URL" "${API_RADARR}"   v3 && echo "  ✓ Radarr → français"
-set_lang_fr "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → français"
-set_lang_fr "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → français"
+set_lang "\$R_URL" "${API_RADARR}"   v3 && echo "  ✓ Radarr → ${PREFERRED_LANGUAGE_NAME}"
+set_lang "\$S_URL" "${API_SONARR}"   v3 && echo "  ✓ Sonarr → ${PREFERRED_LANGUAGE_NAME}"
+set_lang "\$L_URL" "${API_LIDARR}"   v1 && echo "  ✓ Lidarr → ${PREFERRED_LANGUAGE_NAME}"
 
-# Bazarr — créer un profil de sous-titres Français + Anglais
+# Bazarr — créer un profil de sous-titres Langue préférée + Anglais (ou juste la langue si en)
 # L'API Bazarr expose uniquement GET /api/system/languages/profiles.
 # Pour créer un profil, on passe par POST /api/system/settings avec le
 # champ form-data "languages-profiles" (format JSON attendu par Bazarr).
@@ -897,17 +986,28 @@ BAZARR_URL="http://bazarr:6767"
 BAZARR_REAL_KEY=\$(awk '/^auth:/{in_a=1} in_a && /apikey:/{gsub(/.*apikey: */,""); print; exit}' \
     /bazarr-config/config/config.yaml 2>/dev/null | tr -d ' \r') || BAZARR_REAL_KEY=""
 
+# Construire le profil Bazarr : langue principale + anglais en fallback (si pas déjà anglais)
+if [[ "${PREFERRED_LANGUAGE}" == "en" ]]; then
+    _BAZARR_PROFILE_NAME="English"
+    _BAZARR_ITEMS='[{"id":1,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}]'
+    _BAZARR_ENABLED_LANGS='["en"]'
+else
+    _BAZARR_PROFILE_NAME="${PREFERRED_LANGUAGE_NAME} + English"
+    _BAZARR_ITEMS='[{"id":1,"language":"${PREFERRED_LANGUAGE}","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}]'
+    _BAZARR_ENABLED_LANGS='["${PREFERRED_LANGUAGE}","en"]'
+fi
+_BAZARR_PROFILE="[{\"profileId\":1,\"name\":\"\${_BAZARR_PROFILE_NAME}\",\"cutoff\":null,\"items\":\${_BAZARR_ITEMS},\"mustContain\":[],\"mustNotContain\":[],\"originalFormat\":0,\"tag\":null}]"
+
 BAZARR_PROFILE_ID=""
 if [[ -n "\$BAZARR_REAL_KEY" ]]; then
-    _BAZARR_PROFILE='[{"profileId":1,"name":"Français + Anglais","cutoff":null,"items":[{"id":1,"language":"fr","hi":"False","forced":"False","audio_exclude":"False"},{"id":2,"language":"en","hi":"False","forced":"False","audio_exclude":"False"}],"mustContain":[],"mustNotContain":[],"originalFormat":0,"tag":null}]'
     curl -sf -X POST "\$BAZARR_URL/api/system/settings" \
         -H "X-API-KEY: \$BAZARR_REAL_KEY" \
-        -F 'enabled-languages=["fr","en"]' \
+        -F "enabled-languages=\${_BAZARR_ENABLED_LANGS}" \
         -F "languages-profiles=\$_BAZARR_PROFILE" >/dev/null 2>&1 || true
 
     BAZARR_PROFILE_ID=\$(curl -sf "\$BAZARR_URL/api/system/languages/profiles" \
         -H "X-API-KEY: \$BAZARR_REAL_KEY" 2>/dev/null \
-        | jq -r '.[] | select(.name == "Français + Anglais") | .profileId // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
+        | jq -r --arg n "\${_BAZARR_PROFILE_NAME}" '.[] | select(.name == \$n) | .profileId // empty' 2>/dev/null) || BAZARR_PROFILE_ID=""
 
     if [[ -n "\$BAZARR_PROFILE_ID" ]]; then
         curl -sf -X POST "\$BAZARR_URL/api/series" -H "X-API-KEY: \$BAZARR_REAL_KEY" \
