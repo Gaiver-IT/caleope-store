@@ -111,24 +111,42 @@ fi
 echo "→ Configuration automatique du wizard Jellyfin..."
 
 # Étape 1 : Nom serveur + langue
-curl -sf -X POST "\${JF_URL}/Startup/Configuration" \
+_cfg_sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/Configuration" \
     -H "Content-Type: application/json" \
     -d '{"ServerName":"Caleope","UICulture":"fr-FR","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
-    >/dev/null 2>&1 || true
+    2>/dev/null) || _cfg_sc="000"
+echo "  → POST /Startup/Configuration → HTTP \${_cfg_sc}"
 
-# Étape 2 : Créer le compte admin (retry — Jellyfin 10.11+ a besoin d'un délai)
+# Étape 2 : Attendre que le wizard avance à l'étape User
+# Jellyfin 10.11+ : après Configuration (204), l'endpoint /Startup/User peut
+# prendre du temps à devenir disponible (retourne 404 tant que le wizard n'a
+# pas avancé). On attend un GET 200 avant de POSTer.
+echo "  → Attente disponibilité étape User..."
+_user_ep_ok=false
+for _w in \$(seq 1 30); do
+    _user_get=\$(curl -s -o /dev/null -w "%{http_code}" "\${JF_URL}/Startup/User" 2>/dev/null) || _user_get="000"
+    if [[ "\${_user_get}" == "200" ]]; then
+        _user_ep_ok=true
+        break
+    fi
+    sleep 3
+done
+\${_user_ep_ok} || echo "  ⚠ Timeout attente étape User — tentative quand même"
+
+# Créer le compte admin
 _jf_ok=false
-for _r in \$(seq 1 20); do
+for _r in \$(seq 1 10); do
     _sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/User" \
         -H "Content-Type: application/json" \
         -d '{"Name":"${JELLYFIN_USER}","Password":"${JELLYFIN_PASSWORD}"}' 2>/dev/null) || _sc="000"
     [[ "\${_sc}" == "204" || "\${_sc}" == "200" ]] && { _jf_ok=true; break; }
+    echo "  ⏳ POST /Startup/User → HTTP \${_sc}, nouvel essai... (\${_r}/10)"
     sleep 3
 done
 if \${_jf_ok}; then
     echo "  ✓ Compte admin '${JELLYFIN_USER}' créé"
 else
-    echo "  ⚠ Création compte échouée — le wizard devra être complété manuellement"
+    echo "  ⚠ Création compte échouée (dernier HTTP: \${_sc}) — le wizard devra être complété manuellement"
 fi
 
 # Étape 3 : Accès distant
@@ -249,7 +267,7 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔══════════════════════════════════════════════════════════════╗
 ║               Jellyfin — Accès et credentials               ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Interface : https://jellyfin.${CALEOPE_DOMAIN}             ║
+║  Interface : https://${CALEOPE_DOMAIN}                      ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Compte admin    : ${JELLYFIN_USER}                         ║
 ║  Mot de passe    : ${JELLYFIN_PASSWORD}                     ║

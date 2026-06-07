@@ -887,15 +887,29 @@ else
             -H "Content-Type: application/json" \
             -d '{"ServerName":"Caleope","UICulture":"en-US","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
             >/dev/null 2>&1 || true
-        # IMPORTANT : le wizard Jellyfin 10.11+ a besoin d'un délai entre Configuration et User.
-        # Sans ce sleep, POST /Startup/User retourne 404 (wizard pas encore à l'étape user).
-        sleep 3
+        # IMPORTANT : Jellyfin 10.11+ — /Startup/User n'est disponible (GET 200)
+        # qu'APRÈS que /Startup/Configuration ait été traité. On attend le GET 200
+        # avant de POSTer plutôt qu'un sleep fixe (plus robuste selon la charge serveur).
+        _jf_user_ep=false
+        for _jf_w in \$(seq 1 30); do
+            _jf_get_sc=\$(curl -s -o /dev/null -w "%{http_code}" "\$JF_URL/Startup/User" 2>/dev/null) || _jf_get_sc="000"
+            [[ "\${_jf_get_sc}" == "200" ]] && { _jf_user_ep=true; break; }
+            sleep 3
+        done
+        \${_jf_user_ep} || echo "  ⚠ Timeout attente étape User — tentative quand même"
 
-        # Étape 2 : création du premier utilisateur admin
-        curl -sf -X POST "\$JF_URL/Startup/User" \
-            -H "Content-Type: application/json" \
-            -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" \
-            >/dev/null 2>&1 || true
+        # Étape 2 : création du premier utilisateur admin (avec retry si 404 transitoire)
+        _jf_user_ok=false
+        for _jf_retry in \$(seq 1 10); do
+            _jf_user_sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\$JF_URL/Startup/User" \
+                -H "Content-Type: application/json" \
+                -d "{\"Name\":\"${JELLYFIN_USER}\",\"Password\":\"${JELLYFIN_PASSWORD}\"}" 2>/dev/null) || _jf_user_sc="000"
+            if [[ "\${_jf_user_sc}" == "204" || "\${_jf_user_sc}" == "200" ]]; then
+                _jf_user_ok=true; break
+            fi
+            sleep 3
+        done
+        \${_jf_user_ok} || echo "  ⚠ POST /Startup/User n'a pas retourné 2xx (HTTP \${_jf_user_sc}) — l'utilisateur Jellyfin devra être créé manuellement"
 
         # Étape 3 : accès distant
         curl -sf -X POST "\$JF_URL/Startup/RemoteAccess" \
