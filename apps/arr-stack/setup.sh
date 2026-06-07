@@ -570,6 +570,70 @@ inet_exposure = 4
 SABCFG
 fi
 
+# ── Patch préventif Jellyseerr settings.json (Jellyfin Caleope-managed) ─────────
+# Jellyseerr 2.7.3+ lance une migration au démarrage qui tente de créer une clé
+# API Jellyfin. Elle échoue avec "Invalid URL {}" si jellyfin.ip est vide dans
+# settings.json — ce qui arrive après une réinstallation de arr-stack.
+# On patche ICI, avant docker compose up, pour que Jellyseerr démarre proprement.
+if [[ "${_JELLYFIN_CALEOPE_MANAGED}" == "true" ]]; then
+    _JS_SETTINGS="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyseerr/settings.json"
+    if [[ -f "${_JS_SETTINGS}" ]]; then
+        _JF_IP_IN_JS=$(python3 -c "
+import json
+try:
+    print(json.load(open('${_JS_SETTINGS}')).get('jellyfin',{}).get('ip',''))
+except: print('')
+" 2>/dev/null || echo "")
+        if [[ -z "${_JF_IP_IN_JS}" ]]; then
+            echo "→ Jellyseerr settings.json : jellyfin.ip vide — patch préventif..."
+            # serverId : endpoint public, sans auth
+            _JF_PUB=$(docker exec jellyfin wget -qO- "http://localhost:8096/System/Info/Public" 2>/dev/null) || _JF_PUB=""
+            _JF_SERVER_ID=$(echo "${_JF_PUB}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('Id',''))" 2>/dev/null || echo "")
+            _JF_SERVER_NAME=$(echo "${_JF_PUB}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ServerName','Caleope'))" 2>/dev/null || echo "Caleope")
+            # Token admin pour pré-remplir apiKey (la migration peut ensuite le remplacer)
+            _JF_AUTH_RESP=$(docker exec jellyfin wget -qO- \
+                --post-data "{\"Username\":\"${JELLYFIN_USER}\",\"Pw\":\"${JELLYFIN_PASSWORD}\"}" \
+                --header "Content-Type: application/json" \
+                --header 'X-Emby-Authorization: MediaBrowser Client=Caleope, Device=Setup, DeviceId=setup-patch, Version=1.0' \
+                "http://localhost:8096/Users/AuthenticateByName" 2>/dev/null) || _JF_AUTH_RESP=""
+            _JF_TOKEN=$(echo "${_JF_AUTH_RESP}" | python3 -c "
+import json,sys
+try: print(json.load(sys.stdin).get('AccessToken',''))
+except: print('')
+" 2>/dev/null || echo "")
+            if [[ -n "${_JF_TOKEN}" ]]; then
+                python3 - "${_JS_SETTINGS}" "${_JF_TOKEN}" "${_JF_SERVER_ID}" "${_JF_SERVER_NAME}" <<'PYEOF'
+import json, sys
+path, api_key, server_id, server_name = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    d = json.load(open(path))
+    if not isinstance(d.get('jellyfin'), dict):
+        d['jellyfin'] = {}
+    jf = d['jellyfin']
+    jf['ip'] = 'jellyfin'
+    jf['port'] = 8096
+    jf['useSsl'] = False
+    jf['name'] = server_name
+    if server_id:
+        jf['serverId'] = server_id
+    if api_key:
+        jf['apiKey'] = api_key
+    d['jellyfin'] = jf
+    json.dump(d, open(path, 'w'), indent=2)
+    print(f"  ✓ settings.json patché (ip=jellyfin serverId={server_id[:8] if server_id else '?'}...)")
+except Exception as e:
+    print(f"  ⚠ Patch échoué: {e}")
+PYEOF
+            else
+                echo "  ⚠ Token Jellyfin non obtenu → settings.json non patché"
+                echo "    Si Jellyseerr crashe au démarrage, relancer : caleope configure arr-stack"
+            fi
+        else
+            echo "  ℹ Jellyseerr settings.json OK (ip=${_JF_IP_IN_JS}) — skip"
+        fi
+    fi
+fi
+
 # ── Bootstrap script ──────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/bootstrap.sh" <<BOOTSTRAP
 #!/bin/bash
