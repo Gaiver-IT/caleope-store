@@ -328,6 +328,7 @@ services:
     volumes:
       - {{.BaseDir}}/app-config/arr-stack/bootstrap.sh:/bootstrap.sh:ro
       - {{.BaseDir}}/app-data/arr-stack/config/bazarr:/bazarr-config
+      - {{.BaseDir}}/app-data/arr-stack/config/jellyseerr:/jellyseerr-config
     networks:
       - arr-internal
       - caleope-public

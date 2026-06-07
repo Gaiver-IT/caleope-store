@@ -1024,6 +1024,21 @@ echo "── [6/6] Jellyseerr — configuration automatique..."
 JS_URL="http://jellyseerr:5055"
 wait_url "Jellyseerr" "\${JS_URL}/api/v1/settings/public"
 
+# Si Jellyfin est externe (Caleope-managed ou autre), l'attendre avant d'essayer
+# de connecter Jellyseerr — le container Jellyfin peut ne pas encore être démarré
+# lors du premier lancement d'arr-stack (timing d'install parallèle).
+if [[ -n "${JELLYFIN_INT_URL}" && "${JELLYFIN_EMBEDDED}" != "true" ]]; then
+    echo "→ Attente Jellyfin externe (${JELLYFIN_INT_URL})..."
+    _jf_up=false
+    for _jfw in \$(seq 1 24); do
+        _jf_code=\$(curl -sf -o /dev/null -w "%{http_code}" "${JELLYFIN_INT_URL}/health" 2>/dev/null) || _jf_code="000"
+        if [[ "\${_jf_code}" == "200" ]]; then _jf_up=true; break; fi
+        sleep 5
+        [[ \$(( _jfw % 6 )) -eq 0 ]] && echo "  ... Jellyfin pas encore prêt (\$((_jfw*5))s)..."
+    done
+    \${_jf_up} && echo "  ✓ Jellyfin prêt" || echo "  ⚠ Jellyfin timeout — tentative Jellyseerr quand même"
+fi
+
 JS_INIT=\$(curl -sf "\${JS_URL}/api/v1/settings/public" 2>/dev/null \
     | grep -o '"initialized":[^,}]*' | cut -d: -f2 | tr -d ' "') || JS_INIT="false"
 
@@ -1032,15 +1047,12 @@ if [[ "\${JS_INIT}" == "true" ]]; then
 elif [[ -n "${JELLYFIN_PASSWORD}" ]]; then
     # Connexion Jellyseerr → Jellyfin (embedded ou externe avec credentials fournis)
     # serverType:2 = MediaServerType.JELLYFIN (requis depuis Jellyseerr 2.x)
-    # Extraire hostname et port depuis JELLYFIN_INT_URL (ex: http://jellyfin:8096)
     _JS_JF_HOST=\$(python3 -c "
-import sys
 url = '${JELLYFIN_INT_URL}' or 'http://jellyfin:8096'
 url = url.replace('http://','').replace('https://','').split('/')[0]
 print(url.split(':')[0])
 " 2>/dev/null || echo "jellyfin")
     _JS_JF_PORT=\$(python3 -c "
-import sys
 url = '${JELLYFIN_INT_URL}' or 'http://jellyfin:8096'
 url = url.replace('http://','').replace('https://','').split('/')[0]
 parts = url.split(':')
@@ -1055,15 +1067,26 @@ print(parts[1] if len(parts) > 1 else '8096')
         -d "{\"hostname\":\"\${_JS_JF_HOST}\",\"port\":\${_JS_JF_PORT},\"useSsl\":\${_JS_JF_SSL},\"urlBase\":\"\",\"serverType\":2,\"username\":\"${JELLYFIN_USER}\",\"password\":\"${JELLYFIN_PASSWORD}\"}" \
         >/dev/null 2>&1 || true
 
-    # Marquer Jellyseerr comme initialisé (évite "validation failed" au premier accès)
+    # Marquer Jellyseerr comme initialisé
     curl -sf -X POST "\${JS_URL}/api/v1/settings/initialize" \
         -c /tmp/js.cookies -b /tmp/js.cookies \
         >/dev/null 2>&1 || true
 
-    # Récupérer l'API key Jellyseerr (disponible après login)
-    JS_KEY=\$(curl -sf "\${JS_URL}/api/v1/settings/main" \
-        -b /tmp/js.cookies 2>/dev/null \
-        | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
+    # Lire l'API key depuis settings.json (plus fiable que via cookie session)
+    # Le volume /jellyseerr-config est monté depuis app-data/arr-stack/config/jellyseerr
+    JS_KEY=\$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('/jellyseerr-config/settings.json'))
+    print(d.get('main',{}).get('apiKey',''))
+except: pass
+" 2>/dev/null) || JS_KEY=""
+    # Fallback : via cookie session si settings.json pas encore écrit
+    if [[ -z "\${JS_KEY}" ]]; then
+        JS_KEY=\$(curl -sf "\${JS_URL}/api/v1/settings/main" \
+            -b /tmp/js.cookies 2>/dev/null \
+            | grep -o '"apiKey":"[^"]*"' | head -1 | cut -d'"' -f4) || JS_KEY=""
+    fi
 
     if [[ -n "\${JS_KEY}" ]]; then
         # Activer les bibliothèques Jellyfin dans Jellyseerr.
