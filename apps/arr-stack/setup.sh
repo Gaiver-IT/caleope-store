@@ -35,11 +35,14 @@ for app in prowlarr radarr sonarr lidarr bazarr qbittorrent sabnzbd jellyseerr; 
 done
 
 # ── Nettoyage Jellyfin (si réinstallation) ────────────────────────────
-# Supprimer d'abord tout container jellyfin arrêté (stopped) : compose ne peut
-# pas démarrer un service si un container du même nom existe déjà en état exited.
-# docker stop est sans effet si déjà arrêté ; docker rm supprime l'entrée.
-docker stop jellyfin 2>/dev/null || true
-docker rm   jellyfin 2>/dev/null || true
+# Supprimer tout container jellyfin arrêté/exité : compose ne peut pas démarrer
+# un service si un container du même nom existe déjà en état exited.
+# IMPORTANT : ne faire ce nettoyage QUE si Jellyfin n'est PAS une app Caleope
+# séparée — sinon on tuerait le container standalone de l'utilisateur.
+if [[ ! -f "${CALEOPE_BASE_DIR}/runtime/apps/jellyfin.json" ]]; then
+    docker stop jellyfin 2>/dev/null || true
+    docker rm   jellyfin 2>/dev/null || true
+fi
 
 JELLYFIN_CFG="${CALEOPE_BASE_DIR}/app-data/arr-stack/config/jellyfin"
 mkdir -p "${JELLYFIN_CFG}"
