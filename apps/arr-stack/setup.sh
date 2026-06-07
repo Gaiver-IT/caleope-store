@@ -101,6 +101,7 @@ JELLYFIN_EMBEDDED=false
 JELLYFIN_INT_URL=""
 JELLYFIN_PASSWORD=""
 JELLYFIN_USER="admin"
+_JELLYFIN_CALEOPE_MANAGED=false
 
 # Lire le mode depuis CALEOPE_PARAM_JELLYFIN_MODE si fourni (API / mode non-interactif)
 _JELLYFIN_MODE="${CALEOPE_PARAM_JELLYFIN_MODE:-}"
@@ -133,6 +134,7 @@ elif [[ -f "${CALEOPE_BASE_DIR}/runtime/apps/jellyfin.json" ]]; then
     # exécute ce script peut ne pas avoir docker CLI dans son PATH.
     echo "  ℹ  Jellyfin géré par Caleope détecté (runtime/apps/jellyfin.json)"
     JELLYFIN_EMBEDDED=false
+    _JELLYFIN_CALEOPE_MANAGED=true
     JELLYFIN_INT_URL="http://jellyfin:8096"
     echo "  ✓ Jellyfin existant réutilisé comme instance externe : ${JELLYFIN_INT_URL}"
     if [[ "${INTERACTIVE}" == "true" ]]; then
@@ -1132,6 +1134,10 @@ chmod +x "${CONFIG_DIR}/bootstrap.sh"
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     JF_LINE="║  Jellyfin     : https://jellyfin.${CALEOPE_DOMAIN}                  ║"
     JF_CRED="║  Jellyfin admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}            ║"
+elif [[ "${_JELLYFIN_CALEOPE_MANAGED}" == "true" ]]; then
+    # Jellyfin géré par Caleope → afficher son URL publique, pas l'URL Docker interne
+    JF_LINE="║  Jellyfin     : https://jellyfin.${CALEOPE_DOMAIN}  (instance Caleope)║"
+    JF_CRED=""
 elif [[ -n "${JELLYFIN_INT_URL}" ]]; then
     JF_LINE="║  Jellyfin     : ${JELLYFIN_INT_URL} (externe)                        ║"
     JF_CRED=""
@@ -1151,9 +1157,12 @@ fi
 if [[ "${JELLYFIN_EMBEDDED}" == "true" || -n "${JELLYFIN_PASSWORD}" ]]; then
     JS_TODO=""
     _NEXT_STEP=3
+elif [[ "${_JELLYFIN_CALEOPE_MANAGED}" == "true" ]]; then
+    _NEXT_STEP=4
+    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin : https://jellyfin.${CALEOPE_DOMAIN}  ║"
 else
     _NEXT_STEP=4
-    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin (${JELLYFIN_INT_URL:-URL:8096})               ║"
+    JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin (${JELLYFIN_INT_URL:-ton-serveur:8096})    ║"
 fi
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
