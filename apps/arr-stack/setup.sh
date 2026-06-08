@@ -1210,7 +1210,69 @@ JS_INIT=\$(curl -sf "\${JS_URL}/api/v1/settings/public" 2>/dev/null \
     | grep -o '"initialized":[^,}]*' | cut -d: -f2 | tr -d ' "') || JS_INIT="false"
 
 if [[ "\${JS_INIT}" == "true" ]]; then
-    echo "  ℹ Jellyseerr déjà initialisé — ignoré"
+    echo "  ℹ Jellyseerr déjà initialisé — mise à jour des clés API Radarr/Sonarr..."
+    # Sur réinstallation les clés API changent mais Jellyseerr garde les anciennes → "Unable to get queue"
+    # → reconfigurer systématiquement avec PUT (update) ou POST (création si absent)
+    JS_KEY=\$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('/jellyseerr-config/settings.json'))
+    print(d.get('main',{}).get('apiKey',''))
+except: pass
+" 2>/dev/null) || JS_KEY=""
+
+    if [[ -n "\${JS_KEY}" ]]; then
+        _R_PROFILE=\$(curl -sf "http://radarr:7878/api/v3/qualityprofile?apikey=${API_RADARR}" 2>/dev/null \
+            | jq -r '.[] | select(.id == 1) | .name // empty' 2>/dev/null) || _R_PROFILE="Any"
+        [[ -z "\${_R_PROFILE}" ]] && _R_PROFILE="Any"
+        _S_PROFILE=\$(curl -sf "http://sonarr:8989/api/v3/qualityprofile?apikey=${API_SONARR}" 2>/dev/null \
+            | jq -r '.[] | select(.id == 1) | .name // empty' 2>/dev/null) || _S_PROFILE="Any"
+        [[ -z "\${_S_PROFILE}" ]] && _S_PROFILE="Any"
+
+        _JS_R_ID=\$(curl -sf "\${JS_URL}/api/v1/settings/radarr" -H "X-Api-Key: \${JS_KEY}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['id'] if d else '')" 2>/dev/null) || _JS_R_ID=""
+        _JS_R_BODY="{\"name\":\"Radarr\",\"hostname\":\"radarr\",\"port\":7878,\"apiKey\":\"${API_RADARR}\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeProfileName\":\"\${_R_PROFILE}\",\"activeDirectory\":\"/data/media/movies\",\"minimumAvailability\":\"released\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false}"
+        if [[ -n "\${_JS_R_ID}" ]]; then
+            curl -sf -X PUT "\${JS_URL}/api/v1/settings/radarr/\${_JS_R_ID}" \
+                -H "Content-Type: application/json" -H "X-Api-Key: \${JS_KEY}" -d "\${_JS_R_BODY}" >/dev/null 2>&1 || true
+        else
+            curl -sf -X POST "\${JS_URL}/api/v1/settings/radarr" \
+                -H "Content-Type: application/json" -H "X-Api-Key: \${JS_KEY}" -d "\${_JS_R_BODY}" >/dev/null 2>&1 || true
+        fi
+
+        _JS_S_ID=\$(curl -sf "\${JS_URL}/api/v1/settings/sonarr" -H "X-Api-Key: \${JS_KEY}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['id'] if d else '')" 2>/dev/null) || _JS_S_ID=""
+        _JS_S_BODY="{\"name\":\"Sonarr\",\"hostname\":\"sonarr\",\"port\":8989,\"apiKey\":\"${API_SONARR}\",\"useSsl\":false,\"baseUrl\":\"\",\"activeProfileId\":1,\"activeProfileName\":\"\${_S_PROFILE}\",\"activeAnimeProfileId\":1,\"activeAnimeProfileName\":\"\${_S_PROFILE}\",\"activeDirectory\":\"/data/media/tv\",\"activeAnimeDirectory\":\"/data/media/tv\",\"is4k\":false,\"isDefault\":true,\"syncEnabled\":true,\"preventSearch\":false,\"enableSeasonFolders\":true}"
+        if [[ -n "\${_JS_S_ID}" ]]; then
+            curl -sf -X PUT "\${JS_URL}/api/v1/settings/sonarr/\${_JS_S_ID}" \
+                -H "Content-Type: application/json" -H "X-Api-Key: \${JS_KEY}" -d "\${_JS_S_BODY}" >/dev/null 2>&1 || true
+        else
+            curl -sf -X POST "\${JS_URL}/api/v1/settings/sonarr" \
+                -H "Content-Type: application/json" -H "X-Api-Key: \${JS_KEY}" -d "\${_JS_S_BODY}" >/dev/null 2>&1 || true
+        fi
+
+        echo "  ✓ Radarr + Sonarr reconfigurés dans Jellyseerr (clés mises à jour)"
+
+        # Réactiver les bibliothèques Jellyfin si token disponible
+        if [[ -n "\$JF_TOKEN" ]]; then
+            _JS_REINIT_LIB_IDS=""
+            for _jlr in \$(seq 1 3); do
+                _JS_REINIT_LIB_IDS=\$(curl -sf "\$JF_URL/Library/MediaFolders" \
+                    -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null \
+                    | jq -r '.Items[] | select(.CollectionType == "movies" or .CollectionType == "tvshows" or .CollectionType == "music") | .Id' 2>/dev/null \
+                    | tr '\n' ',' | sed 's/,$//') || _JS_REINIT_LIB_IDS=""
+                [[ -n "\${_JS_REINIT_LIB_IDS}" ]] && break
+                sleep 3
+            done
+            if [[ -n "\${_JS_REINIT_LIB_IDS}" ]]; then
+                curl -sf "\${JS_URL}/api/v1/settings/jellyfin/library?enable=\${_JS_REINIT_LIB_IDS}" \
+                    -H "X-Api-Key: \${JS_KEY}" >/dev/null 2>&1 || true
+                echo "  ✓ Bibliothèques Jellyfin réactivées dans Jellyseerr"
+            fi
+        fi
+    else
+        echo "  ⚠ Jellyseerr : clé API non trouvée dans settings.json — reconfiguration manuelle requise"
+    fi
 elif [[ -n "${JELLYFIN_PASSWORD}" ]]; then
     # Connexion Jellyseerr → Jellyfin (embedded ou externe avec credentials fournis)
     # serverType:2 = MediaServerType.JELLYFIN (requis depuis Jellyseerr 2.x)
