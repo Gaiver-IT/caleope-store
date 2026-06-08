@@ -14,8 +14,8 @@
   "network": { "public": true, "internal": true },
   "ports": [],
   "volumes": [
-    { "source": "app-data/arr-stack/data",   "target": "/data"   },
-    { "source": "app-data/arr-stack/config",  "target": "/config" }
+    { "source": "app-data/arr-stack/data",   "target": "/data",   "nas": true  },
+    { "source": "app-data/arr-stack/config",  "target": "/config", "nas": false }
   ],
   "backup": { "enabled": true }
 }
