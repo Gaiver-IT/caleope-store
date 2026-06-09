@@ -550,7 +550,7 @@ JFNET
     # Jellyfin 10.11+ lit le LoginDisclaimer depuis config/config/branding.xml
     if [[ -n "${ARR_AK_TOKEN}" ]]; then
         mkdir -p "${JELLYFIN_CFG}/config"
-        SSO_BTN_ARR='<a href="/sso/OID/start/Authentik" style="display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold">&#x1F512; Se connecter avec Authentik</a>'
+        SSO_BTN_ARR='&lt;a href=&quot;/sso/OID/start/Authentik&quot; style=&quot;display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold&quot;&gt;&#x1F512; Se connecter avec Authentik&lt;/a&gt;'
         cat > "${JELLYFIN_CFG}/config/branding.xml" <<BRANDXML
 <?xml version="1.0" encoding="utf-8"?>
 <BrandingOptions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">

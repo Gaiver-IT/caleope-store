@@ -450,7 +450,9 @@ chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
 # (l'API /Branding/Configuration est en lecture seule).
 if [[ -n "${AK_TOKEN}" ]]; then
     mkdir -p "${JF_CFG}/config"
-    SSO_BTN='<a href="/sso/OID/start/Authentik" style="display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold">&#x1F512; Se connecter avec Authentik</a>'
+    # Le HTML doit être escapé en XML (< > " → &lt; &gt; &quot;)
+    # Jellyfin désérialise le LoginDisclaimer comme un string XML → HTML brut interdit
+    SSO_BTN='&lt;a href=&quot;/sso/OID/start/Authentik&quot; style=&quot;display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold&quot;&gt;&#x1F512; Se connecter avec Authentik&lt;/a&gt;'
     cat > "${JF_CFG}/config/branding.xml" <<BRANDXML
 <?xml version="1.0" encoding="utf-8"?>
 <BrandingOptions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
