@@ -301,11 +301,22 @@ print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oau
                             -H "Authorization: Bearer \${AK_TOKEN}" \
                             -H "Content-Type: application/json" -d @- >/dev/null 2>&1 || true
 
-                    # Configurer plugin SSO dans Jellyfin (extra_hosts → accès HTTPS Authentik)
+                    # Attendre que le plugin SSO soit initialisé (chargé après démarrage Jellyfin)
+                    _sso_plugin_ready=false
+                    for _sp in \$(seq 1 12); do
+                        _sp_sc=\$(curl -sf -o /dev/null -w "%{http_code}" "\${JF_URL}/sso/OID/Get/probe" \
+                            -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" 2>/dev/null) || _sp_sc="000"
+                        [[ "\${_sp_sc}" == "404" || "\${_sp_sc}" == "200" ]] && { _sso_plugin_ready=true; break; }
+                        [[ \$_sp -eq 1 ]] && echo "  ⏳ Attente chargement plugin SSO Jellyfin..."
+                        sleep 5
+                    done
+
+                    # Configurer plugin SSO dans Jellyfin
                     _OID_EP="https://\${AK_DOMAIN}/application/o/\${AK_SLUG}/"
                     _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-                        "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}?api_key=\${JF_TOKEN}" \
+                        "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}" \
                         -H "Content-Type: application/json" \
+                        -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
                         -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[]}" \
                         2>/dev/null) || _SSO_CODE="000"
 
