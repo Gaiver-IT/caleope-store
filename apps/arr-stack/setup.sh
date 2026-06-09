@@ -673,7 +673,7 @@ url_base = /
 host = 0.0.0.0
 port = 8080
 complete_dir = /data/downloads/complete
-incomplete_dir = /data/downloads/incomplete
+download_dir = /data/downloads/incomplete
 host_whitelist = sabnzbd,localhost,sabnzbd.${CALEOPE_DOMAIN}
 inet_exposure = 4
 SABCFG
@@ -686,9 +686,10 @@ path = sys.argv[1]
 try:
     c = open(path).read()
     c = re.sub(r'complete_dir\s*=.*', 'complete_dir = /data/downloads/complete', c)
-    c = re.sub(r'incomplete_dir\s*=.*', 'incomplete_dir = /data/downloads/incomplete', c)
+    # download_dir = dossier temporaire SABnzbd (pas incomplete_dir)
+    c = re.sub(r'download_dir\s*=.*', 'download_dir = /data/downloads/incomplete', c)
     if 'complete_dir' not in c:
-        c += '\ncomplete_dir = /data/downloads/complete\nincomplete_dir = /data/downloads/incomplete\n'
+        c += '\ncomplete_dir = /data/downloads/complete\ndownload_dir = /data/downloads/incomplete\n'
     open(path, 'w').write(c)
     print('  ✓ SABnzbd chemins corrigés vers NAS')
 except Exception as e:
@@ -828,6 +829,10 @@ wait_arr "Radarr"      "\$R_URL"  "${API_RADARR}"
 wait_arr "Sonarr"      "\$S_URL"  "${API_SONARR}"
 wait_arr "Lidarr"      "\$L_URL"  "${API_LIDARR}"
 wait_url "qBittorrent" "\$QBT_URL/api/v2/app/version"
+# Forcer les chemins qBittorrent vers le NAS via API (écrase les valeurs par défaut /config/Downloads)
+curl -sf -X POST "\$QBT_URL/api/v2/app/setPreferences" \
+    --data-urlencode 'json={"save_path":"/data/downloads/complete","temp_path":"/data/downloads/incomplete","temp_path_enabled":true}' \
+    >/dev/null 2>&1 && echo "  ✓ qBittorrent chemins → NAS (/data/downloads/)" || true
 wait_url "Bazarr"      "http://bazarr:6767"
 
 echo ""
@@ -959,7 +964,8 @@ wait_url "SABnzbd" "http://sabnzbd:8080/api?mode=version&apikey=${API_SABNZBD}&o
 # Forcer les chemins de téléchargement vers le NAS via l'API SABnzbd
 # (idempotent : écrase les valeurs par défaut /config/Downloads/ si présentes)
 curl -sf "http://sabnzbd:8080/api?mode=set_config&section=misc&keyword=complete_dir&value=/data/downloads/complete&apikey=${API_SABNZBD}&output=json" >/dev/null 2>&1 || true
-curl -sf "http://sabnzbd:8080/api?mode=set_config&section=misc&keyword=incomplete_dir&value=/data/downloads/incomplete&apikey=${API_SABNZBD}&output=json" >/dev/null 2>&1 || true
+# download_dir = dossier temporaire/incomplete (pas incomplete_dir qui n'est pas un paramètre SABnzbd)
+curl -sf "http://sabnzbd:8080/api?mode=set_config&section=misc&keyword=download_dir&value=/data/downloads/incomplete&apikey=${API_SABNZBD}&output=json" >/dev/null 2>&1 || true
 # Redémarrer SABnzbd pour appliquer les changements de chemins
 curl -sf "http://sabnzbd:8080/api?mode=restart&apikey=${API_SABNZBD}" >/dev/null 2>&1 || true
 sleep 8
