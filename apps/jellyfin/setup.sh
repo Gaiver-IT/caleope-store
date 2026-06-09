@@ -73,7 +73,7 @@ NETXML
 fi
 
 # ── Plugin SSO Jellyfin (pour intégration Authentik OIDC) ────────────
-SSO_PLUGIN_DIR="${JELLYFIN_CFG}/plugins/SSO-Auth_4.0.0.4.0"
+SSO_PLUGIN_DIR="${JF_CFG}/plugins/SSO-Auth_4.0.0.4.0"
 if [[ ! -f "${SSO_PLUGIN_DIR}/SSO-Auth.dll" ]]; then
     echo "→ Téléchargement plugin Jellyfin SSO (v4.0.0.4)..."
     mkdir -p "${SSO_PLUGIN_DIR}"
