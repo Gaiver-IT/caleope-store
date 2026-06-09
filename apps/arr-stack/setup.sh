@@ -545,6 +545,21 @@ JFNET
     else
         echo "  ✓ Plugin SSO déjà présent"
     fi
+
+    # ── Branding Jellyfin : bouton SSO ───────────────────────────────
+    # Jellyfin 10.11+ lit le LoginDisclaimer depuis config/config/branding.xml
+    if [[ -n "${ARR_AK_TOKEN}" ]]; then
+        mkdir -p "${JELLYFIN_CFG}/config"
+        SSO_BTN_ARR='<a href="/sso/OID/start/Authentik" style="display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold">&#x1F512; Se connecter avec Authentik</a>'
+        cat > "${JELLYFIN_CFG}/config/branding.xml" <<BRANDXML
+<?xml version="1.0" encoding="utf-8"?>
+<BrandingOptions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <LoginDisclaimer>${SSO_BTN_ARR}</LoginDisclaimer>
+  <SplashscreenEnabled>false</SplashscreenEnabled>
+</BrandingOptions>
+BRANDXML
+        echo "  ✓ Bouton SSO Authentik configuré dans branding.xml"
+    fi
 fi
 
 # ── Bazarr config ─────────────────────────────────────────────────────
@@ -1321,20 +1336,7 @@ print(json.dumps(body))")
                     echo "  ✓ Authentik → Provider OAuth2 créé (slug: ${AK_SLUG:-jellyfin-arr})"
                     echo "  ✓ Plugin SSO Jellyfin configuré (provider: \${JF_SSO_PROVIDER})"
 
-                    # Bouton SSO sur la page de login Jellyfin
-                    _JF_BRAND=\$(curl -sf "\${JF_URL}/Branding/Configuration" \
-                        -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" 2>/dev/null) || _JF_BRAND=""
-                    if [[ -n "\${_JF_BRAND}" ]]; then
-                        _SSO_BTN="<a href=\"/sso/OID/start/\${JF_SSO_PROVIDER}\" style=\"display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold\">🔐 Se connecter avec Authentik</a>"
-                        echo "\${_JF_BRAND}" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-d['LoginDisclaimer']='\${_SSO_BTN}'
-print(json.dumps(d))" | curl -sf -X POST "\${JF_URL}/Branding/Configuration" \
-                            -H "Content-Type: application/json" \
-                            -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
-                            -d @- >/dev/null 2>&1 && echo "  ✓ Bouton SSO ajouté sur la page de login Jellyfin" || true
-                    fi
+                    # Le bouton SSO est écrit dans branding.xml par setup.sh (API lecture seule)
                 else
                     echo "  ⚠ Plugin SSO non chargé (HTTP \${_SSO_RESP_CODE}) — redémarrer Jellyfin manuellement"
                     echo "    (Le plugin doit être chargé avant la configuration)"
