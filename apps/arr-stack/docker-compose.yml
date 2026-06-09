@@ -71,6 +71,9 @@ services:
       - {{.BaseDir}}/app-data/arr-stack/config/jellyfin:/config
       - {{.BaseDir}}/app-data/arr-stack/config/jellyfin-cache:/cache
       - {{.BaseDir}}/app-data/arr-stack/data/media:/media:ro
+      # Certificat auto-signé Authentik → trusté par .NET pour la validation OIDC SSO
+      # Monté directement dans /etc/ssl/certs/ (pas besoin de update-ca-certificates)
+      - {{.BaseDir}}/data/traefik/certs/authentik.crt:/etc/ssl/certs/authentik.crt:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin-srv.rule=Host(`jellyfin.{{.Domain}}`)"

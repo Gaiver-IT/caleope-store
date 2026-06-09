@@ -20,6 +20,9 @@ services:
       {{- end}}
       # Médias arr-stack (si installé) — lecture seule pour Jellyfin
       - {{$.BaseDir}}/app-data/arr-stack/data/media:/arr-media:ro
+      # Certificat auto-signé Authentik → trusté par .NET pour la validation OIDC SSO
+      # Monté directement dans /etc/ssl/certs/ (pas besoin de update-ca-certificates)
+      - {{$.BaseDir}}/data/traefik/certs/authentik.crt:/etc/ssl/certs/authentik.crt:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin.rule=Host(`{{.Domain}}`)"
