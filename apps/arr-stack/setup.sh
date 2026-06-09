@@ -420,8 +420,8 @@ fi
 ARR_AK_TOKEN=""
 ARR_AK_DOMAIN="authentik.${CALEOPE_DOMAIN}"
 if [[ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]]; then
-    _AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" | cut -d= -f2-)
-    _AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" | cut -d= -f2-)
+    _AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
+    _AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
     [ -n "${_AK_TOKEN}" ] && ARR_AK_TOKEN="${_AK_TOKEN}"
     [ -n "${_AK_DOMAIN}" ] && ARR_AK_DOMAIN="${_AK_DOMAIN}"
     [ -n "${ARR_AK_TOKEN}" ] && echo "  → Token Authentik disponible — SSO Jellyfin sera configuré"
