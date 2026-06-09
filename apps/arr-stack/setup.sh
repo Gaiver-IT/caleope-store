@@ -628,19 +628,37 @@ WebUI\Address=*
 WebUI\AuthSubnetWhitelistEnabled=true
 WebUI\AuthSubnetWhitelist=172.0.0.0/8, 10.0.0.0/8, 192.168.0.0/16
 WebUI\LocalHostAuth=false
+Downloads\SavePath=/data/downloads/complete
+Downloads\TempPath=/data/downloads/incomplete
+Downloads\TempPathEnabled=true
 QBTCFGV5
 fi
-# Garantir que LegalNotice et WebUI\Address sont présents dans les DEUX configs
+# Garantir que LegalNotice, WebUI\Address et Downloads paths sont présents dans les DEUX configs
 for _conf in "${QBT_CFG_DIR}/qBittorrent.conf" "${QBT_CFG_V5}/qBittorrent.conf"; do
     if ! grep -q '\[LegalNotice\]' "${_conf}" 2>/dev/null; then
         printf '\n[LegalNotice]\nAccepted=true\n' >> "${_conf}"
-        echo "✓ LegalNotice ajoutée dans ${_conf##*/}"
     fi
     if ! grep -q 'WebUI\\Address' "${_conf}" 2>/dev/null; then
         printf '\n[Preferences]\nWebUI\\Address=*\n' >> "${_conf}"
-        echo "✓ WebUI\\Address=* ajouté dans ${_conf##*/}"
     fi
+    # Toujours forcer les chemins de téléchargement vers le NAS (même sur réinstall)
+    # sed -i ne supporte pas les backslash natifs sur tous les Linux → utiliser python3
+    python3 - "${_conf}" <<'PYEOF'
+import sys, re
+path = sys.argv[1]
+try:
+    content = open(path).read()
+    content = re.sub(r'Downloads\\SavePath=.*', r'Downloads\\\\SavePath=/data/downloads/complete', content)
+    content = re.sub(r'Downloads\\TempPath=.*', r'Downloads\\\\TempPath=/data/downloads/incomplete', content)
+    content = re.sub(r'Downloads\\TempPathEnabled=.*', r'Downloads\\\\TempPathEnabled=true', content)
+    if 'Downloads\\\\SavePath' not in content:
+        content += '\nDownloads\\\\SavePath=/data/downloads/complete\nDownloads\\\\TempPath=/data/downloads/incomplete\nDownloads\\\\TempPathEnabled=true\n'
+    open(path, 'w').write(content)
+except Exception as e:
+    print(f'  ⚠ patch qbt conf: {e}', file=sys.stderr)
+PYEOF
 done
+echo "  ✓ qBittorrent chemins téléchargement → NAS (/data/downloads/)"
 # qbittorrent tourne en PUID=1000 → chown config pour éviter les conflits de droits
 chown -R 1000:${PGID} "${CALEOPE_BASE_DIR}/app-data/arr-stack/config/qbittorrent/" 2>/dev/null || true
 
@@ -659,6 +677,23 @@ incomplete_dir = /data/downloads/incomplete
 host_whitelist = sabnzbd,localhost,sabnzbd.${CALEOPE_DOMAIN}
 inet_exposure = 4
 SABCFG
+else
+    # Sur réinstall : forcer les chemins de téléchargement vers le NAS
+    # (les valeurs par défaut SABnzbd pointent vers /config/Downloads/)
+    python3 - "${SABNZBD_CFG}" <<'PYEOF'
+import sys, re
+path = sys.argv[1]
+try:
+    c = open(path).read()
+    c = re.sub(r'complete_dir\s*=.*', 'complete_dir = /data/downloads/complete', c)
+    c = re.sub(r'incomplete_dir\s*=.*', 'incomplete_dir = /data/downloads/incomplete', c)
+    if 'complete_dir' not in c:
+        c += '\ncomplete_dir = /data/downloads/complete\nincomplete_dir = /data/downloads/incomplete\n'
+    open(path, 'w').write(c)
+    print('  ✓ SABnzbd chemins corrigés vers NAS')
+except Exception as e:
+    print(f'  ⚠ patch sabnzbd.ini: {e}', file=sys.stderr)
+PYEOF
 fi
 
 # ── Patch préventif Jellyseerr settings.json (Jellyfin Caleope-managed) ─────────
@@ -920,6 +955,17 @@ sab_client() {
 # Créer les catégories SABnzbd AVANT d'ajouter SABnzbd aux clients *arr
 # (les *arr valident l'existence de la catégorie lors du test de connexion)
 wait_url "SABnzbd" "http://sabnzbd:8080/api?mode=version&apikey=${API_SABNZBD}&output=json"
+
+# Forcer les chemins de téléchargement vers le NAS via l'API SABnzbd
+# (idempotent : écrase les valeurs par défaut /config/Downloads/ si présentes)
+curl -sf "http://sabnzbd:8080/api?mode=set_config&section=misc&keyword=complete_dir&value=/data/downloads/complete&apikey=${API_SABNZBD}&output=json" >/dev/null 2>&1 || true
+curl -sf "http://sabnzbd:8080/api?mode=set_config&section=misc&keyword=incomplete_dir&value=/data/downloads/incomplete&apikey=${API_SABNZBD}&output=json" >/dev/null 2>&1 || true
+# Redémarrer SABnzbd pour appliquer les changements de chemins
+curl -sf "http://sabnzbd:8080/api?mode=restart&apikey=${API_SABNZBD}" >/dev/null 2>&1 || true
+sleep 8
+wait_url "SABnzbd" "http://sabnzbd:8080/api?mode=version&apikey=${API_SABNZBD}&output=json"
+echo "  ✓ SABnzbd : chemins téléchargement → NAS (/data/downloads/)"
+
 for _cat in movies tv music books software; do
     curl -sf -X POST "http://sabnzbd:8080/api" \
         -d "mode=set_config&section=categories&keyword=\${_cat}&value=&apikey=${API_SABNZBD}&output=json" \
