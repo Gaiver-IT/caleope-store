@@ -35,7 +35,7 @@ services:
     container_name: jellyfin-bootstrap
     restart: "no"
     dns_search: []
-    command: ["/bin/sh", "-c", "printf 'nameserver 127.0.0.11\\noptions ndots:0\\n' > /etc/resolv.conf && apk add --no-cache curl bash >/dev/null 2>&1 && bash /bootstrap.sh"]
+    command: ["/bin/sh", "-c", "printf 'nameserver 127.0.0.11\\noptions ndots:0\\n' > /etc/resolv.conf && apk add --no-cache curl bash python3 >/dev/null 2>&1 && bash /bootstrap.sh"]
     volumes:
       - {{.BaseDir}}/app-config/jellyfin/bootstrap.sh:/bootstrap.sh:ro
     networks:
