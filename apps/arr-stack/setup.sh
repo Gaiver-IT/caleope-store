@@ -1301,7 +1301,7 @@ print(json.dumps(body))")
                 # POST /sso/OID/Add/probe sans auth → 401 = controller prêt, 000 = pas encore
                 _sso_plugin_ready=false
                 for _sp in \$(seq 1 24); do
-                    _sp_sc=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/sso/OID/Add/probe" \
+                    _sp_sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/sso/OID/Add/probe" \
                         -H "Content-Type: application/json" -d '{}' 2>/dev/null) || _sp_sc="000"
                     [[ "\${_sp_sc}" == "401" || "\${_sp_sc}" == "400" ]] && { _sso_plugin_ready=true; break; }
                     [[ \$_sp -eq 1 ]] && echo "  ⏳ Attente chargement plugin SSO Jellyfin..."
