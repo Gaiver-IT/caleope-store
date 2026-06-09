@@ -534,7 +534,7 @@ JFNET
         if curl -sL --max-time 60 \
             "https://github.com/9p4/jellyfin-plugin-sso/releases/download/v4.0.0.4/sso-authentication_4.0.0.4.zip" \
             -o /tmp/sso-auth.zip 2>/dev/null && [[ -s /tmp/sso-auth.zip ]]; then
-            unzip -o /tmp/sso-auth.zip -d "${SSO_PLUGIN_DIR}/" >/dev/null 2>&1
+            python3 -c "import zipfile; zipfile.ZipFile('/tmp/sso-auth.zip').extractall('${SSO_PLUGIN_DIR}/')" 2>/dev/null
             rm -f /tmp/sso-auth.zip
             chmod -R 755 "${SSO_PLUGIN_DIR}"
             echo "  ✓ Plugin SSO installé (plugins/SSO-Auth_4.0.0.4.0/)"
