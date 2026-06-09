@@ -61,6 +61,10 @@ services:
     container_name: jellyfin
     restart: unless-stopped
     dns_search: []
+    # extra_hosts : résout le domaine Authentik vers host-gateway pour éviter le hairpin NAT
+    # (Jellyfin serveur doit joindre Authentik pour valider les tokens OIDC)
+    extra_hosts:
+      - "${ARR_AK_DOMAIN:-authentik.placeholder}:host-gateway"
     environment:
       - JELLYFIN_PublishedServerUrl=https://jellyfin.{{.Domain}}
     volumes:

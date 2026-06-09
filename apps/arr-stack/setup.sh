@@ -416,6 +416,17 @@ if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     COMPOSE_PROFILES="${COMPOSE_PROFILES},jellyfin"
 fi
 
+# ── Token Authentik (pour SSO Jellyfin dans le bootstrap) ────────────
+ARR_AK_TOKEN=""
+ARR_AK_DOMAIN="authentik.${CALEOPE_DOMAIN}"
+if [[ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]]; then
+    _AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" | cut -d= -f2-)
+    _AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" | cut -d= -f2-)
+    [ -n "${_AK_TOKEN}" ] && ARR_AK_TOKEN="${_AK_TOKEN}"
+    [ -n "${_AK_DOMAIN}" ] && ARR_AK_DOMAIN="${_AK_DOMAIN}"
+    [ -n "${ARR_AK_TOKEN}" ] && echo "  → Token Authentik disponible — SSO Jellyfin sera configuré"
+fi
+
 # ── secrets.env ──────────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
 ARR_PUID=${PUID}
@@ -451,6 +462,10 @@ ARR_VPN_SERVER_COUNTRIES=${VPN_SERVER_COUNTRIES}
 # le bootstrap puisse l'utiliser via la variable d'environnement.
 # Bazarr la lit depuis config/config.yaml (pré-écrit par setup.sh ci-dessous).
 BAZARR_API_KEY=${BAZARR_API_KEY}
+
+# Authentik SSO — token passé au bootstrap via env_file
+ARR_AK_TOKEN=${ARR_AK_TOKEN}
+ARR_AK_DOMAIN=${ARR_AK_DOMAIN}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
@@ -509,6 +524,26 @@ if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
   <EnableRemoteAccess>true</EnableRemoteAccess>
 </NetworkConfiguration>
 JFNET
+    fi
+
+    # ── Plugin SSO Jellyfin (pour intégration Authentik OIDC) ────────
+    SSO_PLUGIN_DIR="${JELLYFIN_CFG}/plugins/SSO-Auth_4.0.0.4.0"
+    if [[ ! -f "${SSO_PLUGIN_DIR}/SSO-Auth.dll" ]]; then
+        echo "→ Téléchargement plugin Jellyfin SSO (v4.0.0.4)..."
+        mkdir -p "${SSO_PLUGIN_DIR}"
+        if curl -sL --max-time 60 \
+            "https://github.com/9p4/jellyfin-plugin-sso/releases/download/v4.0.0.4/sso-authentication_4.0.0.4.zip" \
+            -o /tmp/sso-auth.zip 2>/dev/null && [[ -s /tmp/sso-auth.zip ]]; then
+            unzip -o /tmp/sso-auth.zip -d "${SSO_PLUGIN_DIR}/" >/dev/null 2>&1
+            rm -f /tmp/sso-auth.zip
+            chmod -R 755 "${SSO_PLUGIN_DIR}"
+            echo "  ✓ Plugin SSO installé (plugins/SSO-Auth_4.0.0.4.0/)"
+        else
+            rm -rf "${SSO_PLUGIN_DIR}" /tmp/sso-auth.zip
+            echo "  ⚠ Plugin SSO non téléchargeable — SSO ignoré"
+        fi
+    else
+        echo "  ✓ Plugin SSO déjà présent"
     fi
 fi
 
@@ -1183,6 +1218,127 @@ else
             echo "  ✓ Jellyfin → langue française (métadonnées + interface)"
         fi
     fi
+fi
+
+# ── [5.5/6] Authentik SSO — Jellyfin ─────────────────────────────────────────
+# Configuré seulement si :
+#   - ARR_AK_TOKEN est défini (Authentik installé au moment du setup.sh)
+#   - JF_TOKEN est disponible (Jellyfin embedded démarré et wizard complété)
+#   - Le plugin SSO est chargé (SSO-Auth.dll présent dans plugins/)
+if [[ -n "\${ARR_AK_TOKEN:-}" && -n "\$JF_TOKEN" ]]; then
+    echo ""
+    echo "── [5.5/6] Authentik SSO — Jellyfin..."
+    AK_INT_URL="http://authentik-server:9000"
+    AK_SLUG="jellyfin-arr"
+    JF_SSO_PROVIDER="Authentik"
+    JF_DOMAIN="jellyfin.${CALEOPE_DOMAIN}"
+    JF_REDIRECT_URI="https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}"
+
+    # Vérifier si Authentik est joignable depuis le réseau Docker
+    _AK_UP=false
+    for _i in \$(seq 1 6); do
+        _ak_code=\$(curl -sf -o /dev/null -w "%{http_code}" --max-time 5 \
+            "\${AK_INT_URL}/api/v3/core/applications/" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null) || _ak_code="000"
+        [[ "\${_ak_code}" == "200" ]] && { _AK_UP=true; break; }
+        [[ \$_i -eq 1 ]] && echo "  ⏳ Attente Authentik..."
+        sleep 5
+    done
+
+    if \${_AK_UP}; then
+        # Flow d'autorisation implicit consent
+        _AK_FLOW=\$(curl -sf "\${AK_INT_URL}/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_FLOW=""
+        _AK_INVAL=\$(curl -sf "\${AK_INT_URL}/api/v3/flows/instances/?slug=default-provider-invalidation-flow" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_INVAL=""
+        _AK_KEY=\$(curl -sf "\${AK_INT_URL}/api/v3/crypto/certificatekeypairs/?has_key=true&ordering=name" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_KEY=""
+        _AK_SCOPES=\$(curl -sf "\${AK_INT_URL}/api/v3/propertymappings/all/?ordering=name&page_size=200" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null)
+        _S_OID=\$(echo "\${_AK_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-openid' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+        _S_EMAIL=\$(echo "\${_AK_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-email' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+        _S_PROF=\$(echo "\${_AK_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-profile' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+
+        if [[ -n "\${_AK_FLOW}" && -n "\${_AK_KEY}" && -n "\${_S_OID}" ]]; then
+            # Provider OAuth2 — récupérer si déjà créé, sinon créer
+            _AK_PROV_PK=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/" \
+                -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if p.get('name')=='Jellyfin SSO']; print(m[0]['pk'] if m else '')" 2>/dev/null) || _AK_PROV_PK=""
+
+            if [[ -n "\${_AK_PROV_PK}" ]]; then
+                _AK_PROV_RESP=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/\${_AK_PROV_PK}/" \
+                    -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null)
+            else
+                _AK_PROV_BODY=\$(python3 -c "
+import json, sys
+scopes=[s for s in ['\${_S_OID}','\${_S_EMAIL}','\${_S_PROF}'] if s]
+body={'name':'Jellyfin SSO','authorization_flow':'\${_AK_FLOW}','client_type':'confidential',
+      'redirect_uris':[{'url':'\${JF_REDIRECT_URI}','matching_mode':'strict'}],
+      'sub_mode':'hashed_user_id','include_claims_in_id_token':True,
+      'signing_key':'\${_AK_KEY}','property_mappings':scopes}
+if '\${_AK_INVAL}': body['invalidation_flow']='\${_AK_INVAL}'
+print(json.dumps(body))")
+                _AK_PROV_RESP=\$(echo "\${_AK_PROV_BODY}" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oauth2/" \
+                    -H "Authorization: Bearer \${ARR_AK_TOKEN}" \
+                    -H "Content-Type: application/json" -d @- 2>/dev/null)
+                _AK_PROV_PK=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null)
+            fi
+
+            _AK_CLIENT_ID=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null)
+            _AK_SECRET=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null)
+
+            if [[ -n "\${_AK_CLIENT_ID}" && -n "\${_AK_SECRET}" && -n "\${_AK_PROV_PK}" ]]; then
+                # Application Authentik (idempotent)
+                python3 -c "import json; print(json.dumps({'name':'Jellyfin','slug':'${AK_SLUG:-jellyfin-arr}','provider':\${_AK_PROV_PK},'meta_launch_url':'https://\${JF_DOMAIN}/sso/OID/start/\${JF_SSO_PROVIDER}','open_in_new_tab':False}))" \
+                    | curl -sf -X POST "\${AK_INT_URL}/api/v3/core/applications/" \
+                        -H "Authorization: Bearer \${ARR_AK_TOKEN}" \
+                        -H "Content-Type: application/json" -d @- >/dev/null 2>&1 || true
+
+                # Configurer le plugin SSO dans Jellyfin
+                # OidEndpoint = URL HTTPS publique (Jellyfin utilise extra_hosts pour résoudre)
+                _OID_EP="https://\${ARR_AK_DOMAIN}/application/o/${AK_SLUG:-jellyfin-arr}/"
+                _SSO_RESP_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+                    "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}?api_key=\${JF_TOKEN}" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[]}" \
+                    2>/dev/null) || _SSO_RESP_CODE="000"
+
+                if [[ "\${_SSO_RESP_CODE}" == "200" || "\${_SSO_RESP_CODE}" == "204" || "\${_SSO_RESP_CODE}" == "201" ]]; then
+                    echo "  ✓ Authentik → Provider OAuth2 créé (slug: ${AK_SLUG:-jellyfin-arr})"
+                    echo "  ✓ Plugin SSO Jellyfin configuré (provider: \${JF_SSO_PROVIDER})"
+
+                    # Bouton SSO sur la page de login Jellyfin
+                    _JF_BRAND=\$(curl -sf "\${JF_URL}/Branding/Configuration" \
+                        -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" 2>/dev/null) || _JF_BRAND=""
+                    if [[ -n "\${_JF_BRAND}" ]]; then
+                        _SSO_BTN="<a href=\"/sso/OID/start/\${JF_SSO_PROVIDER}\" style=\"display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold\">🔐 Se connecter avec Authentik</a>"
+                        echo "\${_JF_BRAND}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+d['LoginDisclaimer']='\${_SSO_BTN}'
+print(json.dumps(d))" | curl -sf -X POST "\${JF_URL}/Branding/Configuration" \
+                            -H "Content-Type: application/json" \
+                            -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
+                            -d @- >/dev/null 2>&1 && echo "  ✓ Bouton SSO ajouté sur la page de login Jellyfin" || true
+                    fi
+                else
+                    echo "  ⚠ Plugin SSO non chargé (HTTP \${_SSO_RESP_CODE}) — redémarrer Jellyfin manuellement"
+                    echo "    (Le plugin doit être chargé avant la configuration)"
+                fi
+            else
+                echo "  ⚠ Authentik SSO : client_id ou secret vides"
+            fi
+        else
+            echo "  ⚠ Authentik SSO : flows ou clés de signature introuvables"
+        fi
+    else
+        echo "  ⚠ Authentik non joignable depuis le réseau Docker — SSO ignoré"
+    fi
+elif [[ -z "\${ARR_AK_TOKEN:-}" ]]; then
+    echo "  ℹ Authentik non installé — SSO ignoré (installer Authentik puis relancer arr-stack)"
 fi
 
 echo ""

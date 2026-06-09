@@ -72,21 +72,62 @@ if [[ ! -f "${JF_CFG}/config/network.xml" ]]; then
 NETXML
 fi
 
+# ── Plugin SSO Jellyfin (pour intégration Authentik OIDC) ────────────
+SSO_PLUGIN_DIR="${JELLYFIN_CFG}/plugins/SSO-Auth_4.0.0.4.0"
+if [[ ! -f "${SSO_PLUGIN_DIR}/SSO-Auth.dll" ]]; then
+    echo "→ Téléchargement plugin Jellyfin SSO (v4.0.0.4)..."
+    mkdir -p "${SSO_PLUGIN_DIR}"
+    if curl -sL --max-time 60 \
+        "https://github.com/9p4/jellyfin-plugin-sso/releases/download/v4.0.0.4/sso-authentication_4.0.0.4.zip" \
+        -o /tmp/sso-auth.zip 2>/dev/null && [[ -s /tmp/sso-auth.zip ]]; then
+        unzip -o /tmp/sso-auth.zip -d "${SSO_PLUGIN_DIR}/" >/dev/null 2>&1
+        rm -f /tmp/sso-auth.zip
+        chmod -R 755 "${SSO_PLUGIN_DIR}"
+        echo "  ✓ Plugin SSO installé (plugins/SSO-Auth_4.0.0.4.0/)"
+    else
+        rm -rf "${SSO_PLUGIN_DIR}" /tmp/sso-auth.zip
+        echo "  ⚠ Plugin SSO non téléchargeable — SSO ignoré"
+    fi
+else
+    echo "  ✓ Plugin SSO déjà présent"
+fi
+
+# ── Token Authentik (pour SSO OIDC dans le bootstrap) ────────────────
+AK_TOKEN=""
+AK_DOMAIN="authentik.${CALEOPE_DOMAIN}"
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    _AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${_AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${_AK_SECRETS}" | cut -d= -f2-)
+        _AK_D=$(grep "^AUTHENTIK_DOMAIN=" "${_AK_SECRETS}" | cut -d= -f2-)
+        [ -n "${_AK_D}" ] && AK_DOMAIN="${_AK_D}"
+        [ -n "${AK_TOKEN}" ] && echo "  → Authentik détecté — SSO OIDC sera configuré"
+    fi
+fi
+
 # ── Bootstrap script ─────────────────────────────────────────────────
 # Ce script tourne dans un container Alpine au 1er démarrage.
-# Il complète le wizard Jellyfin via l'API /Startup/* (10.11+).
+# Il complète le wizard Jellyfin via l'API /Startup/* (10.11+)
+# et configure le SSO OIDC Authentik si disponible.
 cat > "${CONFIG_DIR}/bootstrap.sh" <<BOOTSTRAP
 #!/bin/bash
 exec > /dev/stdout 2>&1
 
 JF_URL="http://jellyfin:8096"
+# Interpolés par setup.sh (connus au moment de l'install)
+AK_TOKEN="${AK_TOKEN}"
+AK_DOMAIN="${AK_DOMAIN}"
+AK_INT_URL="http://authentik-server:9000"
+AK_SLUG="jellyfin"
+JF_SSO_PROVIDER="Authentik"
+JF_DOMAIN="${CALEOPE_DOMAIN}"
 
 wait_url() {
     local name=\$1 url=\$2 tries=0
     echo "→ Attente \${name}..."
     until curl -sf --connect-timeout 5 --max-time 10 -o /dev/null "\${url}" 2>/dev/null; do
         sleep 5; tries=\$((tries+1))
-        [[ \$tries -ge 72 ]] && { echo "  ⚠ Timeout Jellyfin (6 min) — on continue"; return 0; }
+        [[ \$tries -ge 72 ]] && { echo "  ⚠ Timeout \${name} (6 min) — on continue"; return 0; }
         [[ \$((tries%6)) -eq 0 ]] && echo "  ... \${name} pas encore prêt (\$((tries*5))s)..."
     done
     echo "  ✓ \${name} prêt"
@@ -98,7 +139,7 @@ echo "╚═══════════════════════�
 
 wait_url "Jellyfin" "\${JF_URL}/health"
 
-# Attendre que le wizard soit prêt (peut être en 503 quelques secondes)
+# Vérifier état wizard
 echo "→ Vérification état wizard..."
 JF_WIZARD_STATUS="000"
 for _i in \$(seq 1 24); do
@@ -108,72 +149,48 @@ for _i in \$(seq 1 24); do
     sleep 10
 done
 
-if [[ "\${JF_WIZARD_STATUS}" == "404" ]]; then
-    echo "  ℹ Wizard déjà complété — Jellyfin déjà configuré, rien à faire"
-    exit 0
-fi
-
-echo "→ Configuration automatique du wizard Jellyfin..."
-
-# Étape 1 : Nom serveur + langue
-_cfg_sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/Configuration" \
-    -H "Content-Type: application/json" \
-    -d '{"ServerName":"Caleope","UICulture":"fr-FR","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
-    2>/dev/null) || _cfg_sc="000"
-echo "  → POST /Startup/Configuration → HTTP \${_cfg_sc}"
-
-# Étape 2 : Attendre que le wizard avance à l'étape User
-# Jellyfin 10.11+ : après Configuration (204), l'endpoint /Startup/User peut
-# prendre du temps à devenir disponible (retourne 404 tant que le wizard n'a
-# pas avancé). On attend un GET 200 avant de POSTer.
-echo "  → Attente disponibilité étape User..."
-_user_ep_ok=false
-for _w in \$(seq 1 30); do
-    _user_get=\$(curl -s -o /dev/null -w "%{http_code}" "\${JF_URL}/Startup/User" 2>/dev/null) || _user_get="000"
-    if [[ "\${_user_get}" == "200" ]]; then
-        _user_ep_ok=true
-        break
-    fi
-    sleep 3
-done
-\${_user_ep_ok} || echo "  ⚠ Timeout attente étape User — tentative quand même"
-
-# Créer le compte admin
-_jf_ok=false
-for _r in \$(seq 1 10); do
-    _sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/User" \
-        -H "Content-Type: application/json" \
-        -d '{"Name":"${JELLYFIN_USER}","Password":"${JELLYFIN_PASSWORD}"}' 2>/dev/null) || _sc="000"
-    [[ "\${_sc}" == "204" || "\${_sc}" == "200" ]] && { _jf_ok=true; break; }
-    echo "  ⏳ POST /Startup/User → HTTP \${_sc}, nouvel essai... (\${_r}/10)"
-    sleep 3
-done
-if \${_jf_ok}; then
-    echo "  ✓ Compte admin '${JELLYFIN_USER}' créé"
+JF_WIZARD_DONE=false
+if [[ "\${JF_WIZARD_STATUS}" == "404" || "\${JF_WIZARD_STATUS}" == "401" ]]; then
+    echo "  ℹ Wizard déjà complété"
+    JF_WIZARD_DONE=true
 else
-    echo "  ⚠ Création compte échouée (dernier HTTP: \${_sc}) — le wizard devra être complété manuellement"
+    echo "→ Configuration automatique du wizard Jellyfin..."
+
+    _cfg_sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/Configuration" \
+        -H "Content-Type: application/json" \
+        -d '{"ServerName":"Caleope","UICulture":"fr-FR","MetadataCountryCode":"FR","PreferredMetadataLanguage":"fr"}' \
+        2>/dev/null) || _cfg_sc="000"
+    echo "  → POST /Startup/Configuration → HTTP \${_cfg_sc}"
+
+    echo "  → Attente disponibilité étape User..."
+    _user_ep_ok=false
+    for _w in \$(seq 1 30); do
+        _user_get=\$(curl -s -o /dev/null -w "%{http_code}" "\${JF_URL}/Startup/User" 2>/dev/null) || _user_get="000"
+        [[ "\${_user_get}" == "200" ]] && { _user_ep_ok=true; break; }
+        sleep 3
+    done
+    \${_user_ep_ok} || echo "  ⚠ Timeout attente étape User — tentative quand même"
+
+    _jf_ok=false
+    for _r in \$(seq 1 10); do
+        _sc=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${JF_URL}/Startup/User" \
+            -H "Content-Type: application/json" \
+            -d '{"Name":"${JELLYFIN_USER}","Password":"${JELLYFIN_PASSWORD}"}' 2>/dev/null) || _sc="000"
+        [[ "\${_sc}" == "204" || "\${_sc}" == "200" ]] && { _jf_ok=true; break; }
+        echo "  ⏳ POST /Startup/User → HTTP \${_sc}, nouvel essai... (\${_r}/10)"
+        sleep 3
+    done
+    \${_jf_ok} && echo "  ✓ Compte admin '${JELLYFIN_USER}' créé" || \
+        echo "  ⚠ Création compte échouée (HTTP: \${_sc})"
+
+    curl -sf -X POST "\${JF_URL}/Startup/RemoteAccess" -H "Content-Type: application/json" \
+        -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' >/dev/null 2>&1 || true
+    curl -sf -X POST "\${JF_URL}/Startup/Complete" >/dev/null 2>&1 || true
+    echo "  ✓ Wizard complété"
 fi
 
-# Étape 3 : Accès distant
-curl -sf -X POST "\${JF_URL}/Startup/RemoteAccess" \
-    -H "Content-Type: application/json" \
-    -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' \
-    >/dev/null 2>&1 || true
-
-# Étape 4 : Finalisation wizard
-curl -sf -X POST "\${JF_URL}/Startup/Complete" >/dev/null 2>&1 || true
-echo "  ✓ Wizard complété"
-
-# ── Création des bibliothèques par défaut ─────────────────────────────
-# Après Startup/Complete, on s'authentifie pour créer les bibliothèques.
-# Paths : /arr-media/* = app-data/arr-stack/data/media/* (monté en :ro)
-#         Ces paths sont ceux qu'arr-stack utilise pour Radarr/Sonarr/Lidarr.
-echo ""
-echo "→ Création des bibliothèques par défaut..."
-
-# Attendre que Jellyfin recharge après wizard (peut redémarrer en interne)
+# ── Authentification admin ────────────────────────────────────────────
 sleep 5
-
 JF_TOKEN=""
 for _auth_try in \$(seq 1 10); do
     JF_AUTH=\$(curl -sf -X POST "\${JF_URL}/Users/AuthenticateByName" \
@@ -185,31 +202,146 @@ for _auth_try in \$(seq 1 10); do
     sleep 3
 done
 
-if [[ -n "\$JF_TOKEN" ]]; then
+# ── Bibliothèques (seulement sur première install) ────────────────────
+if [[ "\${JF_WIZARD_DONE}" == "false" && -n "\$JF_TOKEN" ]]; then
+    echo ""
+    echo "→ Création des bibliothèques par défaut..."
     add_jf_lib() {
         local name=\$1 type=\$2 path=\$3
         local encoded_name=\$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "\$name" 2>/dev/null || echo "\$name")
-        # Idempotence : vérifier si la biblio existe déjà
         local existing=\$(curl -sf "\${JF_URL}/Library/VirtualFolders" \
             -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null \
             | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join(x['Name'] for x in d))" 2>/dev/null) || existing=""
-        if echo "\$existing" | grep -q "\$name"; then
-            echo "  ℹ Bibliothèque '\$name' déjà présente"
-            return 0
-        fi
+        echo "\$existing" | grep -q "\$name" && { echo "  ℹ Bibliothèque '\$name' déjà présente"; return 0; }
         curl -sf -X POST "\${JF_URL}/Library/VirtualFolders?name=\${encoded_name}&collectionType=\${type}&paths=\${path}&refreshLibrary=false" \
             -H "Content-Type: application/json" \
             -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" \
             -d '{"libraryOptions":{}}' >/dev/null 2>&1 || true
         echo "  ✓ Bibliothèque '\$name' → \$path"
     }
-    # Bibliothèques pointant sur les répertoires arr-stack (partagés avec Radarr/Sonarr/Lidarr)
     add_jf_lib "Films"   "movies"  "/arr-media/movies"
     add_jf_lib "Séries"  "tvshows" "/arr-media/tv"
     add_jf_lib "Musique" "music"   "/arr-media/music"
-    echo "  ✓ Bibliothèques créées (liées à app-data/arr-stack/data/media/)"
-else
+    echo "  ✓ Bibliothèques créées"
+elif [[ -z "\$JF_TOKEN" ]]; then
     echo "  ⚠ Auth Jellyfin échouée — bibliothèques à créer manuellement"
+fi
+
+# ── SSO OIDC Authentik ────────────────────────────────────────────────
+if [[ -n "\${AK_TOKEN}" && -n "\${JF_TOKEN}" ]]; then
+    echo ""
+    echo "→ Configuration SSO OIDC Authentik..."
+
+    # Vérifier si le provider SSO est déjà configuré (idempotence)
+    _sso_exists=\$(curl -sf -o /dev/null -w "%{http_code}" \
+        "\${JF_URL}/sso/OID/Get/\${JF_SSO_PROVIDER}?api_key=\${JF_TOKEN}" 2>/dev/null) || _sso_exists="000"
+
+    if [[ "\${_sso_exists}" == "200" ]]; then
+        echo "  ℹ SSO Authentik déjà configuré — ignoré"
+    else
+        # Vérifier si Authentik est joignable
+        _ak_up=false
+        for _i in \$(seq 1 6); do
+            _ak_c=\$(curl -sf -o /dev/null -w "%{http_code}" --max-time 5 \
+                "\${AK_INT_URL}/api/v3/core/applications/" \
+                -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null) || _ak_c="000"
+            [[ "\${_ak_c}" == "200" ]] && { _ak_up=true; break; }
+            [[ \$_i -eq 1 ]] && echo "  ⏳ Attente Authentik..."
+            sleep 5
+        done
+
+        if \${_ak_up}; then
+            _AK_FLOW=\$(curl -sf "\${AK_INT_URL}/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null)
+            _AK_INVAL=\$(curl -sf "\${AK_INT_URL}/api/v3/flows/instances/?slug=default-provider-invalidation-flow" \
+                -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null)
+            _AK_KEY=\$(curl -sf "\${AK_INT_URL}/api/v3/crypto/certificatekeypairs/?has_key=true&ordering=name" \
+                -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null)
+            _AK_ALL_SCOPES=\$(curl -sf "\${AK_INT_URL}/api/v3/propertymappings/all/?ordering=name&page_size=200" \
+                -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null)
+            _S_OID=\$(echo "\${_AK_ALL_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-openid' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+            _S_EMAIL=\$(echo "\${_AK_ALL_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-email' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+            _S_PROF=\$(echo "\${_AK_ALL_SCOPES}" | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if 'scope-profile' in str(p.get('managed',''))]; print(m[0]['pk'] if m else '')" 2>/dev/null)
+            _JF_REDIRECT="\$(python3 -c "import urllib.parse; print(urllib.parse.quote('https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}'))" 2>/dev/null || echo "https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}")"
+
+            if [[ -n "\${_AK_FLOW}" && -n "\${_AK_KEY}" && -n "\${_S_OID}" ]]; then
+                # Provider OAuth2 — créer ou récupérer
+                _AK_PROV_PK=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/" \
+                    -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null \
+                    | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if p.get('name')=='Jellyfin SSO']; print(m[0]['pk'] if m else '')" 2>/dev/null)
+
+                if [[ -n "\${_AK_PROV_PK}" ]]; then
+                    _AK_PROV_RESP=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/\${_AK_PROV_PK}/" \
+                        -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null)
+                else
+                    _AK_PROV_RESP=\$(python3 -c "
+import json
+scopes=[s for s in ['\${_S_OID}','\${_S_EMAIL}','\${_S_PROF}'] if s]
+body={'name':'Jellyfin SSO','authorization_flow':'\${_AK_FLOW}','client_type':'confidential',
+      'redirect_uris':[{'url':'https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}','matching_mode':'strict'}],
+      'sub_mode':'hashed_user_id','include_claims_in_id_token':True,
+      'signing_key':'\${_AK_KEY}','property_mappings':scopes}
+if '\${_AK_INVAL}': body['invalidation_flow']='\${_AK_INVAL}'
+print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oauth2/" \
+                        -H "Authorization: Bearer \${AK_TOKEN}" \
+                        -H "Content-Type: application/json" -d @- 2>/dev/null)
+                    _AK_PROV_PK=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null)
+                fi
+
+                _AK_CLIENT_ID=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null)
+                _AK_SECRET=\$(echo "\${_AK_PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null)
+
+                if [[ -n "\${_AK_CLIENT_ID}" && -n "\${_AK_SECRET}" && -n "\${_AK_PROV_PK}" ]]; then
+                    # Application Authentik
+                    python3 -c "import json; print(json.dumps({'name':'Jellyfin','slug':'\${AK_SLUG}','provider':\${_AK_PROV_PK},'meta_launch_url':'https://\${JF_DOMAIN}/sso/OID/start/\${JF_SSO_PROVIDER}','open_in_new_tab':False}))" \
+                        | curl -sf -X POST "\${AK_INT_URL}/api/v3/core/applications/" \
+                            -H "Authorization: Bearer \${AK_TOKEN}" \
+                            -H "Content-Type: application/json" -d @- >/dev/null 2>&1 || true
+
+                    # Configurer plugin SSO dans Jellyfin (extra_hosts → accès HTTPS Authentik)
+                    _OID_EP="https://\${AK_DOMAIN}/application/o/\${AK_SLUG}/"
+                    _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+                        "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}?api_key=\${JF_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[]}" \
+                        2>/dev/null) || _SSO_CODE="000"
+
+                    if [[ "\${_SSO_CODE}" == "200" || "\${_SSO_CODE}" == "204" || "\${_SSO_CODE}" == "201" ]]; then
+                        echo "  ✓ Provider OAuth2 Authentik créé (slug: \${AK_SLUG})"
+                        echo "  ✓ Plugin SSO Jellyfin configuré"
+
+                        # Bouton SSO sur la page de login
+                        _JF_BRAND=\$(curl -sf "\${JF_URL}/Branding/Configuration" \
+                            -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" 2>/dev/null) || _JF_BRAND=""
+                        if [[ -n "\${_JF_BRAND}" ]]; then
+                            _BTN="<a href=\"/sso/OID/start/\${JF_SSO_PROVIDER}\" style=\"display:block;margin:8px auto;padding:8px 16px;background:#fd4b2d;color:#fff;text-decoration:none;border-radius:4px;text-align:center;font-weight:bold\">🔐 Se connecter avec Authentik</a>"
+                            echo "\${_JF_BRAND}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+d['LoginDisclaimer']='\${_BTN}'
+print(json.dumps(d))" | curl -sf -X POST "\${JF_URL}/Branding/Configuration" \
+                                -H "Content-Type: application/json" \
+                                -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
+                                -d @- >/dev/null 2>&1 && echo "  ✓ Bouton SSO ajouté sur la page de login" || true
+                        fi
+                    else
+                        echo "  ⚠ Plugin SSO non chargé (HTTP \${_SSO_CODE}) — redémarrer Jellyfin"
+                    fi
+                else
+                    echo "  ⚠ Authentik SSO : client_id ou secret vides"
+                fi
+            else
+                echo "  ⚠ Authentik SSO : flows ou clé de signature introuvables"
+            fi
+        else
+            echo "  ⚠ Authentik non joignable — SSO ignoré"
+        fi
+    fi
+elif [[ -z "\${AK_TOKEN}" ]]; then
+    echo "  ℹ Authentik non installé — SSO ignoré"
 fi
 
 echo ""
@@ -302,17 +434,12 @@ print(json.dumps(l))
     return 0
 }
 
+# SSO OIDC natif → pas de ForwardAuth Traefik (Jellyfin gère l'auth lui-même via le plugin SSO)
 CALEOPE_AUTH_MIDDLEWARE=""
-if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Jellyfin" "jellyfin" "https://${CALEOPE_DOMAIN}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
-    else
-        echo "  ⚠ ForwardAuth désactivé (enregistrement Authentik échoué)"
-    fi
-fi
 
 cat > "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env" <<ENV
 CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}
+CALEOPE_AK_DOMAIN=${AK_DOMAIN}
 ENV
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
 

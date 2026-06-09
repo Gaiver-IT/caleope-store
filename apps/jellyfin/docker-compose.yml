@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - {{$.BaseDir}}/app-config/jellyfin/app.env
+    # extra_hosts : résout le domaine Authentik vers host-gateway pour éviter le hairpin NAT
+    extra_hosts:
+      - "${CALEOPE_AK_DOMAIN:-authentik.placeholder}:host-gateway"
     environment:
       - JELLYFIN_PublishedServerUrl=https://{{.Domain}}
     ports:
