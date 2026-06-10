@@ -424,8 +424,11 @@ if [[ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]]; then
     _AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
     [ -n "${_AK_TOKEN}" ] && ARR_AK_TOKEN="${_AK_TOKEN}"
     [ -n "${_AK_DOMAIN}" ] && ARR_AK_DOMAIN="${_AK_DOMAIN}"
-    [ -n "${ARR_AK_TOKEN}" ] && echo "  → Token Authentik disponible — SSO Jellyfin sera configuré"
+    [ -n "${ARR_AK_TOKEN}" ] && echo "  → Token Authentik disponible — SSO Jellyfin + Jellyseerr forwardAuth seront configurés"
 fi
+# Middleware Traefik forwardAuth Authentik (vide si Authentik absent → pas de protection)
+ARR_AK_MW=""
+[[ -n "${ARR_AK_TOKEN}" ]] && ARR_AK_MW="authentik@docker"
 
 # ── secrets.env ──────────────────────────────────────────────────────
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
@@ -1406,6 +1409,92 @@ elif [[ -z "\${ARR_AK_TOKEN:-}" ]]; then
     echo "  ℹ Authentik non installé — SSO ignoré (installer Authentik puis relancer arr-stack)"
 fi
 
+# ── [5.6/6] Authentik SSO — Jellyseerr forwardAuth ────────────────────────────
+# Protège Jellyseerr derrière Authentik via Traefik forwardAuth.
+# Indépendant de Jellyfin : fonctionne même si Jellyfin est externe ou absent.
+# Prérequis : ARR_AK_TOKEN disponible (Authentik installé) + ARR_AK_MW=authentik@docker dans .env
+if [[ -n "\${ARR_AK_TOKEN:-}" ]]; then
+    echo ""
+    echo "── [5.6/6] Authentik SSO — Jellyseerr (forwardAuth)..."
+    _AK_JS_URL="http://authentik-server:9000"
+    _AK_JS_UP=false
+    for _i in \$(seq 1 3); do
+        _ak_js_code=\$(curl -sf -o /dev/null -w "%{http_code}" --max-time 5 \
+            "\${_AK_JS_URL}/api/v3/core/applications/" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null) || _ak_js_code="000"
+        [[ "\${_ak_js_code}" == "200" ]] && { _AK_JS_UP=true; break; }
+        sleep 5
+    done
+
+    if \${_AK_JS_UP}; then
+        _AK_JS_FLOW=\$(curl -sf "\${_AK_JS_URL}/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_JS_FLOW=""
+        _AK_JS_INVAL=\$(curl -sf "\${_AK_JS_URL}/api/v3/flows/instances/?slug=default-provider-invalidation-flow" \
+            -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_JS_INVAL=""
+
+        if [[ -n "\${_AK_JS_FLOW}" ]]; then
+            # Récupérer ou créer le Proxy Provider Jellyseerr
+            _AK_JS_PROV_PK=\$(curl -sf "\${_AK_JS_URL}/api/v3/providers/proxy/" \
+                -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if p.get('name')=='Jellyseerr ForwardAuth']; print(m[0]['pk'] if m else '')" 2>/dev/null) || _AK_JS_PROV_PK=""
+
+            if [[ -z "\${_AK_JS_PROV_PK}" ]]; then
+                _AK_JS_BODY=\$(python3 -c "
+import json
+body={'name':'Jellyseerr ForwardAuth','authorization_flow':'\${_AK_JS_FLOW}',
+      'mode':'forward_auth_single','external_host':'https://jellyseerr.${CALEOPE_DOMAIN}'}
+if '\${_AK_JS_INVAL}': body['invalidation_flow']='\${_AK_JS_INVAL}'
+print(json.dumps(body))")
+                _AK_JS_PROV_PK=\$(echo "\${_AK_JS_BODY}" | curl -sf -X POST "\${_AK_JS_URL}/api/v3/providers/proxy/" \
+                    -H "Authorization: Bearer \${ARR_AK_TOKEN}" \
+                    -H "Content-Type: application/json" -d @- 2>/dev/null \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null) || _AK_JS_PROV_PK=""
+            fi
+
+            if [[ -n "\${_AK_JS_PROV_PK}" ]]; then
+                # Application Authentik Jellyseerr (idempotent)
+                python3 -c "import json; print(json.dumps({'name':'Jellyseerr','slug':'jellyseerr-arr','provider':\${_AK_JS_PROV_PK},'meta_launch_url':'https://jellyseerr.${CALEOPE_DOMAIN}','open_in_new_tab':False}))" \
+                    | curl -sf -X POST "\${_AK_JS_URL}/api/v3/core/applications/" \
+                        -H "Authorization: Bearer \${ARR_AK_TOKEN}" \
+                        -H "Content-Type: application/json" -d @- >/dev/null 2>&1 || true
+
+                # Ajouter le provider à l'embedded outpost (sans lui, forwardAuth ne répond pas)
+                _AK_OUTPOST_PK=\$(curl -sf "\${_AK_JS_URL}/api/v3/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
+                    -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+                    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d.get('results') else '')" 2>/dev/null) || _AK_OUTPOST_PK=""
+
+                if [[ -n "\${_AK_OUTPOST_PK}" ]]; then
+                    # Récupérer les providers actuels et ajouter le nouveau (idempotent)
+                    _AK_OUTPOST_PROVS=\$(curl -sf "\${_AK_JS_URL}/api/v3/outposts/instances/\${_AK_OUTPOST_PK}/" \
+                        -H "Authorization: Bearer \${ARR_AK_TOKEN}" 2>/dev/null \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); ps=d.get('providers',[]); print(','.join(str(p) for p in ps))" 2>/dev/null) || _AK_OUTPOST_PROVS=""
+                    _AK_OUTPOST_NEW=\$(python3 -c "
+import json
+existing=[\${_AK_OUTPOST_PROVS:-}] if '\${_AK_OUTPOST_PROVS}' else []
+pk=\${_AK_JS_PROV_PK}
+if pk not in existing: existing.append(pk)
+print(json.dumps({'providers':existing}))")
+                    curl -sf -X PATCH "\${_AK_JS_URL}/api/v3/outposts/instances/\${_AK_OUTPOST_PK}/" \
+                        -H "Authorization: Bearer \${ARR_AK_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d "\${_AK_OUTPOST_NEW}" >/dev/null 2>&1 || true
+                    echo "  ✓ Authentik → Proxy Provider Jellyseerr (forwardAuth) + outpost configuré"
+                else
+                    echo "  ⚠ Embedded outpost introuvable — forwardAuth non activé"
+                fi
+            else
+                echo "  ⚠ Jellyseerr ForwardAuth : impossible de créer le Proxy Provider"
+            fi
+        else
+            echo "  ⚠ Jellyseerr ForwardAuth : flow d'autorisation introuvable"
+        fi
+    else
+        echo "  ⚠ Authentik non joignable depuis arr-bootstrap — Jellyseerr forwardAuth ignoré"
+    fi
+fi
+
 echo ""
 echo "── [6/6] Jellyseerr — configuration automatique..."
 
@@ -1689,6 +1778,7 @@ ${JF_LINE}
 ║  • Langue française partout                                           ║
 ║  • Bazarr → profil sous-titres Français + Anglais                    ║
 $([ "${JELLYFIN_EMBEDDED}" == "true" ] && echo "║  • Jellyfin → bibliothèques + compte admin + Jellyseerr             ║")
+$([ -n "${ARR_AK_TOKEN}" ] && echo "║  • SSO Authentik → Jellyfin (bouton login) + Jellyseerr protégé     ║")
 ${VPN_LINE}
 ╠════════════════════════════════════════════════════════════════════════╣
 ║  À FAIRE MANUELLEMENT :                                               ║
@@ -1729,6 +1819,7 @@ COMPOSE_PROFILES=${COMPOSE_PROFILES}
 ARR_PUID=${PUID}
 ARR_PGID=${PGID}
 ARR_TZ=Europe/Paris
+ARR_AK_MW=${ARR_AK_MW}
 DOTENVEOF
 echo "✓ .env → COMPOSE_PROFILES=${COMPOSE_PROFILES} ARR_PUID=${PUID} ARR_PGID=${PGID}"
 

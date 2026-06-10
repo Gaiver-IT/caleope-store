@@ -47,6 +47,7 @@ services:
       - "traefik.http.routers.jellyseerr.entrypoints=web"
       - "traefik.http.routers.jellyseerr.priority=10"
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+      - "traefik.http.routers.jellyseerr.middlewares=${ARR_AK_MW:-}"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
