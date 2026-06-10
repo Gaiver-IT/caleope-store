@@ -24,12 +24,6 @@ mkdir -p "${STORAGE_PATH}/downloads/complete/movies" \
          "${STORAGE_PATH}/media/books"
 chmod -R 777 "${STORAGE_PATH}"
 
-# Répertoire temporaire SABnzbd LOCAL (jamais sur NAS) — évite les erreurs CIFS ACL
-# lors de la création de sous-dossiers (__ADMIN__, etc.) à l'intérieur des jobs
-SAB_INCOMPLETE_DIR="${CALEOPE_BASE_DIR}/app-data/arr-stack/sab-incomplete"
-mkdir -p "${SAB_INCOMPLETE_DIR}"
-chmod 777 "${SAB_INCOMPLETE_DIR}"
-echo "   ✓ SABnzbd temp local : ${SAB_INCOMPLETE_DIR}"
 
 if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; then
     mkdir -p "${CALEOPE_BASE_DIR}/app-data/arr-stack"
@@ -683,7 +677,7 @@ url_base = /
 host = 0.0.0.0
 port = 8080
 complete_dir = /data/downloads/complete
-download_dir = /data/sab-incomplete
+download_dir = /data/downloads/incomplete
 host_whitelist = sabnzbd,localhost,sabnzbd.${CALEOPE_DOMAIN}
 inet_exposure = 4
 SABCFG
@@ -696,13 +690,11 @@ path = sys.argv[1]
 try:
     c = open(path).read()
     c = re.sub(r'complete_dir\s*=.*', 'complete_dir = /data/downloads/complete', c)
-    # download_dir = dossier temporaire SABnzbd EN LOCAL (pas NAS)
-    # → évite erreurs CIFS ACL lors création sous-dossiers (__ADMIN__)
-    c = re.sub(r'download_dir\s*=.*', 'download_dir = /data/sab-incomplete', c)
+    c = re.sub(r'download_dir\s*=.*', 'download_dir = /data/downloads/incomplete', c)
     if 'complete_dir' not in c:
-        c += '\ncomplete_dir = /data/downloads/complete\ndownload_dir = /data/sab-incomplete\n'
+        c += '\ncomplete_dir = /data/downloads/complete\ndownload_dir = /data/downloads/incomplete\n'
     open(path, 'w').write(c)
-    print('  ✓ SABnzbd : complete→NAS, temp→local (/data/sab-incomplete)')
+    print('  ✓ SABnzbd : complete→NAS, temp→NAS (/data/downloads/incomplete)')
 except Exception as e:
     print(f'  ⚠ patch sabnzbd.ini: {e}', file=sys.stderr)
 PYEOF
