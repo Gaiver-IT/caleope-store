@@ -300,6 +300,10 @@ services:
     volumes:
       - {{.BaseDir}}/app-data/arr-stack/config/sabnzbd:/config
       - {{.BaseDir}}/app-data/arr-stack/data/downloads:/data/downloads
+      # Répertoire temporaire SABnzbd sur disque LOCAL (pas NAS)
+      # → évite les erreurs CIFS ACL lors de la création des sous-dossiers (__ADMIN__, etc.)
+      # Les téléchargements complétés vont sur /data/downloads/complete (NAS)
+      - {{.BaseDir}}/app-data/arr-stack/sab-incomplete:/data/sab-incomplete
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{.Domain}}`)"
