@@ -1444,7 +1444,7 @@ if [[ -n "\${ARR_AK_TOKEN:-}" ]]; then
                 _AK_JS_BODY=\$(python3 -c "
 import json
 body={'name':'Jellyseerr ForwardAuth','authorization_flow':'\${_AK_JS_FLOW}',
-      'mode':'forward_auth_single','external_host':'https://jellyseerr.${CALEOPE_DOMAIN}'}
+      'mode':'forward_single','external_host':'https://jellyseerr.${CALEOPE_DOMAIN}'}
 if '\${_AK_JS_INVAL}': body['invalidation_flow']='\${_AK_JS_INVAL}'
 print(json.dumps(body))")
                 _AK_JS_PROV_PK=\$(echo "\${_AK_JS_BODY}" | curl -sf -X POST "\${_AK_JS_URL}/api/v3/providers/proxy/" \
