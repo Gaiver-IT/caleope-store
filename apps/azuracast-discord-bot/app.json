@@ -7,7 +7,7 @@
   "capabilities": {
     "reverse_proxy": false,
     "gpu": false,
-    "docker_socket": true,
+    "docker_socket": false,
     "privileged": false
   },
   "network": { "public": false, "internal": true },
