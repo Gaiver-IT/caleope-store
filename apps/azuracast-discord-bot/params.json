@@ -10,7 +10,7 @@
   {
     "id": "AZURACAST_URL",
     "label": "URL de ton AzuraCast",
-    "description": "Ex : https://radio.mondomaine.fr  ou  http://192.168.1.10:8080",
+    "description": "Si AzuraCast est sur le même serveur Caleope, utilise http://azuracast (réseau Docker interne). Sinon : https://radio.mondomaine.fr",
     "type": "string",
     "required": true,
     "default": ""
@@ -34,7 +34,7 @@
   {
     "id": "STREAM_URL",
     "label": "URL du stream (optionnelle)",
-    "description": "Force une URL de stream spécifique au lieu de la détection automatique. Ex : http://radio.mondomaine.fr:8000/radio.mp3",
+    "description": "Si AzuraCast est sur le même serveur : http://azuracast:8500/listen/SHORTCODE/radio.mp3 — Sinon : http://radio.mondomaine.fr:8500/listen/SHORTCODE/radio.mp3",
     "type": "string",
     "required": false,
     "default": ""

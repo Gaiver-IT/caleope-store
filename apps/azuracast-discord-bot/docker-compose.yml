@@ -7,7 +7,10 @@ services:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     networks:
       - caleope-internal
+      - caleope-public
 
 networks:
   caleope-internal:
+    external: true
+  caleope-public:
     external: true
