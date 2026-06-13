@@ -109,15 +109,19 @@ class RadioPlayer:
             return self._cached_stream_url
         np = await self.fetch_now_playing()
         mounts = np.get("station", {}).get("mounts", [])
+        # Build internal URL: use AZURACAST_URL hostname + Icecast port 8500 + mount path
+        from urllib.parse import urlparse
+        az_host = urlparse(AZURACAST_URL).hostname or "azuracast"
         for m in mounts:
-            if m.get("is_default") or m.get("url"):
-                url = m.get("url", "")
-                if url:
-                    self._cached_stream_url = url
-                    return url
-        hls = np.get("station", {}).get("hls_url", "")
-        if hls:
-            self._cached_stream_url = hls
+            path = m.get("path", "")
+            if path:
+                self._cached_stream_url = f"http://{az_host}:8500{path}"
+                if m.get("is_default"):
+                    break
+        if not self._cached_stream_url:
+            hls = np.get("station", {}).get("hls_url", "")
+            if hls:
+                self._cached_stream_url = hls
         return self._cached_stream_url
 
     async def skip(self) -> bool:
@@ -222,7 +226,7 @@ def np_embed(np: dict) -> discord.Embed:
     if duration:
         embed.add_field(name="Durée", value=f"{fmt_time(elapsed)} / {fmt_time(duration)}", inline=True)
     embed.add_field(name="Auditeurs", value=str(listeners), inline=True)
-    if art:
+    if art and art.startswith("https://"):
         embed.set_thumbnail(url=art)
     embed.set_footer(text=station.get("name", AZURACAST_STATION_ID))
     return embed
@@ -315,7 +319,7 @@ class NowPlayingTracker:
                 inline=False,
             )
 
-        if art:
+        if art and art.startswith("https://"):
             embed.set_thumbnail(url=art)
 
         embed.set_footer(text=f"NowPlaying • {AZURACAST_URL}")
