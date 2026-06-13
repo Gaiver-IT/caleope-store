@@ -1,0 +1,13 @@
+services:
+  azuracast-discord-bot:
+    image: caleope-azuracast-discord-bot:latest
+    container_name: azuracast-discord-bot
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true
