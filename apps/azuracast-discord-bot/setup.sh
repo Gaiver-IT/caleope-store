@@ -25,6 +25,8 @@ AZURACAST_API_KEY=${CALEOPE_PARAM_AZURACAST_API_KEY:-}
 STREAM_URL=${CALEOPE_PARAM_STREAM_URL:-}
 AUTO_CHANNEL_ID=${CALEOPE_PARAM_AUTO_CHANNEL_ID:-}
 DEFAULT_VOLUME=${CALEOPE_PARAM_DEFAULT_VOLUME:-100}
+NP_CHANNEL_ID=${CALEOPE_PARAM_NP_CHANNEL_ID:-}
+NP_POLL_INTERVAL=${CALEOPE_PARAM_NP_POLL_INTERVAL:-10}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
@@ -55,13 +57,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("radio-bot")
 
-DISCORD_TOKEN       = os.environ["DISCORD_TOKEN"]
-AZURACAST_URL       = os.environ["AZURACAST_URL"].rstrip("/")
+DISCORD_TOKEN        = os.environ["DISCORD_TOKEN"]
+AZURACAST_URL        = os.environ["AZURACAST_URL"].rstrip("/")
 AZURACAST_STATION_ID = os.environ.get("AZURACAST_STATION_ID", "radio")
-AZURACAST_API_KEY   = os.environ.get("AZURACAST_API_KEY", "")
-STREAM_URL_ENV      = os.environ.get("STREAM_URL", "").strip()
-AUTO_CHANNEL_ID     = int(os.environ.get("AUTO_CHANNEL_ID", "0") or "0")
-DEFAULT_VOLUME      = max(0, min(200, int(os.environ.get("DEFAULT_VOLUME", "100") or "100")))
+AZURACAST_API_KEY    = os.environ.get("AZURACAST_API_KEY", "")
+STREAM_URL_ENV       = os.environ.get("STREAM_URL", "").strip()
+AUTO_CHANNEL_ID      = int(os.environ.get("AUTO_CHANNEL_ID", "0") or "0")
+DEFAULT_VOLUME       = max(0, min(200, int(os.environ.get("DEFAULT_VOLUME", "100") or "100")))
+NP_CHANNEL_ID        = int(os.environ.get("NP_CHANNEL_ID", "0") or "0")
+NP_POLL_INTERVAL     = max(5, int(os.environ.get("NP_POLL_INTERVAL", "10") or "10"))
 
 
 # ── Player ───────────────────────────────────────────────────────────────────
@@ -224,6 +228,103 @@ def np_embed(np: dict) -> discord.Embed:
     return embed
 
 
+# ── Now Playing Tracker ───────────────────────────────────────────────────────
+
+class NowPlayingTracker:
+    """Poste et maintient à jour un message 'En ce moment' dans un salon texte."""
+
+    def __init__(self):
+        self.message: discord.Message | None = None
+        self._last_song_id: str = ""
+
+    async def _find_existing(self, channel: discord.TextChannel) -> discord.Message | None:
+        """Cherche un message existant du bot dans les 50 derniers messages."""
+        async for msg in channel.history(limit=50):
+            if msg.author == bot.user and msg.embeds:
+                footer = msg.embeds[0].footer.text or ""
+                if "NowPlaying" in footer:
+                    return msg
+        return None
+
+    async def start(self, channel: discord.TextChannel, np: dict):
+        embed = self._build_embed(np)
+        existing = await self._find_existing(channel)
+        if existing:
+            await existing.edit(embed=embed)
+            self.message = existing
+            log.info("Message NP existant récupéré dans #%s", channel.name)
+        else:
+            self.message = await channel.send(embed=embed)
+            log.info("Message NP créé dans #%s", channel.name)
+        song = np.get("now_playing", {}).get("song", {})
+        self._last_song_id = song.get("id", "") or song.get("title", "")
+
+    async def update(self, np: dict):
+        if not self.message:
+            return
+        song = np.get("now_playing", {}).get("song", {})
+        song_id = song.get("id", "") or song.get("title", "")
+        if song_id == self._last_song_id:
+            return  # Pas de changement
+        self._last_song_id = song_id
+        try:
+            embed = self._build_embed(np)
+            await self.message.edit(embed=embed)
+            log.info("NP mis à jour : %s — %s", song.get("artist", "?"), song.get("title", "?"))
+        except discord.NotFound:
+            self.message = None  # Message supprimé, on le recréera au prochain cycle
+        except Exception as exc:
+            log.warning("Impossible d'éditer le message NP : %s", exc)
+
+    def _build_embed(self, np: dict) -> discord.Embed:
+        station = np.get("station", {})
+        song    = np.get("now_playing", {}).get("song", {})
+        nxt     = np.get("playing_next", {}).get("song", {})
+        listeners = np.get("listeners", {}).get("current", 0)
+        elapsed   = np.get("now_playing", {}).get("elapsed", 0)
+        duration  = np.get("now_playing", {}).get("duration", 0)
+
+        title  = song.get("title") or "—"
+        artist = song.get("artist") or "—"
+        album  = song.get("album") or ""
+        art    = song.get("art") or ""
+
+        embed = discord.Embed(
+            title=f"🎵 {title}",
+            description=f"**{artist}**" + (f"\n_{album}_" if album else ""),
+            color=0x1DB954,
+        )
+
+        if duration:
+            def t(s):
+                return f"{s // 60}:{s % 60:02d}"
+            bar_len = 16
+            filled = int(bar_len * elapsed / duration) if duration else 0
+            bar = "▰" * filled + "▱" * (bar_len - filled)
+            embed.add_field(name="Progression", value=f"`{t(elapsed)}` {bar} `{t(duration)}`", inline=False)
+
+        embed.add_field(name="👥 Auditeurs", value=str(listeners), inline=True)
+        embed.add_field(name="📻 Station",   value=station.get("name", AZURACAST_STATION_ID), inline=True)
+
+        if nxt:
+            nxt_title  = nxt.get("title", "—")
+            nxt_artist = nxt.get("artist", "")
+            embed.add_field(
+                name="⏭️ Ensuite",
+                value=f"{nxt_artist} — {nxt_title}" if nxt_artist else nxt_title,
+                inline=False,
+            )
+
+        if art:
+            embed.set_thumbnail(url=art)
+
+        embed.set_footer(text=f"NowPlaying • {AZURACAST_URL}")
+        return embed
+
+
+np_tracker = NowPlayingTracker()
+
+
 # ── Events ────────────────────────────────────────────────────────────────────
 
 @bot.event
@@ -240,6 +341,14 @@ async def on_ready():
                 log.info("Auto-join #%s → lecture lancée", channel.name)
             else:
                 log.warning("Auto-join échoué : %s", info)
+
+    if NP_CHANNEL_ID:
+        channel = bot.get_channel(NP_CHANNEL_ID)
+        if isinstance(channel, discord.TextChannel):
+            np = await player.fetch_now_playing()
+            if np:
+                await np_tracker.start(channel, np)
+        poll_now_playing.start()
 
     update_presence.start()
 
@@ -266,6 +375,22 @@ async def update_presence():
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.listening, name=text[:128])
     )
+
+
+@tasks.loop(seconds=NP_POLL_INTERVAL)
+async def poll_now_playing():
+    """Vérifie le titre en cours et édite le message si ça a changé."""
+    if not np_tracker.message:
+        # Message perdu (supprimé) → on le recrée
+        channel = bot.get_channel(NP_CHANNEL_ID)
+        if isinstance(channel, discord.TextChannel):
+            np = await player.fetch_now_playing()
+            if np:
+                await np_tracker.start(channel, np)
+        return
+    np = await player.fetch_now_playing()
+    if np:
+        await np_tracker.update(np)
 
 
 # ── Slash commands ────────────────────────────────────────────────────────────
@@ -369,6 +494,26 @@ async def cmd_resume(interaction: discord.Interaction):
         await interaction.response.send_message("❌ Rien n'est en pause.", ephemeral=True)
 
 
+@radio_group.command(name="setnpchannel", description="Active le message 'En ce moment' dans ce salon")
+async def cmd_setnpchannel(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("❌ Cette commande doit être utilisée dans un salon texte.", ephemeral=True)
+        return
+    await interaction.response.defer()
+    np = await player.fetch_now_playing()
+    if not np:
+        await interaction.followup.send("❌ Impossible de contacter AzuraCast.")
+        return
+    await np_tracker.start(interaction.channel, np)
+    if not poll_now_playing.is_running():
+        poll_now_playing.start()
+    await interaction.followup.send(
+        f"✅ Message 'En ce moment' activé dans {interaction.channel.mention}. "
+        f"Il se mettra à jour automatiquement à chaque changement de titre.",
+        ephemeral=True,
+    )
+
+
 bot.tree.add_command(radio_group)
 
 bot.run(DISCORD_TOKEN, log_handler=None)
@@ -401,28 +546,39 @@ echo "  ✓ Image construite : caleope-azuracast-discord-bot:latest"
 STATION_ID="${CALEOPE_PARAM_AZURACAST_STATION_ID:-radio}"
 AZ_URL="${CALEOPE_PARAM_AZURACAST_URL:-}"
 
+NP_CHAN="${CALEOPE_PARAM_NP_CHANNEL_ID:-}"
+NP_STATUS="désactivé (configurer via /radio setnpchannel)"
+[ -n "${NP_CHAN}" ] && NP_STATUS="actif sur salon ID ${NP_CHAN}"
+
 cat > "${CONFIG_DIR}/post-install.txt" << EOF
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │              AzuraCast Radio Bot — Installé                          │
   ├──────────────────────────────────────────────────────────────────────┤
-  │  Station : ${STATION_ID}
+  │  Station   : ${STATION_ID}
   │  AzuraCast : ${AZ_URL}
+  │  NP live   : ${NP_STATUS}
   │                                                                      │
   │  Commandes Discord :                                                 │
-  │    /radio play   → rejoint ton salon et lance la radio               │
-  │    /radio stop   → arrête et quitte le salon                         │
-  │    /radio volume → règle le volume (0-200%)                          │
-  │    /radio np     → titre en cours                                    │
-  │    /radio skip   → passe au suivant (clé API requise)                │
-  │    /radio status → statut du bot                                     │
-  │    /radio pause  → pause sans quitter                                │
-  │    /radio resume → reprend après pause                               │
+  │    /radio play          → rejoint ton salon et lance la radio        │
+  │    /radio stop          → arrête et quitte le salon                  │
+  │    /radio volume <n>    → règle le volume (0-200%)                   │
+  │    /radio np            → titre en cours (embed)                     │
+  │    /radio skip          → passe au suivant (clé API requise)         │
+  │    /radio status        → statut du bot                              │
+  │    /radio pause/resume  → pause sans quitter le salon                │
+  │    /radio setnpchannel  → active le message live dans ce salon       │
+  │                                                                      │
+  │  Message auto-update :                                               │
+  │    Tape /radio setnpchannel dans n'importe quel salon texte.         │
+  │    Le bot postera un embed qui se met à jour à chaque changement     │
+  │    de titre avec : titre, artiste, album, barre de progression,      │
+  │    nombre d'auditeurs, et prochain titre.                            │
   │                                                                      │
   │  Prérequis Discord :                                                 │
   │    • Mode développeur activé (Paramètres → Apparence)                │
-  │    • Permissions bot : Connect + Speak + Use Slash Commands          │
-  │    • Intent "Server Members" activé dans le portail développeur      │
+  │    • Permissions bot : Connect, Speak, Send Messages, Embed Links    │
+  │    • Intents : Voice States (portail développeur)                    │
   │                                                                      │
   │  Logs :                                                              │
   │    caleope logs azuracast-discord-bot                                │

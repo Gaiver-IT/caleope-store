@@ -54,5 +54,21 @@
     "type": "string",
     "required": false,
     "default": "100"
+  },
+  {
+    "id": "NP_CHANNEL_ID",
+    "label": "ID du salon texte pour le message 'En ce moment'",
+    "description": "Le bot poste un message qui se modifie automatiquement à chaque changement de titre. Laisser vide pour désactiver. Configurable aussi via /radio setnpchannel.",
+    "type": "string",
+    "required": false,
+    "default": ""
+  },
+  {
+    "id": "NP_POLL_INTERVAL",
+    "label": "Intervalle de vérification des titres (secondes)",
+    "description": "À quelle fréquence le bot interroge AzuraCast pour détecter un changement de titre. Min : 5s.",
+    "type": "string",
+    "required": false,
+    "default": "10"
   }
 ]
