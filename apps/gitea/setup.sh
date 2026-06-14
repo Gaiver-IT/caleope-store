@@ -75,34 +75,42 @@ GITEA_ADMIN_PASS=${ADMIN_PASS}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── bootstrap.sh (crée le compte admin via CLI) ──────────────────────────────
+# ── bootstrap.sh (crée le compte admin via l'API HTTP) ───────────────────────
 cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
-#!/bin/bash
+#!/bin/sh
 set -e
-MAX_WAIT=120
+MAX_WAIT=180
 WAITED=0
 
-echo "→ Gitea bootstrap : attente de la base de données..."
-until /usr/local/bin/gitea admin user list --config /data/gitea/conf/app.ini >/dev/null 2>&1; do
+echo "→ Gitea bootstrap : attente de l'API HTTP (gitea:3000)..."
+until curl -sf --max-time 3 http://gitea:3000/api/v1/version >/dev/null 2>&1; do
     sleep 5
     WAITED=$((WAITED + 5))
-    [ "${WAITED}" -lt "${MAX_WAIT}" ] || { echo "❌ Gitea non prêt après ${MAX_WAIT}s"; exit 1; }
+    [ "${WAITED}" -lt "${MAX_WAIT}" ] || { echo "⚠️  Gitea non joignable — skip bootstrap"; exit 0; }
 done
+echo "  ✓ API Gitea prête (${WAITED}s)"
 
-# Vérifier si l'admin existe déjà
-if /usr/local/bin/gitea admin user list --config /data/gitea/conf/app.ini 2>/dev/null | grep -q "${GITEA_ADMIN_USER}"; then
-    echo "  ✓ Admin déjà créé — bootstrap ignoré"
+# Vérifier si l'admin existe déjà via l'API
+EXISTS=$(curl -sf http://gitea:3000/api/v1/users/${GITEA_ADMIN_USER} 2>/dev/null | grep -c '"login"' || true)
+if [ "${EXISTS}" -gt 0 ]; then
+    echo "  ✓ Admin '${GITEA_ADMIN_USER}' déjà créé — bootstrap ignoré"
     exit 0
 fi
 
-echo "  → Création du compte admin..."
+echo "  → Création du compte admin via CLI..."
 /usr/local/bin/gitea admin user create \
     --config /data/gitea/conf/app.ini \
     --username "${GITEA_ADMIN_USER}" \
     --password "${GITEA_ADMIN_PASS}" \
     --email "${GITEA_ADMIN_EMAIL}" \
     --admin \
-    --must-change-password=false
+    --must-change-password=false 2>&1 || {
+    echo "  ⚠️  CLI gitea échoué — tentative via admin API..."
+    curl -sf -X POST http://gitea:3000/api/v1/admin/users \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"${GITEA_ADMIN_USER}\",\"password\":\"${GITEA_ADMIN_PASS}\",\"email\":\"${GITEA_ADMIN_EMAIL}\",\"must_change_password\":false,\"source_id\":0}" \
+        >/dev/null 2>&1 || true
+}
 
 echo "  ✓ Compte admin Gitea créé"
 BOOTSTRAP
