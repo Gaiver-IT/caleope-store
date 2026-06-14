@@ -11,10 +11,10 @@ mkdir -p "${DATA_DIR}/"{tmp,logs}
 mkdir -p /var/lib/pterodactyl
 
 # ── Params ──────────────────────────────────────────────────────────────────
-PARAM_PANEL_URL="${PARAM_PANEL_URL:-}"
-PARAM_PANEL_API_KEY="${PARAM_PANEL_API_KEY:-}"
-NODE_NAME="${PARAM_NODE_NAME:-Node-01}"
-NODE_FQDN="${PARAM_NODE_FQDN:-}"
+PANEL_URL="${CALEOPE_PARAM_PANEL_URL:-}"
+PANEL_API_KEY="${CALEOPE_PARAM_PANEL_API_KEY:-}"
+NODE_NAME="${CALEOPE_PARAM_NODE_NAME:-Node-01}"
+NODE_FQDN="${CALEOPE_PARAM_NODE_FQDN:-}"
 
 if [ -z "${NODE_FQDN}" ]; then
     echo "❌ NODE_FQDN (IP ou domaine public de ce serveur Wings) est requis" >&2
@@ -23,8 +23,8 @@ fi
 
 # ── Auto-détection du panel local ────────────────────────────────────────────
 PANEL_SECRETS="${CALEOPE_BASE_DIR}/app-config/pterodactyl-panel/secrets.env"
-PANEL_URL="${PARAM_PANEL_URL}"
-PANEL_API_KEY="${PARAM_PANEL_API_KEY}"
+PANEL_URL="${CALEOPE_PARAM_PANEL_URL}"
+PANEL_API_KEY="${CALEOPE_PARAM_PANEL_API_KEY}"
 
 if [ -f "${PANEL_SECRETS}" ]; then
     echo "  → Panel détecté localement, lecture de la configuration..."

@@ -10,9 +10,9 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/state"
 
 # ── Params ──────────────────────────────────────────────────────────────────
-TS_AUTHKEY="${PARAM_TS_AUTHKEY:-}"
-TS_HOSTNAME="${PARAM_TS_HOSTNAME:-caleope-server}"
-TS_EXTRA_ARGS="${PARAM_TS_EXTRA_ARGS:-}"
+TS_AUTHKEY="${CALEOPE_PARAM_TS_AUTHKEY:-}"
+TS_HOSTNAME="${CALEOPE_PARAM_TS_HOSTNAME:-caleope-server}"
+TS_EXTRA_ARGS="${CALEOPE_PARAM_TS_EXTRA_ARGS:-}"
 
 if [ -z "${TS_AUTHKEY}" ]; then
     echo "❌ TS_AUTHKEY (clé auth Tailscale) est requis" >&2

@@ -10,9 +10,9 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{content,db}
 
 # ── Params ──────────────────────────────────────────────────────────────────
-BLOG_TITLE="${PARAM_BLOG_TITLE:-Mon Blog}"
-ADMIN_EMAIL="${PARAM_ADMIN_EMAIL:-}"
-ADMIN_NAME="${PARAM_ADMIN_NAME:-Admin}"
+BLOG_TITLE="${CALEOPE_PARAM_BLOG_TITLE:-Mon Blog}"
+ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-}"
+ADMIN_NAME="${CALEOPE_PARAM_ADMIN_NAME:-Admin}"
 
 if [ -z "${ADMIN_EMAIL}" ]; then
     echo "❌ ADMIN_EMAIL est requis" >&2

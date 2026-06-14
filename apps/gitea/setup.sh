@@ -10,8 +10,8 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{data,db}
 
 # ── Params ──────────────────────────────────────────────────────────────────
-ADMIN_USER="${PARAM_ADMIN_USER:-git-admin}"
-ADMIN_EMAIL="${PARAM_ADMIN_EMAIL:-}"
+ADMIN_USER="${CALEOPE_PARAM_ADMIN_USER:-git-admin}"
+ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-}"
 
 if [ -z "${ADMIN_EMAIL}" ]; then
     echo "❌ ADMIN_EMAIL est requis" >&2

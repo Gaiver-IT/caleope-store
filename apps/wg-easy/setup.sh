@@ -10,8 +10,8 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/data"
 
 # ── Params ──────────────────────────────────────────────────────────────────
-WG_HOST="${PARAM_WG_HOST:-}"
-WG_DEFAULT_DNS="${PARAM_WG_DEFAULT_DNS:-1.1.1.1}"
+WG_HOST="${CALEOPE_PARAM_WG_HOST:-}"
+WG_DEFAULT_DNS="${CALEOPE_PARAM_WG_DEFAULT_DNS:-1.1.1.1}"
 
 if [ -z "${WG_HOST}" ]; then
     echo "❌ WG_HOST (IP ou domaine public) est requis" >&2
