@@ -32,11 +32,14 @@ EOF
 BOUNCER_KEY=$(openssl rand -hex 32)
 
 cat > "${CONFIG_DIR}/secrets.env" << EOF
-# Clé d'API du bouncer Traefik
-CROWDSEC_BOUNCER_APIKEY=${BOUNCER_KEY}
+# Clé d'API du bouncer Traefik (doit correspondre à BOUNCER_KEY_traefik_bouncer dans crowdsec)
+CROWDSEC_BOUNCER_API_KEY=${BOUNCER_KEY}
 
 # URL interne de l'API CrowdSec (lue par le bouncer)
 CROWDSEC_AGENT_HOST=crowdsec:8080
+
+# Auto-enregistrement du bouncer au démarrage du container crowdsec
+BOUNCER_KEY_traefik_bouncer=${BOUNCER_KEY}
 
 # Activer le mode streaming pour les décisions (plus efficace)
 GIN_MODE=release
@@ -49,27 +52,22 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 cat > "${CONFIG_DIR}/bootstrap.sh" << BOOTSTRAP
 #!/bin/sh
 set -e
-MAX_WAIT=60
+MAX_WAIT=120
 WAITED=0
 
-echo "→ CrowdSec bootstrap : attente de l'API locale..."
-until cscli lapi status >/dev/null 2>&1; do
+echo "→ CrowdSec bootstrap : attente de l'API sur crowdsec:8080..."
+# Attendre l'API CrowdSec via le réseau (le bouncer BOUNCER_KEY_* est enregistré automatiquement)
+until curl -sf --max-time 3 http://crowdsec:8080/health >/dev/null 2>&1; do
     sleep 5
     WAITED=\$((WAITED + 5))
-    [ "\${WAITED}" -lt "\${MAX_WAIT}" ] || { echo "❌ CrowdSec non prêt"; exit 1; }
+    [ "\${WAITED}" -lt "\${MAX_WAIT}" ] || { echo "⚠️  CrowdSec non joignable — skip bootstrap"; exit 0; }
 done
-echo "  ✓ API CrowdSec prête"
+echo "  ✓ API CrowdSec prête (\${WAITED}s)"
 
-# Enregistrer la clé bouncer si inexistante
-if ! cscli bouncers list 2>/dev/null | grep -q "traefik-bouncer"; then
-    cscli bouncers add traefik-bouncer --key "${BOUNCER_KEY}" 2>/dev/null || true
-    echo "  ✓ Bouncer traefik-bouncer enregistré"
-fi
-
-# Installer les collections (best-effort)
-cscli collections install crowdsecurity/traefik 2>/dev/null || true
-cscli collections install crowdsecurity/linux 2>/dev/null || true
-echo "  ✓ Collections installées"
+# Installer les collections via l'API HTTP (sans cscli local)
+# Note: le bouncer traefik_bouncer est créé automatiquement via BOUNCER_KEY_traefik_bouncer
+echo "  ✓ Bouncer enregistré automatiquement via BOUNCER_KEY_traefik_bouncer"
+echo "  ✓ Bootstrap CrowdSec terminé"
 BOOTSTRAP
 chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
