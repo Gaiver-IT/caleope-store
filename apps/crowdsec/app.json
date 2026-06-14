@@ -1,0 +1,20 @@
+{
+  "id": "crowdsec",
+  "name": "CrowdSec",
+  "category": "security",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/crowdsec/config", "target": "/etc/crowdsec" },
+    { "source": "app-data/crowdsec/data", "target": "/var/lib/crowdsec/data" }
+  ],
+  "backup": { "enabled": false }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "pterodactyl-wings",
+  "name": "Pterodactyl Wings",
+  "category": "gaming",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": false },
+  "ports": [
+    { "name": "api", "container": 8080, "host": 8080, "dynamic": false, "firewall": true, "protocol": "tcp" },
+    { "name": "sftp", "container": 2022, "host": 2022, "dynamic": false, "firewall": true, "protocol": "tcp" }
+  ],
+  "volumes": [
+    { "source": "app-data/pterodactyl-wings/tmp", "target": "/tmp/pterodactyl" },
+    { "source": "app-data/pterodactyl-wings/logs", "target": "/var/log/pterodactyl" }
+  ],
+  "backup": { "enabled": false }
+}

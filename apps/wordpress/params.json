@@ -1,0 +1,26 @@
+[
+  {
+    "id": "BLOG_TITLE",
+    "label": "Titre du site",
+    "description": "Nom affiché dans l'interface WordPress et les meta-tags SEO.",
+    "type": "string",
+    "required": false,
+    "default": "Mon Site"
+  },
+  {
+    "id": "ADMIN_EMAIL",
+    "label": "Email de l'administrateur",
+    "description": "Adresse email du compte admin WordPress.",
+    "type": "string",
+    "required": true,
+    "default": ""
+  },
+  {
+    "id": "ADMIN_USER",
+    "label": "Nom d'utilisateur admin",
+    "description": "Identifiant de connexion WordPress (pas l'email).",
+    "type": "string",
+    "required": false,
+    "default": "admin"
+  }
+]

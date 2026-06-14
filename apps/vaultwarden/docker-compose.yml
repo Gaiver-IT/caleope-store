@@ -1,0 +1,30 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/vaultwarden/data:/data
+    {{- range .Ports}}
+    ports:
+      - "{{.Host}}:{{.Container}}"
+    {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaultwarden.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.vaultwarden.entrypoints=web"
+      - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+      - "traefik.http.routers.vaultwarden-ws.rule=Host(`{{.Domain}}`) && Path(`/notifications/hub`)"
+      - "traefik.http.routers.vaultwarden-ws.entrypoints=web"
+      - "traefik.http.routers.vaultwarden-ws.service=vaultwarden-ws"
+      - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"
+    networks:
+      - caleope-public
+
+networks:
+  caleope-public:
+    external: true

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TS_AUTHKEY",
+    "label": "Clé d'authentification Tailscale",
+    "description": "Clé auth reusable générée sur tailscale.com/admin/settings/keys. Préférer une clé éphémère (expiry: 90j) ou pré-autorisée.",
+    "type": "secret",
+    "required": true,
+    "default": ""
+  },
+  {
+    "id": "TS_HOSTNAME",
+    "label": "Nom de la machine dans Tailscale",
+    "description": "Nom affiché dans l'interface Tailscale (admin.tailscale.com). Doit être unique dans ton réseau Tailscale.",
+    "type": "string",
+    "required": false,
+    "default": "caleope-server"
+  },
+  {
+    "id": "TS_EXTRA_ARGS",
+    "label": "Arguments supplémentaires (optionnel)",
+    "description": "Args passés à tailscale up, ex: --advertise-exit-node pour partager la connexion internet.",
+    "type": "string",
+    "required": false,
+    "default": ""
+  }
+]

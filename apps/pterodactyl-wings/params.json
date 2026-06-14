@@ -1,0 +1,34 @@
+[
+  {
+    "id": "PANEL_URL",
+    "label": "URL du Pterodactyl Panel",
+    "description": "URL complète du panel Pterodactyl. Laisser vide si le panel est installé sur ce même serveur (auto-détection).",
+    "type": "string",
+    "required": false,
+    "default": ""
+  },
+  {
+    "id": "PANEL_API_KEY",
+    "label": "Clé API admin du Panel",
+    "description": "Clé API admin (commence par ptlc_). Laisser vide si le panel est local (auto-détection). Générer dans Panel → Admin → API.",
+    "type": "secret",
+    "required": false,
+    "default": ""
+  },
+  {
+    "id": "NODE_NAME",
+    "label": "Nom du nœud Wings",
+    "description": "Nom affiché dans le panel pour identifier ce nœud (ex: Node-01, Serveur-Principal).",
+    "type": "string",
+    "required": false,
+    "default": "Node-01"
+  },
+  {
+    "id": "NODE_FQDN",
+    "label": "FQDN ou IP publique de ce nœud",
+    "description": "Adresse IP publique ou nom de domaine de CE serveur Wings. Utilisé par le panel pour joindre Wings.",
+    "type": "string",
+    "required": true,
+    "default": ""
+  }
+]

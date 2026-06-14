@@ -1,0 +1,23 @@
+{
+  "id": "wg-easy",
+  "name": "WG-Easy",
+  "category": "network",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": true
+  },
+  "network": { "public": true, "internal": false },
+  "ports": [
+    { "name": "web", "container": 51821, "dynamic": true },
+    { "name": "wireguard", "container": 51820, "host": 51820, "dynamic": false, "firewall": true, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-data/wg-easy/data", "target": "/etc/wireguard" }
+  ],
+  "backup": { "enabled": true },
+  "secure_headers": true
+}

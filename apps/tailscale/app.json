@@ -1,0 +1,19 @@
+{
+  "id": "tailscale",
+  "name": "Tailscale",
+  "category": "network",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/tailscale/state", "target": "/var/lib/tailscale" }
+  ],
+  "backup": { "enabled": false }
+}

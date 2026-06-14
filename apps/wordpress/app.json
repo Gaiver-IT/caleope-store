@@ -1,0 +1,20 @@
+{
+  "id": "wordpress",
+  "name": "WordPress",
+  "category": "cms",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/wordpress/wp-content", "target": "/var/www/html/wp-content" }
+  ],
+  "backup": { "enabled": true },
+  "secure_headers": true
+}

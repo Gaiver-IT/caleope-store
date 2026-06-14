@@ -1,0 +1,22 @@
+{
+  "id": "pterodactyl-panel",
+  "name": "Pterodactyl Panel",
+  "category": "gaming",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/pterodactyl-panel/var", "target": "/app/var" },
+    { "source": "app-data/pterodactyl-panel/logs", "target": "/app/storage/logs" },
+    { "source": "app-data/pterodactyl-panel/db", "target": "/var/lib/mysql" }
+  ],
+  "backup": { "enabled": true },
+  "secure_headers": true
+}

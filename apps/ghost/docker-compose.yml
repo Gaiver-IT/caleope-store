@@ -1,0 +1,55 @@
+services:
+  ghost-db:
+    image: mysql:8.0
+    container_name: ghost-db
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/ghost/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  ghost:
+    image: ghost:5-alpine
+    container_name: ghost
+    restart: unless-stopped
+    depends_on:
+      - ghost-db
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/ghost/content:/var/lib/ghost/content
+    {{- range .Ports}}
+    ports:
+      - "{{.Host}}:{{.Container}}"
+    {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ghost.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.ghost.entrypoints=web"
+      - "traefik.http.services.ghost.loadbalancer.server.port=2368"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  ghost-bootstrap:
+    image: alpine:3.19
+    container_name: ghost-bootstrap
+    restart: "no"
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    entrypoint: ["/bin/sh", "/bootstrap.sh"]
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    driver: bridge

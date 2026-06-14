@@ -1,0 +1,56 @@
+services:
+  wordpress-db:
+    image: mariadb:11
+    container_name: wordpress-db
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/wordpress/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  wordpress:
+    image: wordpress:6-php8.3-apache
+    container_name: wordpress
+    restart: unless-stopped
+    depends_on:
+      - wordpress-db
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/wordpress/wp-content:/var/www/html/wp-content
+    {{- range .Ports}}
+    ports:
+      - "{{.Host}}:{{.Container}}"
+    {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wordpress.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.wordpress.entrypoints=web"
+      - "traefik.http.services.wordpress.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  wordpress-bootstrap:
+    image: wordpress:6-php8.3-cli
+    container_name: wordpress-bootstrap
+    restart: "no"
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    volumes:
+      - {{.BaseDir}}/app-data/wordpress/wp-content:/var/www/html/wp-content
+      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    driver: bridge

@@ -1,0 +1,65 @@
+services:
+  pterodactyl-db:
+    image: mariadb:11
+    container_name: pterodactyl-db
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/pterodactyl-panel/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  pterodactyl-redis:
+    image: redis:7-alpine
+    container_name: pterodactyl-redis
+    restart: unless-stopped
+    networks:
+      - caleope-internal
+
+  pterodactyl-panel:
+    image: ghcr.io/pterodactyl/panel:latest
+    container_name: pterodactyl-panel
+    restart: unless-stopped
+    depends_on:
+      - pterodactyl-db
+      - pterodactyl-redis
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/pterodactyl-panel/var:/app/var
+      - {{.BaseDir}}/app-data/pterodactyl-panel/logs:/app/storage/logs
+    {{- range .Ports}}
+    ports:
+      - "{{.Host}}:{{.Container}}"
+    {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pterodactyl.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.pterodactyl.entrypoints=web"
+      - "traefik.http.services.pterodactyl.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  pterodactyl-bootstrap:
+    image: ghcr.io/pterodactyl/panel:latest
+    container_name: pterodactyl-bootstrap
+    restart: "no"
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    volumes:
+      - {{.BaseDir}}/app-data/pterodactyl-panel/var:/app/var
+      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    driver: bridge
