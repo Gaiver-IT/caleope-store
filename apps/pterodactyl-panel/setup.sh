@@ -69,7 +69,7 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 
 # ── bootstrap.sh (artisan commands via Panel image) ──────────────────────────
 cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
-#!/bin/bash
+#!/bin/sh
 set -e
 
 cd /app

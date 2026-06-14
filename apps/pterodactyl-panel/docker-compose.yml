@@ -51,7 +51,7 @@ services:
     restart: "no"
     env_file:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
-    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    entrypoint: ["/bin/sh", "/bootstrap.sh"]
     volumes:
       - {{.BaseDir}}/app-data/pterodactyl-panel/var:/app/var
       - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
