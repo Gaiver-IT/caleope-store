@@ -37,7 +37,7 @@ services:
       - caleope-internal
 
   wordpress-bootstrap:
-    image: wordpress:6-php8.3-cli
+    image: wordpress:cli-php8.3
     container_name: wordpress-bootstrap
     restart: "no"
     env_file:
