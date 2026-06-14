@@ -17,7 +17,7 @@ mkdir -p "${TRAEFIK_DYNAMIC_DIR}"
 cat > "${DATA_DIR}/config/acquis.yaml" << 'EOF'
 ---
 filenames:
-  - /var/log/traefik/*.log
+  - /opt/traefik-logs/*.log
 labels:
   type: traefik
 ---

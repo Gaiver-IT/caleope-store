@@ -76,7 +76,7 @@ MAX_WAIT=120
 WAITED=0
 
 echo "→ Ghost bootstrap : attente de Ghost..."
-until wget -qO- "${GHOST_URL}/ghost/api/admin/site/" >/dev/null 2>&1; do
+until [ "$(curl -s -o /dev/null -w '%{http_code}' --max-redirs 0 "${GHOST_URL}/ghost/api/admin/site/" 2>/dev/null)" != "000" ]; do
     sleep 5
     WAITED=$((WAITED + 5))
     if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
@@ -87,7 +87,7 @@ done
 echo "  ✓ Ghost prêt (${WAITED}s)"
 
 # Vérifier si déjà configuré
-STATUS=$(wget -qO- "${GHOST_URL}/ghost/api/admin/authentication/setup/" 2>/dev/null || echo "")
+STATUS=$(curl -sf --max-redirs 0 "${GHOST_URL}/ghost/api/admin/authentication/setup/" 2>/dev/null || echo "")
 IS_SETUP=$(echo "${STATUS}" | grep -c '"status":"eep"' || true)
 
 if [ "${IS_SETUP}" -gt 0 ]; then
@@ -96,8 +96,9 @@ if [ "${IS_SETUP}" -gt 0 ]; then
 fi
 
 echo "  → Création du compte admin..."
-RESPONSE=$(wget -qO- --header="Content-Type: application/json" \
-    --post-data="{\"setup\":[{\"name\":\"${GHOST_ADMIN_NAME}\",\"email\":\"${GHOST_ADMIN_EMAIL}\",\"password\":\"${GHOST_ADMIN_PASS}\",\"blogTitle\":\"${GHOST_BLOG_TITLE}\"}]}" \
+RESPONSE=$(curl -sf --max-redirs 0 -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"setup\":[{\"name\":\"${GHOST_ADMIN_NAME}\",\"email\":\"${GHOST_ADMIN_EMAIL}\",\"password\":\"${GHOST_ADMIN_PASS}\",\"blogTitle\":\"${GHOST_BLOG_TITLE}\"}]}" \
     "${GHOST_URL}/ghost/api/admin/authentication/setup/" 2>&1 || echo "")
 
 if echo "${RESPONSE}" | grep -q '"token"'; then

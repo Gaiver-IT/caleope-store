@@ -11,7 +11,7 @@ services:
       - {{.BaseDir}}/app-data/crowdsec/data:/var/lib/crowdsec/data
       # Logs Traefik analysés par CrowdSec pour détecter les attaques
       - /var/log:/var/log:ro
-      - {{.BaseDir}}/data/traefik:/var/log/traefik:ro
+      - {{.BaseDir}}/data/traefik:/opt/traefik-logs:ro
     networks:
       - caleope-internal
 
