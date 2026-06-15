@@ -18,15 +18,23 @@ if [ -z "${WG_HOST}" ]; then
     exit 1
 fi
 
-# ── Mot de passe admin (hashé bcrypt via wg-easy interne) ────────────────────
-# wg-easy gère son propre hash bcrypt au premier démarrage si PASSWORD_HASH fourni
-# On génère juste le mot de passe brut — il sera hashé par wg-easy lui-même
+# ── Mot de passe admin (hashé bcrypt — wg-easy v14+ exige PASSWORD_HASH) ──────
 ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+# Génération du hash bcrypt via docker (wg-easy fournit wgpw)
+ADMIN_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep -o '\$2[ab]\$[^ ]*' || echo "")
+if [ -z "${ADMIN_HASH}" ]; then
+    # Fallback: utiliser node si disponible
+    ADMIN_HASH=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync('${ADMIN_PASS}', 12));" 2>/dev/null || echo "")
+fi
+if [ -z "${ADMIN_HASH}" ]; then
+    echo "❌ Impossible de générer le hash bcrypt du mot de passe" >&2
+    exit 1
+fi
 
 cat > "${CONFIG_DIR}/secrets.env" << EOF
 # WG-Easy
 WG_HOST=${WG_HOST}
-PASSWORD=${ADMIN_PASS}
+PASSWORD_HASH=${ADMIN_HASH}
 WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
 WG_DEFAULT_ADDRESS=10.8.0.x
 WG_ALLOWED_IPS=0.0.0.0/0
