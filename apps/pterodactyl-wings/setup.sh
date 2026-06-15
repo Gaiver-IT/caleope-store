@@ -23,8 +23,6 @@ fi
 
 # ── Auto-détection du panel local ────────────────────────────────────────────
 PANEL_SECRETS="${CALEOPE_BASE_DIR}/app-config/pterodactyl-panel/secrets.env"
-PANEL_URL="${CALEOPE_PARAM_PANEL_URL}"
-PANEL_API_KEY="${CALEOPE_PARAM_PANEL_API_KEY}"
 
 if [ -f "${PANEL_SECRETS}" ]; then
     echo "  → Panel détecté localement, lecture de la configuration..."
