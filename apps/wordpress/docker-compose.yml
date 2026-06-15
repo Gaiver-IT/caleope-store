@@ -40,11 +40,14 @@ services:
     image: wordpress:cli-php8.3
     container_name: wordpress-bootstrap
     restart: "no"
+    depends_on:
+      - wordpress
     env_file:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    volumes_from:
+      - wordpress
     volumes:
-      - {{.BaseDir}}/app-data/wordpress/wp-content:/var/www/html/wp-content
       - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
     networks:
       - caleope-internal
