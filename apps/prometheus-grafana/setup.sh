@@ -13,21 +13,24 @@ set -euo pipefail
 APP_CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 APP_DATA_DIR="${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}"
 DOMAIN="${CALEOPE_DOMAIN}"
-HOST_IP=""   # détecté automatiquement ci-dessous
-
 mkdir -p "${APP_CONFIG_DIR}"
 mkdir -p "${APP_DATA_DIR}/prometheus"
 mkdir -p "${APP_DATA_DIR}/grafana/provisioning/datasources"
 mkdir -p "${APP_DATA_DIR}/grafana/provisioning/dashboards"
 mkdir -p "${APP_DATA_DIR}/grafana/dashboards"
 
-# ── Détecter l'IP de l'hôte ──
-if [[ -z "${HOST_IP}" ]]; then
-    HOST_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I | awk '{print $1}')
+# ── Ouvrir port 9100 depuis les sous-réseaux Docker ──
+# Prometheus tourne dans un container Docker et doit accéder à caleoped sur l'hôte.
+# UFW bloque par défaut le trafic des sous-réseaux Docker vers l'hôte.
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow from 172.0.0.0/8 to any port 9100 comment "caleoped-metrics-docker" 2>/dev/null || true
+    ufw allow from 192.168.0.0/16 to any port 9100 comment "caleoped-metrics-docker" 2>/dev/null || true
 fi
 
 # ── prometheus.yml ──
-cat > "${APP_DATA_DIR}/prometheus/prometheus.yml" << EOF
+# Utiliser host.docker.internal (résolu via extra_hosts dans le compose) ──
+# host-gateway = IP de l'hôte vue depuis le container Docker.
+cat > "${APP_DATA_DIR}/prometheus/prometheus.yml" << 'PROM_EOF'
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -35,11 +38,11 @@ global:
 scrape_configs:
   - job_name: "caleope"
     static_configs:
-      - targets: ["${HOST_IP}:9100"]
+      - targets: ["host.docker.internal:9100"]
     relabel_configs:
       - target_label: instance
         replacement: "caleope-daemon"
-EOF
+PROM_EOF
 
 # ── Grafana datasource : Prometheus ──
 cat > "${APP_DATA_DIR}/grafana/provisioning/datasources/prometheus.yml" << EOF
@@ -134,95 +137,114 @@ GF_SECURITY_ADMIN_USER=admin
 GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
 GF_USERS_ALLOW_SIGN_UP=false
 GF_AUTH_ANONYMOUS_ENABLED=false
-PROMETHEUS_HOST_IP=${HOST_IP}
 EOF
 chmod 600 "${APP_CONFIG_DIR}/secrets.env"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN
-        BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    echo "  → Connexion à l'API Authentik (max 60s)..."
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || { echo "  ⚠ Authentik non joignable"; return 1; }
-        sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || { echo "  ⚠ Flow Authentik introuvable"; return 1; }
-
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/providers/proxy/" \
-        | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-m = [p for p in d.get('results',[]) if p['name']==\"${APP_NAME}\"]
-print(m[0]['pk'] if m else '')
-" 2>/dev/null || echo "")
-
-    if [ -z "${PROVIDER_PK}" ]; then
-        PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-            "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    fi
-    [ -n "${PROVIDER_PK}" ] || { echo "  ⚠ Erreur création Provider"; return 1; }
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-
-    local OUTPOST_UUID CURRENT_PROVIDERS NEW_PROVIDERS
-    OUTPOST_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-
-    if [ -n "${OUTPOST_UUID}" ]; then
-        CURRENT_PROVIDERS=$(curl -sf --max-time 10 -H "${HA}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
-        NEW_PROVIDERS=$(echo "${CURRENT_PROVIDERS}" | python3 -c "
-import sys, json
-l = json.load(sys.stdin)
-if ${PROVIDER_PK} not in l: l.append(${PROVIDER_PK})
-print(json.dumps(l))
-" 2>/dev/null || echo "[${PROVIDER_PK}]")
-        curl -sf --max-time 10 -X PATCH -H "${HA}" -H "${HJ}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            -d "{\"providers\":${NEW_PROVIDERS}}" >/dev/null 2>&1 || true
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
+# ── SSO Authentik : OIDC OAuth2 natif ───────────────────────────────────────
+# Grafana supporte OAuth2 nativement → pas de ForwardAuth, utilisation d'OIDC.
+# L'API Authentik n'est pas joignable via son URL publique depuis le serveur
+# (pas de hairpin NAT) → on utilise http://localhost:8000 (port hôte).
 CALEOPE_AUTH_MIDDLEWARE=""
+
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Grafana" "grafana" "https://${DOMAIN}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
-    else
-        echo "  ⚠ ForwardAuth désactivé (enregistrement Authentik échoué)"
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -z "${AK_DOMAIN}" ]; then
+            BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
+            AK_DOMAIN="authentik.${BASE_DOMAIN}"
+        fi
+
+        if [ -n "${AK_TOKEN}" ] && [ -n "${AK_DOMAIN}" ]; then
+            AK_BASE="http://localhost:8000/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
+
+            echo "  → Configuration OIDC Grafana dans Authentik..."
+
+            AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            PROP_MAPS=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/propertymappings/scope/?managed__icontains=goauthentik.io" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join('\"'+r[\"pk\"]+'\"' for r in d.get('results',[])))" 2>/dev/null || echo "")
+
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                GF_OIDC_SECRET=$(openssl rand -hex 16)
+                PROV_BODY=$(python3 -c "
+import json
+d = {
+    'name': 'Grafana',
+    'authorization_flow': '${AUTH_FLOW}',
+    'invalidation_flow': '${INVAL_FLOW}',
+    'client_type': 'confidential',
+    'client_id': 'grafana',
+    'client_secret': '${GF_OIDC_SECRET}',
+    'redirect_uris': [{'matching_mode': 'strict', 'url': 'https://${DOMAIN}/login/generic_oauth'}],
+    'sub_mode': 'hashed_user_id',
+    'include_claims_in_id_token': True,
+}
+if '${PROP_MAPS}':
+    d['property_mappings'] = [s.strip('\"') for s in '${PROP_MAPS}'.split(',')]
+print(json.dumps(d))
+" 2>/dev/null)
+                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/oauth2/" -d "${PROV_BODY}" \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+
+                if [ -n "${PROV_PK}" ]; then
+                    curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/" \
+                        -d "{\"name\":\"Grafana\",\"slug\":\"grafana-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
+
+                    # Ajouter les vars OAuth2 dans secrets.env
+                    cat >> "${APP_CONFIG_DIR}/secrets.env" << OAUTHEOF
+GF_AUTH_GENERIC_OAUTH_ENABLED=true
+GF_AUTH_GENERIC_OAUTH_NAME=Authentik
+GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
+GF_AUTH_GENERIC_OAUTH_CLIENT_ID=grafana
+GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GF_OIDC_SECRET}
+GF_AUTH_GENERIC_OAUTH_SCOPES=openid email profile
+GF_AUTH_GENERIC_OAUTH_AUTH_URL=https://${AK_DOMAIN}/application/o/authorize/
+GF_AUTH_GENERIC_OAUTH_TOKEN_URL=https://${AK_DOMAIN}/application/o/token/
+GF_AUTH_GENERIC_OAUTH_API_URL=https://${AK_DOMAIN}/application/o/userinfo/
+GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH=contains(groups[*], 'authentik Admins') && 'Admin' || 'Viewer'
+GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN=false
+GF_AUTH_GENERIC_OAUTH_TLS_SKIP_VERIFY_INSECURE=true
+GF_AUTH_SIGNOUT_REDIRECT_URL=https://${AK_DOMAIN}/application/o/grafana-sso/end-session/
+OAUTHEOF
+
+                    # Ajouter extra_hosts au compose pour le token exchange interne
+                    # Grafana doit atteindre Authentik via Traefik (réseau Docker interne)
+                    TRAEFIK_IP=$(docker inspect traefik \
+                        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | \
+                        awk '{print $1}')
+                    if [ -n "${TRAEFIK_IP}" ]; then
+                        awk -v domain="${AK_DOMAIN}" -v ip="${TRAEFIK_IP}" '
+/^  grafana:/ { in_grafana=1 }
+in_grafana && /^    env_file:/ && !extra_done {
+    print "    extra_hosts:"
+    print "      - \"" domain ":" ip "\""
+    extra_done=1
+}
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/gf_compose_sso.yml && \
+                        mv /tmp/gf_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+                    fi
+
+                    echo "  ✓ Grafana OIDC configuré dans Authentik (PK=${PROV_PK})"
+                else
+                    echo "  ⚠ Erreur création provider OIDC Grafana"
+                fi
+            else
+                echo "  ⚠ Flows Authentik introuvables"
+            fi
+        fi
     fi
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${APP_CONFIG_DIR}/secrets.env"
@@ -242,7 +264,7 @@ cat > "${APP_CONFIG_DIR}/post-install.txt" << EOF
 ║                                                      ║
 ║  Sources de données :                                ║
 ║  → Prometheus configuré automatiquement              ║
-║  → Scraping Caleope sur ${HOST_IP}:9100         ║
+║  → Scraping Caleope sur host.docker.internal:9100   ║
 ║                                                      ║
 ║  Dashboard inclus : Caleope — Overview               ║
 ║  → Grafana > Dashboards > Caleope                    ║

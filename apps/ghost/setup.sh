@@ -31,7 +31,7 @@ SMTP_USER="${CALEOPE_SMTP_USER:-}"
 SMTP_PASS="${CALEOPE_SMTP_PASS:-}"
 SMTP_FROM="${CALEOPE_SMTP_FROM:-noreply@${CALEOPE_DOMAIN}}"
 
-MAIL_BLOCK=""
+MAIL_BLOCK="mail__transport=Direct"
 if [ -n "${SMTP_HOST}" ]; then
     MAIL_BLOCK="mail__transport=SMTP
 mail__options__host=${SMTP_HOST}
@@ -48,13 +48,12 @@ MYSQL_DATABASE=ghost
 MYSQL_USER=ghost
 MYSQL_PASSWORD=${DB_PASS}
 
-# Ghost config
+# Ghost config (url défini via environment: dans compose, pas ici)
 database__client=mysql
 database__connection__host=ghost-db
 database__connection__user=ghost
 database__connection__password=${DB_PASS}
 database__connection__database=ghost
-url=https://${CALEOPE_DOMAIN}
 ${MAIL_BLOCK}
 
 # Bootstrap (admin setup)
@@ -110,68 +109,80 @@ fi
 BOOTSTRAP
 chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
-# ── Authentik (proxy forward auth) ──────────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 0
+# ── Authentik ForwardAuth ─────────────────────────────────────────────────────
+# Ghost admin n'a pas d'OIDC natif → ForwardAuth via Traefik (authentik@docker).
+# API Authentik via http://localhost:8000 (pas l'URL publique — hairpin NAT absent).
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -n "${AK_TOKEN}" ]; then
+            AK_BASE="http://localhost:8000/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
 
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 0
+            AUTH_FLOW=$(curl -sf --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -sf --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                PROV_PK=$(curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/proxy/" \
+                    -d "{\"name\":\"Ghost\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
 
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || return 0
-        sleep 5
-    done
+                if [ -n "${PROV_PK}" ]; then
+                    curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/" \
+                        -d "{\"name\":\"Ghost\",\"slug\":\"ghost-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
 
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || return 0
+                    # Groupes Authentik
+                    curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/groups/" \
+                        -d "{\"name\":\"caleope-ghost-users\",\"is_superuser\":false}" >/dev/null 2>&1 || true
+                    curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/groups/" \
+                        -d "{\"name\":\"caleope-ghost-admins\",\"is_superuser\":false}" >/dev/null 2>&1 || true
 
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/providers/proxy/" \
-        -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    [ -n "${PROVIDER_PK}" ] || return 0
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-
-    local OUTPOST_UUID CURRENT_PROVIDERS NEW_PROVIDERS
-    OUTPOST_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    if [ -n "${OUTPOST_UUID}" ]; then
-        CURRENT_PROVIDERS=$(curl -sf --max-time 10 -H "${HA}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
-        NEW_PROVIDERS=$(python3 -c "
+                    # Outpost embedded
+                    OUTPOST_PK=$(curl -sf --max-time 10 -H "${AK_HA}" \
+                        "${AK_BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+                    if [ -n "${OUTPOST_PK}" ]; then
+                        CUR_PROVS=$(curl -sf --max-time 10 -H "${AK_HA}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
+                        NEW_PROVS=$(python3 -c "
 import json
-l = json.loads('${CURRENT_PROVIDERS}')
-if ${PROVIDER_PK} not in l: l.append(${PROVIDER_PK})
-print(json.dumps(l))")
-        curl -sf --max-time 10 -X PATCH -H "${HA}" -H "${HJ}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            -d "{\"providers\":${NEW_PROVIDERS}}" >/dev/null 2>&1 || true
-    fi
-    echo "  ✓ Ghost enregistré dans Authentik"
-}
+l=json.loads('${CUR_PROVS}')
+if ${PROV_PK} not in l: l.append(${PROV_PK})
+print(json.dumps(l))" 2>/dev/null || echo "[${PROV_PK}]")
+                        curl -sf --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            -d "{\"providers\":${NEW_PROVS}}" >/dev/null 2>&1 || true
+                    fi
 
-if [ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]; then
-    echo "  → Enregistrement dans Authentik..."
-    authentik_register_app "Ghost" "ghost" "https://${CALEOPE_DOMAIN}" || true
+                    # Injecter middleware dans le compose Ghost
+                    awk '
+/traefik.http.routers.ghost.entrypoints/ && !done {
+    print
+    indent = substr($0, 1, index($0, "-") - 1) "- "
+    print indent "\"traefik.http.routers.ghost.middlewares=authentik@docker\""
+    done=1; next
+}
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/ghost_compose_sso.yml && \
+                    mv /tmp/ghost_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+
+                    echo "  ✓ Ghost ForwardAuth configuré dans Authentik (PK=${PROV_PK})"
+                fi
+            fi
+        fi
+    fi
 fi
 
 # ── post-install.txt ─────────────────────────────────────────────────────────

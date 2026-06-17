@@ -34,9 +34,20 @@ if [ -f "${PANEL_SECRETS}" ]; then
         [ -z "${PANEL_URL}" ] && PANEL_URL="https://${PANEL_DOMAIN}"
     fi
     # Récupérer la clé API générée par le bootstrap du panel
-    BOOTSTRAP_ENV="${CALEOPE_BASE_DIR}/app-config/pterodactyl-panel/bootstrap.env"
-    if [ -z "${PANEL_API_KEY}" ] && [ -f "${BOOTSTRAP_ENV}" ]; then
-        PANEL_API_KEY=$(grep "^PTERODACTYL_API_KEY=" "${BOOTSTRAP_ENV}" | cut -d= -f2- || echo "")
+    # bootstrap.env est écrit par le container pterodactyl-bootstrap
+    # → app-data/pterodactyl-panel/var/bootstrap.env (via volume /app/var)
+    BOOTSTRAP_ENV="${CALEOPE_BASE_DIR}/app-data/pterodactyl-panel/var/bootstrap.env"
+    if [ -z "${PANEL_API_KEY}" ]; then
+        echo "  → Attente de la clé API du panel (max 180s)..."
+        WAIT_KEY=0
+        until [ -f "${BOOTSTRAP_ENV}" ] && grep -q "^PTERODACTYL_API_KEY=ptla_" "${BOOTSTRAP_ENV}" 2>/dev/null; do
+            sleep 10
+            WAIT_KEY=$((WAIT_KEY + 10))
+            [ "${WAIT_KEY}" -lt 180 ] || break
+        done
+        if [ -f "${BOOTSTRAP_ENV}" ]; then
+            PANEL_API_KEY=$(grep "^PTERODACTYL_API_KEY=" "${BOOTSTRAP_ENV}" | cut -d= -f2- || echo "")
+        fi
     fi
 fi
 
@@ -163,7 +174,7 @@ NODE_RESP=$(curl -sf --max-time 10 -X POST \
         \"disk_overallocate\":0,
         \"upload_size\":100,
         \"daemon_sftp\":2022,
-        \"daemon_listen\":8080
+        \"daemon_listen\":8443
     }" 2>/dev/null || echo "")
 
 NODE_ID=$(echo "${NODE_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin)['attributes']['id'])" 2>/dev/null || echo "")
@@ -174,6 +185,20 @@ if [ -z "${NODE_ID}" ]; then
     exit 1
 fi
 echo "  ✓ Nœud créé (ID: ${NODE_ID})"
+
+# Créer les allocations (plage de ports jeux)
+echo "  → Création des allocations de ports (25500-25525)..."
+ALLOC_RESP=$(curl -sf --max-time 10 -X POST \
+    -H "Authorization: Bearer ${PANEL_API_KEY}" \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json" \
+    "${PANEL_URL}/api/application/nodes/${NODE_ID}/allocations" \
+    -d '{"ip":"0.0.0.0","ports":["25500-25525"]}' 2>/dev/null || echo "")
+if echo "${ALLOC_RESP}" | grep -q '"error"'; then
+    echo "  ⚠ Allocations: ${ALLOC_RESP}"
+else
+    echo "  ✓ Allocations 25500-25525 créées"
+fi
 
 # Récupérer le config.yml généré par le panel
 echo "  → Téléchargement de la configuration Wings..."
@@ -190,6 +215,19 @@ fi
 echo "${NODE_CONFIG}" > "${CONFIG_DIR}/config.yml"
 chmod 600 "${CONFIG_DIR}/config.yml"
 echo "  ✓ config.yml Wings écrit"
+
+# Patcher remote: pour utiliser l'URL locale du panel (hairpin NAT absent)
+# Wings tourne en network_mode: host → localhost pointe vers l'hôte
+PANEL_LOCAL_PORT=$(docker inspect pterodactyl-panel \
+    --format '{{json .NetworkSettings.Ports}}' 2>/dev/null \
+    | python3 -c "
+import sys,json
+p=json.load(sys.stdin)
+vals=[v for v in p.values() if v]
+print(vals[0][0]['HostPort'] if vals else '80')
+" 2>/dev/null || echo "80")
+sed -i "s|^remote:.*|remote: http://localhost:${PANEL_LOCAL_PORT}|" "${CONFIG_DIR}/config.yml"
+echo "  ✓ remote: patché → http://localhost:${PANEL_LOCAL_PORT}"
 
 _open_game_ports
 
@@ -219,7 +257,7 @@ cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
   │  Satisfactory : port 7777 (UDP)                                  │
   │  Sons of the Forest : port 8766/27016 (UDP)                     │
   │                                                                  │
-  │  Créer des serveurs dans : ${PANEL_URL}/admin/servers           │
+  │  Créer des serveurs : ${PANEL_URL}/admin/servers/new            │
   │                                                                  │
   │  Secrets dans : app-config/${CALEOPE_APP_ID}/                    │
   └──────────────────────────────────────────────────────────────────┘

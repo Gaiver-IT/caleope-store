@@ -38,11 +38,16 @@ SMTP_FROM=${SMTP_FROM}
 SMTP_SECURITY=starttls"
 fi
 
+# Sans SMTP : les inscriptions directes sont ouvertes, pas d'envoi d'email
+REQUIRE_EMAIL_CONFIRMATION="false"
+[ -n "${SMTP_HOST}" ] && REQUIRE_EMAIL_CONFIRMATION="true"
+
 cat > "${CONFIG_DIR}/secrets.env" << EOF
 # Vaultwarden
 ADMIN_TOKEN=${ADMIN_TOKEN_HASH}
 DOMAIN=https://${CALEOPE_DOMAIN}
 SIGNUPS_ALLOWED=true
+SIGNUPS_VERIFY=${REQUIRE_EMAIL_CONFIRMATION}
 INVITATIONS_ALLOWED=true
 WEBSOCKET_ENABLED=true
 ROCKET_PORT=80
@@ -55,50 +60,74 @@ _ADMIN_TOKEN_PLAIN=${ADMIN_TOKEN_PLAIN}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── Authentik (proxy forward auth) ──────────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 0
+# ── Authentik ForwardAuth ─────────────────────────────────────────────────────
+# Vaultwarden n'a pas d'OIDC natif → ForwardAuth via Traefik (authentik@docker).
+# L'API Authentik est accessible en http://localhost:8000 depuis le serveur hôte.
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -n "${AK_TOKEN}" ]; then
+            AK_BASE="http://localhost:8000/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
 
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 0
+            AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/proxy/" \
+                    -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
 
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || return 0
-        sleep 5
-    done
+                if [ -n "${PROV_PK}" ]; then
+                    curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/" \
+                        -d "{\"name\":\"Vaultwarden\",\"slug\":\"vaultwarden-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
 
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || return 0
+                    # Ajouter le provider à l'outpost embarqué
+                    OUTPOST_PK=$(curl -s --max-time 10 -H "${AK_HA}" \
+                        "${AK_BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+                    if [ -n "${OUTPOST_PK}" ]; then
+                        CUR_PROVS=$(curl -s --max-time 10 -H "${AK_HA}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
+                        NEW_PROVS=$(python3 -c "
+import json
+l=json.loads('${CUR_PROVS}')
+if ${PROV_PK} not in l: l.append(${PROV_PK})
+print(json.dumps(l))
+" 2>/dev/null || echo "[${PROV_PK}]")
+                        curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            -d "{\"providers\":${NEW_PROVS}}" >/dev/null 2>&1 || true
+                    fi
 
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/providers/proxy/" \
-        -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    [ -n "${PROVIDER_PK}" ] || return 0
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-    echo "  ✓ Vaultwarden enregistré dans Authentik"
+                    # Injecter middleware authentik dans le compose
+                    awk '
+/traefik.http.routers.vaultwarden.entrypoints/ && !done {
+    print
+    indent = substr($0, 1, index($0, "-") - 1) "- "
+    print indent "\"traefik.http.routers.vaultwarden.middlewares=authentik@docker\""
+    done=1
+    next
 }
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/vw_compose_sso.yml && \
+                    mv /tmp/vw_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
 
-if [ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]; then
-    echo "  → Enregistrement dans Authentik..."
-    authentik_register_app "Vaultwarden" "vaultwarden" "https://${CALEOPE_DOMAIN}" || true
+                    echo "  ✓ Vaultwarden ForwardAuth configuré dans Authentik (PK=${PROV_PK})"
+                fi
+            fi
+        fi
+    fi
 fi
 
 # ── post-install.txt ─────────────────────────────────────────────────────────

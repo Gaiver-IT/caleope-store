@@ -62,11 +62,82 @@ cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
   │    2. Cliquer "+ New client"                                     │
   │    3. Scanner le QR code ou télécharger le fichier .conf         │
   │                                                                  │
-  │  ⚠ Le port UDP 51820 est ouvert dans UFW automatiquement.        │
+  │  ⚠ PORTS À OUVRIR/FORWARDER :                                    │
+  │    • Sur ce serveur : UFW UDP 51820 (fait automatiquement)       │
+  │    • Si WG_HOST = IP d'un routeur/box/NPM différent de ce        │
+  │      serveur → configurer une redirection NAT/port-forward :     │
+  │      ${WG_HOST}:51820/UDP  →  <IP_CE_SERVEUR>:51820/UDP          │
+  │    • Les clients WireGuard se connectent à ${WG_HOST}:51820/UDP  │
   │                                                                  │
   │  Secrets dans : app-config/${CALEOPE_APP_ID}/secrets.env         │
   └──────────────────────────────────────────────────────────────────┘
 EOF
+
+# ── Authentik ForwardAuth ─────────────────────────────────────────────────────
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -n "${AK_TOKEN}" ]; then
+            AK_BASE="http://localhost:8000/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
+
+            AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/proxy/" \
+                    -d "{\"name\":\"WG-Easy\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+
+                if [ -n "${PROV_PK}" ]; then
+                    curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/" \
+                        -d "{\"name\":\"WG-Easy\",\"slug\":\"wgeasy-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
+
+                    OUTPOST_PK=$(curl -s --max-time 10 -H "${AK_HA}" \
+                        "${AK_BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+                    if [ -n "${OUTPOST_PK}" ]; then
+                        CUR_PROVS=$(curl -s --max-time 10 -H "${AK_HA}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
+                        NEW_PROVS=$(python3 -c "
+import json
+l=json.loads('${CUR_PROVS}')
+if ${PROV_PK} not in l: l.append(${PROV_PK})
+print(json.dumps(l))
+" 2>/dev/null || echo "[${PROV_PK}]")
+                        curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
+                            -d "{\"providers\":${NEW_PROVS}}" >/dev/null 2>&1 || true
+                    fi
+
+                    awk '
+/traefik.http.routers.wg-easy.entrypoints/ && !done {
+    print
+    indent = substr($0, 1, index($0, "-") - 1) "- "
+    print indent "\"traefik.http.routers.wg-easy.middlewares=authentik@docker\""
+    done=1
+    next
+}
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/wg_compose_sso.yml && \
+                    mv /tmp/wg_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+
+                    echo "  ✓ WG-Easy ForwardAuth configuré dans Authentik (PK=${PROV_PK})"
+                fi
+            fi
+        fi
+    fi
+fi
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"

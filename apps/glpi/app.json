@@ -1,0 +1,23 @@
+{
+  "id": "glpi",
+  "name": "GLPI",
+  "category": "management",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/glpi/files",      "target": "/var/www/html/glpi/files" },
+    { "source": "app-data/glpi/plugins",    "target": "/var/www/html/glpi/plugins" },
+    { "source": "app-data/glpi/config",     "target": "/var/www/html/glpi/config" },
+    { "source": "app-data/glpi/marketplace","target": "/var/www/html/glpi/marketplace" },
+    { "source": "app-data/glpi/db",         "target": "/var/lib/mysql" }
+  ],
+  "backup": { "enabled": true }
+}

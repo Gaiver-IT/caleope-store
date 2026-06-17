@@ -116,50 +116,108 @@ echo "  ✓ Compte admin Gitea créé"
 BOOTSTRAP
 chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
-# ── Authentik (proxy forward auth) ──────────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 0
+# ── Authentik OIDC ───────────────────────────────────────────────────────────
+# Gitea supporte OIDC natif → on crée un provider OAuth2 dans Authentik et on
+# enregistre la source OAuth dans Gitea via CLI (avec URL interne pour la
+# validation) puis on patche la DB pour remplacer par l'URL publique.
+# L'API Authentik n'est pas joignable depuis le serveur via son URL publique
+# (hairpin NAT absent) → on utilise http://localhost:8000.
+if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -z "${AK_DOMAIN}" ]; then
+            BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
+            AK_DOMAIN="authentik.${BASE_DOMAIN}"
+        fi
 
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 0
+        if [ -n "${AK_TOKEN}" ] && [ -n "${AK_DOMAIN}" ]; then
+            AK_BASE="http://localhost:8000/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
 
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
+            echo "  → Configuration OIDC Gitea dans Authentik..."
 
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || return 0
-        sleep 5
-    done
+            AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || return 0
-
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/providers/proxy/" \
-        -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    [ -n "${PROVIDER_PK}" ] || return 0
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-    echo "  ✓ Gitea enregistré dans Authentik"
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                GIT_OIDC_SECRET=$(openssl rand -hex 16)
+                PROV_BODY=$(python3 -c "
+import json
+d = {
+    'name': 'Gitea',
+    'authorization_flow': '${AUTH_FLOW}',
+    'invalidation_flow': '${INVAL_FLOW}',
+    'client_type': 'confidential',
+    'client_id': 'gitea',
+    'client_secret': '${GIT_OIDC_SECRET}',
+    'redirect_uris': [{'matching_mode': 'strict', 'url': 'https://${CALEOPE_DOMAIN}/user/oauth2/Authentik/callback'}],
+    'sub_mode': 'hashed_user_id',
+    'include_claims_in_id_token': True,
 }
+print(json.dumps(d))
+" 2>/dev/null)
+                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/oauth2/" -d "${PROV_BODY}" \
+                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
 
-if [ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]; then
-    echo "  → Enregistrement dans Authentik..."
-    authentik_register_app "Gitea" "gitea" "https://${CALEOPE_DOMAIN}" || true
+                if [ -n "${PROV_PK}" ]; then
+                    curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/" \
+                        -d "{\"name\":\"Gitea\",\"slug\":\"gitea-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
+
+                    # Récupérer l'IP interne d'Authentik pour la CLI Gitea
+                    # Gitea CLI valide le discovery URL au moment de la création
+                    # → utiliser l'adresse interne Docker puis patcher la DB
+                    AK_INTERNAL_IP=$(docker inspect authentik-server \
+                        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | \
+                        awk '{for(i=1;i<=NF;i++) if($i~/^172\./) {print $i; exit}}')
+                    AK_INTERNAL_URL="http://${AK_INTERNAL_IP:-172.18.0.10}:9000"
+
+                    # Ajouter extra_hosts pour que Gitea résolve le domaine Authentik
+                    awk -v domain="${AK_DOMAIN}" -v ip="${AK_INTERNAL_IP:-172.18.0.10}" '
+/^  gitea:$/ { in_gitea=1 }
+in_gitea && /^    environment:/ && !extra_done {
+    print "    extra_hosts:"
+    print "      - \"" domain ":" ip "\""
+    extra_done=1
+}
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/gitea_compose_sso.yml && \
+                    mv /tmp/gitea_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+
+                    # Enregistrer la source OIDC dans Gitea via CLI (URL interne)
+                    docker exec gitea gitea admin auth add-oauth \
+                        --name "Authentik" \
+                        --provider "openidConnect" \
+                        --key "gitea" \
+                        --secret "${GIT_OIDC_SECRET}" \
+                        --auto-discover-url "${AK_INTERNAL_URL}/application/o/gitea-sso/.well-known/openid-configuration" \
+                        --use-custom-urls false \
+                        --admin-group "authentik Admins" \
+                        --config /data/gitea/conf/app.ini 2>/dev/null || true
+
+                    # Patcher la DB Gitea pour remplacer l'URL interne par l'URL publique
+                    docker exec gitea-db sh -c "
+psql -U gitea -d gitea -c \"UPDATE login_source SET cfg = REPLACE(cfg::text, '${AK_INTERNAL_URL}', 'https://${AK_DOMAIN}')::json WHERE name = 'Authentik' AND is_active = true;\"
+" 2>/dev/null || true
+
+                    echo "  ✓ Gitea OIDC configuré dans Authentik (PK=${PROV_PK})"
+                else
+                    echo "  ⚠ Erreur création provider OIDC Gitea"
+                fi
+            else
+                echo "  ⚠ Flows Authentik introuvables"
+            fi
+        fi
+    fi
 fi
 
 # ── post-install.txt ─────────────────────────────────────────────────────────
