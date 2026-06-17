@@ -63,6 +63,23 @@ _open_game_ports() {
     fi
 }
 
+# Résolution hairpin NAT : si le panel tourne localement, préférer http://localhost:PORT
+# (évite les échecs DNS quand le domaine public ne résout pas en interne)
+if docker inspect pterodactyl-panel >/dev/null 2>&1; then
+    _LOCAL_PORT=$(docker inspect pterodactyl-panel \
+        --format '{{json .NetworkSettings.Ports}}' 2>/dev/null \
+        | python3 -c "
+import sys,json
+p=json.load(sys.stdin)
+vals=[v for v in p.values() if v]
+print(vals[0][0]['HostPort'] if vals else '')
+" 2>/dev/null || echo "")
+    if [ -n "${_LOCAL_PORT}" ]; then
+        PANEL_URL="http://localhost:${_LOCAL_PORT}"
+        echo "  → Panel local → ${PANEL_URL} (hairpin NAT contourné)"
+    fi
+fi
+
 if [ -z "${PANEL_URL}" ] || [ -z "${PANEL_API_KEY}" ]; then
     echo "⚠ Panel URL ou clé API manquante — Wings sera configuré manuellement"
     echo "  Créer le nœud dans Panel → Admin → Nodes et copier le config.yml"
@@ -212,22 +229,65 @@ if [ -z "${NODE_CONFIG}" ]; then
     exit 1
 fi
 
+# L'API retourne parfois du JSON malgré Accept: text/plain — convertir si nécessaire
+if echo "${NODE_CONFIG}" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+    echo "  → Config reçue en JSON, conversion YAML..."
+    _CONV=$(mktemp /tmp/wings-conv.XXXXXX.py)
+    cat > "${_CONV}" << 'PYEOF'
+import sys, json
+
+def esc(s):
+    s = str(s)
+    if not s:
+        return "''"
+    need_quote = any(c in s for c in ':#{},[]|>&*!%@`"\'\n\r\t') or s[0] in '-?' or s in ('true','false','null','yes','no','on','off')
+    if need_quote:
+        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return s
+
+def to_yaml(obj, indent=0):
+    pad = '  ' * indent
+    lines = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, dict):
+                lines.append(f'{pad}{k}:')
+                lines.extend(to_yaml(v, indent + 1))
+            elif isinstance(v, list):
+                lines.append(f'{pad}{k}:')
+                for item in v:
+                    if isinstance(item, dict):
+                        sub = to_yaml(item, indent + 1)
+                        if sub:
+                            lines.append(f'{pad}  - ' + sub[0].lstrip())
+                            lines.extend(sub[1:])
+                    else:
+                        lines.append(f'{pad}  - {esc(item)}')
+            elif isinstance(v, bool):
+                lines.append(f'{pad}{k}: {"true" if v else "false"}')
+            elif v is None:
+                lines.append(f'{pad}{k}: null')
+            elif isinstance(v, (int, float)):
+                lines.append(f'{pad}{k}: {v}')
+            else:
+                lines.append(f'{pad}{k}: {esc(v)}')
+    return lines
+
+data = json.load(sys.stdin)
+print('\n'.join(to_yaml(data)))
+PYEOF
+    NODE_CONFIG=$(echo "${NODE_CONFIG}" | python3 "${_CONV}")
+    rm -f "${_CONV}"
+fi
+
 echo "${NODE_CONFIG}" > "${CONFIG_DIR}/config.yml"
 chmod 600 "${CONFIG_DIR}/config.yml"
 echo "  ✓ config.yml Wings écrit"
 
-# Patcher remote: pour utiliser l'URL locale du panel (hairpin NAT absent)
+# Patcher remote: avec PANEL_URL (déjà résolu vers localhost via hairpin NAT plus haut)
 # Wings tourne en network_mode: host → localhost pointe vers l'hôte
-PANEL_LOCAL_PORT=$(docker inspect pterodactyl-panel \
-    --format '{{json .NetworkSettings.Ports}}' 2>/dev/null \
-    | python3 -c "
-import sys,json
-p=json.load(sys.stdin)
-vals=[v for v in p.values() if v]
-print(vals[0][0]['HostPort'] if vals else '80')
-" 2>/dev/null || echo "80")
-sed -i "s|^remote:.*|remote: http://localhost:${PANEL_LOCAL_PORT}|" "${CONFIG_DIR}/config.yml"
-echo "  ✓ remote: patché → http://localhost:${PANEL_LOCAL_PORT}"
+sed -i "s|^remote:.*|remote: ${PANEL_URL}|" "${CONFIG_DIR}/config.yml"
+echo "  ✓ remote: patché → ${PANEL_URL}"
 
 _open_game_ports
 
