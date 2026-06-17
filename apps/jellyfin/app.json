@@ -6,7 +6,7 @@
   "repository": "official",
   "capabilities": {
     "reverse_proxy": true,
-    "gpu": false,
+    "gpu": true,
     "docker_socket": false,
     "privileged": false
   },
