@@ -1,0 +1,23 @@
+{
+  "id": "restic",
+  "name": "Restic",
+  "category": "backup",
+  "channel": "stable",
+  "repository": "official",
+  "no_container": true,
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": {
+    "public": false,
+    "internal": false
+  },
+  "ports": [],
+  "volumes": [],
+  "backup": {
+    "enabled": false
+  }
+}
