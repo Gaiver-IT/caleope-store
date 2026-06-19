@@ -282,7 +282,7 @@ import json
 scopes=[s for s in ['\${_S_OID}','\${_S_EMAIL}','\${_S_PROF}'] if s]
 body={'name':'Jellyfin SSO','authorization_flow':'\${_AK_FLOW}','client_type':'confidential',
       'redirect_uris':[{'url':'https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}','matching_mode':'strict'}],
-      'sub_mode':'hashed_user_id','include_claims_in_id_token':True,
+      'sub_mode':'user_username','include_claims_in_id_token':True,
       'signing_key':'\${_AK_KEY}','property_mappings':scopes}
 if '\${_AK_INVAL}': body['invalidation_flow']='\${_AK_INVAL}'
 print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oauth2/" \
@@ -316,7 +316,10 @@ print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oau
                     done
 
                     # Configurer plugin SSO dans Jellyfin
-                    _OID_EP="https://\${AK_DOMAIN}/application/o/\${AK_SLUG}/"
+                    # URL interne Docker (HTTP) pour que Jellyfin puisse contacter
+                    # Authentik depuis le réseau caleope-public sans SSL — l'URL
+                    # externe HTTPS échoue en LAN (certs auto-signés ou ACME non résolu)
+                    _OID_EP="http://authentik-server:9000/application/o/\${AK_SLUG}/"
                     _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
                         "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}" \
                         -H "Content-Type: application/json" \
