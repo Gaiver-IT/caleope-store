@@ -254,15 +254,18 @@ def to_yaml(obj, indent=0):
                 lines.append(f'{pad}{k}:')
                 lines.extend(to_yaml(v, indent + 1))
             elif isinstance(v, list):
-                lines.append(f'{pad}{k}:')
-                for item in v:
-                    if isinstance(item, dict):
-                        sub = to_yaml(item, indent + 1)
-                        if sub:
-                            lines.append(f'{pad}  - ' + sub[0].lstrip())
-                            lines.extend(sub[1:])
-                    else:
-                        lines.append(f'{pad}  - {esc(item)}')
+                if not v:
+                    lines.append(f'{pad}{k}: []')
+                else:
+                    lines.append(f'{pad}{k}:')
+                    for item in v:
+                        if isinstance(item, dict):
+                            sub = to_yaml(item, indent + 1)
+                            if sub:
+                                lines.append(f'{pad}  - ' + sub[0].lstrip())
+                                lines.extend(sub[1:])
+                        else:
+                            lines.append(f'{pad}  - {esc(item)}')
             elif isinstance(v, bool):
                 lines.append(f'{pad}{k}: {"true" if v else "false"}')
             elif v is None:
