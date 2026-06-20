@@ -84,7 +84,7 @@ d = {
     'client_id': 'nextcloud',
     'client_secret': '${NC_OIDC_SECRET}',
     'redirect_uris': [{'matching_mode': 'strict', 'url': 'https://${CALEOPE_DOMAIN}/apps/user_oidc/code'}],
-    'sub_mode': 'hashed_user_id',
+    'sub_mode': 'user_username',
     'include_claims_in_id_token': True,
 }
 if '${PROP_MAPS}':
@@ -208,7 +208,9 @@ if [ -n "${NC_OIDC_CLIENT_ID:-}" ] && [ -n "${NC_OIDC_CLIENT_SECRET:-}" ] && [ -
         --clientid=${NC_OIDC_CLIENT_ID} \
         --clientsecret=${NC_OIDC_CLIENT_SECRET} \
         --discoveryuri=${NC_OIDC_DISCOVERY_URI} \
-        --mapping-uid=preferred_username"
+        --mapping-uid=sub \
+        --check-bearer=0 \
+        --unique-uid=0"
     echo "✓ SSO Authentik configuré dans Nextcloud"
 fi
 BOOTSTRAP
