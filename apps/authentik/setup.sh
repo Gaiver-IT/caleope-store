@@ -40,11 +40,6 @@ AUTHENTIK_POSTGRESQL__PASSWORD=${DB_PASS}
 AUTHENTIK_SECRET_KEY=${SECRET_KEY}
 AUTHENTIK_ERROR_REPORTING__ENABLED=false
 
-# URL externe navigateur — séparée de l'URL interne Docker (http://authentik-server:9000)
-# pour que le discovery document OIDC retourne une authorization_endpoint accessible
-# par le navigateur, tout en gardant le token_endpoint sur l'URL interne Docker.
-AUTHENTIK_HOST_BROWSER=https://${CALEOPE_DOMAIN}
-
 # Bootstrap admin (premier démarrage uniquement)
 AUTHENTIK_BOOTSTRAP_EMAIL=admin@${CALEOPE_DOMAIN}
 AUTHENTIK_BOOTSTRAP_PASSWORD=${ADMIN_PASS}
@@ -54,6 +49,49 @@ AUTHENTIK_BOOTSTRAP_TOKEN=${ADMIN_TOKEN}
 AUTHENTIK_DOMAIN=${CALEOPE_DOMAIN}
 EOF
 chmod 600 "${APP_CONFIG_DIR}/secrets.env"
+
+# ── Certificat auto-signé pour le domaine Authentik ──────────────────
+# Traefik (websecure :443) sert ce cert pour les appels HTTPS internes
+# (ex: Jellyfin → token exchange OIDC via extra_hosts → 172.17.0.1:443)
+# Les apps qui en ont besoin récupèrent ce cert pour construire leur CA bundle.
+TRAEFIK_CERTS="${CALEOPE_BASE_DIR}/data/traefik/certs"
+TRAEFIK_DYN="${CALEOPE_BASE_DIR}/data/traefik/dynamic"
+mkdir -p "${TRAEFIK_CERTS}" "${TRAEFIK_DYN}"
+
+# Supprimer si authentik.crt est un répertoire (erreur de création antérieure)
+[[ -d "${TRAEFIK_CERTS}/authentik.crt" ]] && rm -rf "${TRAEFIK_CERTS}/authentik.crt"
+[[ -d "${TRAEFIK_CERTS}/authentik.key" ]] && rm -rf "${TRAEFIK_CERTS}/authentik.key"
+
+_REGEN_CERT=true
+if [[ -f "${TRAEFIK_CERTS}/authentik.crt" ]] && \
+   openssl x509 -noout -in "${TRAEFIK_CERTS}/authentik.crt" 2>/dev/null; then
+    _REGEN_CERT=false
+fi
+
+if ${_REGEN_CERT}; then
+    openssl req -x509 -newkey rsa:4096 \
+        -keyout "${TRAEFIK_CERTS}/authentik.key" \
+        -out    "${TRAEFIK_CERTS}/authentik.crt" \
+        -days 3650 -nodes \
+        -subj "/CN=authentik.${CALEOPE_DOMAIN}" \
+        -addext "subjectAltName=DNS:authentik.${CALEOPE_DOMAIN}" \
+        2>/dev/null
+    chmod 600 "${TRAEFIK_CERTS}/authentik.key"
+    chmod 644 "${TRAEFIK_CERTS}/authentik.crt"
+    echo "  ✓ Certificat auto-signé généré pour authentik.${CALEOPE_DOMAIN}"
+else
+    echo "  ✓ Certificat auto-signé existant conservé"
+fi
+
+# Config Traefik dynamic : utiliser ce cert pour le domaine Authentik sur :443
+# Traefik relit ce fichier à chaud (watch: true dans traefik.yml)
+cat > "${TRAEFIK_DYN}/authentik-tls.yml" << TRAFTLS
+tls:
+  certificates:
+    - certFile: /certs/authentik.crt
+      keyFile: /certs/authentik.key
+TRAFTLS
+echo "  ✓ Config TLS Traefik écrite (dynamic/authentik-tls.yml)"
 
 cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
 

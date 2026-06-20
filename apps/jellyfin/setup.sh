@@ -312,22 +312,21 @@ print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oau
                     done
 
                     # Configurer plugin SSO dans Jellyfin
-                    # URL interne Docker (HTTP) pour que Jellyfin puisse contacter
-                    # Authentik depuis le réseau caleope-public sans SSL — l'URL
-                    # externe HTTPS échoue en LAN (certs auto-signés ou ACME non résolu)
-                    # Stratégie SSO split-URL :
-                    #   oidEndpoint (discovery + token exchange) = http://authentik-server:9000 (Docker interne)
-                    #   canonicalLinks = réécriture http://authentik-server:9000 → https://AK_DOMAIN
-                    #     → le plugin SSO remplace l'URL interne par l'URL externe dans l'authorization_endpoint
-                    #       retourné au navigateur, sans toucher au token_endpoint (utilisé côté serveur)
-                    #   doNotValidateEndpoints : authorization_endpoint (réécriture HTTPS) ≠ base issuer (HTTP interne)
-                    #   doNotValidateIssuerName : le iss du token peut différer selon le chemin d'accès Authentik
-                    _OID_EP="http://authentik-server:9000/application/o/\${AK_SLUG}/"
+                    # Stratégie : oidEndpoint = URL externe HTTP (via Traefik port 80)
+                    #   Traefik ajoute X-Forwarded-Proto:https → Authentik retourne
+                    #   des URLs HTTPS dans le discovery doc :
+                    #     authorization_endpoint = https://AK_DOMAIN/... (navigateur ✅)
+                    #     token_endpoint = https://AK_DOMAIN/... (Jellyfin via Traefik :443 ✅)
+                    #   disableHttps : allow oidEndpoint HTTP (discovery via HTTP)
+                    #   doNotValidateEndpoints/IssuerName : issuer HTTPS ≠ oidEndpoint HTTP
+                    #   ca-bundle.crt (monté dans le container) : .NET trust le cert
+                    #     auto-signé de Traefik pour le token exchange OIDC HTTPS
+                    _OID_EP="http://${AK_DOMAIN}/application/o/\${AK_SLUG}/"
                     _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
                         "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}" \
                         -H "Content-Type: application/json" \
                         -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
-                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[],\"doNotValidateEndpoints\":true,\"doNotValidateIssuerName\":true,\"canonicalLinks\":{\"http://authentik-server:9000\":\"https://${AK_DOMAIN}\"}}" \
+                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[],\"disableHttps\":true,\"doNotValidateEndpoints\":true,\"doNotValidateIssuerName\":true}" \
                         2>/dev/null) || _SSO_CODE="000"
 
                     if [[ "\${_SSO_CODE}" == "200" || "\${_SSO_CODE}" == "204" || "\${_SSO_CODE}" == "201" ]]; then
@@ -454,8 +453,33 @@ chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
 # Propager dans l'app.env du compose (CALEOPE_APP_DIR = apps-installed/jellyfin/)
 # pour que docker compose puisse interpoler ${CALEOPE_AK_DOMAIN} dans extra_hosts
 # et ${CALEOPE_AUTH_MIDDLEWARE} dans les labels Traefik
-grep -q "^CALEOPE_AK_DOMAIN=" "${CALEOPE_APP_DIR}/app.env" 2>/dev/null || \
+# Toujours mettre à jour (pas juste ajouter) pour les réinstalls
+if grep -q "^CALEOPE_AK_DOMAIN=" "${CALEOPE_APP_DIR}/app.env" 2>/dev/null; then
+    sed -i "s|^CALEOPE_AK_DOMAIN=.*|CALEOPE_AK_DOMAIN=${AK_DOMAIN}|" "${CALEOPE_APP_DIR}/app.env"
+    sed -i "s|^CALEOPE_AUTH_MIDDLEWARE=.*|CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}|" "${CALEOPE_APP_DIR}/app.env" || true
+else
     printf "\nCALEOPE_AK_DOMAIN=%s\nCALEOPE_AUTH_MIDDLEWARE=%s\n" "${AK_DOMAIN}" "${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_APP_DIR}/app.env"
+fi
+
+# ── CA bundle pour le token exchange OIDC HTTPS ─────────────────────
+# Jellyfin (.NET sur Linux) valide les certs TLS via /etc/ssl/certs/ca-certificates.crt
+# Traefik utilise un cert auto-signé (généré par authentik/setup.sh) sur :443
+# → on concatène le cert Authentik au bundle système pour que .NET le trust
+# Le bundle est monté en :ro dans le container (voir docker-compose.yml)
+AK_CERT="${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
+CA_BUNDLE="${CONFIG_DIR}/ca-bundle.crt"
+if [[ -f "${AK_CERT}" ]]; then
+    cat /etc/ssl/certs/ca-certificates.crt "${AK_CERT}" > "${CA_BUNDLE}" 2>/dev/null
+    chmod 644 "${CA_BUNDLE}"
+    echo "  ✓ Bundle CA créé (système + cert auto-signé Authentik)"
+else
+    # Authentik pas encore installé — bundle sans cert custom
+    # Réinstaller Jellyfin APRÈS l'installation d'Authentik pour activer le SSO HTTPS
+    cp /etc/ssl/certs/ca-certificates.crt "${CA_BUNDLE}" 2>/dev/null || touch "${CA_BUNDLE}"
+    chmod 644 "${CA_BUNDLE}"
+    echo "  ⚠ Cert Authentik non trouvé — bundle CA sans cert custom"
+    echo "    → Installez Authentik d'abord, puis réinstallez Jellyfin"
+fi
 
 # ── Branding Jellyfin : bouton SSO sur la page de login ───────────────
 # Jellyfin 10.11+ lit le LoginDisclaimer depuis config/config/branding.xml
