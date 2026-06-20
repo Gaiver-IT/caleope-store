@@ -79,7 +79,9 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     if [ -f "${AK_SECRETS}" ]; then
         AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
         if [ -n "${AK_TOKEN}" ]; then
-            AK_BASE="http://localhost:8000/api/v3"
+            AK_PORT=$(grep "^CALEOPE_PORT_WEB=" "${CALEOPE_BASE_DIR}/apps-installed/authentik/app.env" 2>/dev/null | cut -d= -f2-)
+            AK_PORT="${AK_PORT:-8000}"
+            AK_BASE="http://localhost:${AK_PORT}/api/v3"
             AK_HA="Authorization: Bearer ${AK_TOKEN}"
             AK_HJ="Content-Type: application/json"
 
