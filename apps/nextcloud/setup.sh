@@ -83,7 +83,7 @@ d = {
     'client_type': 'confidential',
     'client_id': 'nextcloud',
     'client_secret': '${NC_OIDC_SECRET}',
-    'redirect_uris': [{'matching_mode': 'strict', 'url': 'https://${CALEOPE_DOMAIN}/index.php/apps/user_oidc/code'}],
+    'redirect_uris': [{'matching_mode': 'strict', 'url': 'https://${CALEOPE_DOMAIN}/apps/user_oidc/code'}],
     'sub_mode': 'hashed_user_id',
     'include_claims_in_id_token': True,
 }
