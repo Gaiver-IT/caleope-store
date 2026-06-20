@@ -105,6 +105,15 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     fi
 fi
 
+# CALEOPE_AK_DOMAIN dans secrets.env → buildEnvFile (daemon étape 7) l'inclura dans
+# apps-installed/jellyfin/app.env → docker compose peut interpoler ${CALEOPE_AK_DOMAIN}
+# dans extra_hosts (résolution du domaine Authentik vers host-gateway)
+if grep -q "^CALEOPE_AK_DOMAIN=" "${_SECRETS}" 2>/dev/null; then
+    sed -i "s|^CALEOPE_AK_DOMAIN=.*|CALEOPE_AK_DOMAIN=${AK_DOMAIN}|" "${_SECRETS}"
+else
+    printf "CALEOPE_AK_DOMAIN=%s\n" "${AK_DOMAIN}" >> "${_SECRETS}"
+fi
+
 # ── Bootstrap script ─────────────────────────────────────────────────
 # Ce script tourne dans un container Alpine au 1er démarrage.
 # Il complète le wizard Jellyfin via l'API /Startup/* (10.11+)
@@ -449,17 +458,6 @@ CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}
 CALEOPE_AK_DOMAIN=${AK_DOMAIN}
 ENV
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
-
-# Propager dans l'app.env du compose (CALEOPE_APP_DIR = apps-installed/jellyfin/)
-# pour que docker compose puisse interpoler ${CALEOPE_AK_DOMAIN} dans extra_hosts
-# et ${CALEOPE_AUTH_MIDDLEWARE} dans les labels Traefik
-# Toujours mettre à jour (pas juste ajouter) pour les réinstalls
-if grep -q "^CALEOPE_AK_DOMAIN=" "${CALEOPE_APP_DIR}/app.env" 2>/dev/null; then
-    sed -i "s|^CALEOPE_AK_DOMAIN=.*|CALEOPE_AK_DOMAIN=${AK_DOMAIN}|" "${CALEOPE_APP_DIR}/app.env"
-    sed -i "s|^CALEOPE_AUTH_MIDDLEWARE=.*|CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}|" "${CALEOPE_APP_DIR}/app.env" || true
-else
-    printf "\nCALEOPE_AK_DOMAIN=%s\nCALEOPE_AUTH_MIDDLEWARE=%s\n" "${AK_DOMAIN}" "${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_APP_DIR}/app.env"
-fi
 
 # ── CA bundle pour le token exchange OIDC HTTPS ─────────────────────
 # Jellyfin (.NET sur Linux) valide les certs TLS via /etc/ssl/certs/ca-certificates.crt
