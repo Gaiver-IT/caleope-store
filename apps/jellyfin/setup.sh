@@ -278,15 +278,26 @@ if [[ -n "\${AK_TOKEN}" && -n "\${JF_TOKEN}" ]]; then
                     -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null \
                     | python3 -c "import sys,json; d=json.load(sys.stdin); m=[p for p in d.get('results',[]) if p.get('name')=='Jellyfin SSO']; print(m[0]['pk'] if m else '')" 2>/dev/null)
 
+                # redirect_uri en regex (https? = HTTP ou HTTPS selon Traefik entrypoint)
+                # → accepte http:// si Jellyfin est sur web(:80) et https:// si sur websecure(:443)
+                _REDIR_URI="https?://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}"
+
                 if [[ -n "\${_AK_PROV_PK}" ]]; then
-                    _AK_PROV_RESP=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/\${_AK_PROV_PK}/" \
+                    # Provider existant : PATCH pour mettre à jour redirect_uris (idempotent)
+                    _AK_PROV_RESP=\$(curl -sf -X PATCH \
+                        "\${AK_INT_URL}/api/v3/providers/oauth2/\${_AK_PROV_PK}/" \
+                        -H "Authorization: Bearer \${AK_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d "{\"redirect_uris\":[{\"url\":\"\${_REDIR_URI}\",\"matching_mode\":\"regex\"}]}" \
+                        2>/dev/null)
+                    [[ -z "\${_AK_PROV_RESP}" ]] && _AK_PROV_RESP=\$(curl -sf "\${AK_INT_URL}/api/v3/providers/oauth2/\${_AK_PROV_PK}/" \
                         -H "Authorization: Bearer \${AK_TOKEN}" 2>/dev/null)
                 else
                     _AK_PROV_RESP=\$(python3 -c "
 import json
 scopes=[s for s in ['\${_S_OID}','\${_S_EMAIL}','\${_S_PROF}'] if s]
 body={'name':'Jellyfin SSO','authorization_flow':'\${_AK_FLOW}','client_type':'confidential',
-      'redirect_uris':[{'url':'https://\${JF_DOMAIN}/sso/OID/redirect/\${JF_SSO_PROVIDER}','matching_mode':'strict'}],
+      'redirect_uris':[{'url':'\${_REDIR_URI}','matching_mode':'regex'}],
       'sub_mode':'user_username','include_claims_in_id_token':True,
       'signing_key':'\${_AK_KEY}','property_mappings':scopes}
 if '\${_AK_INVAL}': body['invalidation_flow']='\${_AK_INVAL}'
