@@ -319,12 +319,17 @@ print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oau
                     # URL interne Docker (HTTP) pour que Jellyfin puisse contacter
                     # Authentik depuis le réseau caleope-public sans SSL — l'URL
                     # externe HTTPS échoue en LAN (certs auto-signés ou ACME non résolu)
+                    # URL interne Docker — Authentik répond sans TLS, le discovery doc retourne :
+                    #   authorization_endpoint → https://ak.domain/... (via AUTHENTIK_HOST_BROWSER)
+                    #   token_endpoint         → http://authentik-server:9000/... (interne Docker ✓)
+                    # DoNotValidateEndpoints : authorization_endpoint et issuer ont des bases différentes
+                    # DoNotValidateIssuerName : le token iss est signé avec l'URL externe (HTTPS), pas l'interne
                     _OID_EP="http://authentik-server:9000/application/o/\${AK_SLUG}/"
                     _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
                         "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}" \
                         -H "Content-Type: application/json" \
                         -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
-                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[]}" \
+                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[],\"doNotValidateEndpoints\":true,\"doNotValidateIssuerName\":true}" \
                         2>/dev/null) || _SSO_CODE="000"
 
                     if [[ "\${_SSO_CODE}" == "200" || "\${_SSO_CODE}" == "204" || "\${_SSO_CODE}" == "201" ]]; then

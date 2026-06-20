@@ -16,11 +16,20 @@ mkdir -p "${APP_DATA_DIR}/"{media,custom-templates,db,redis}
 chown -R 1000:1000 "${APP_DATA_DIR}/media"
 chown -R 1000:1000 "${APP_DATA_DIR}/custom-templates"
 
-# Génération des secrets
+# Génération des secrets — on préserve les valeurs existantes sur réinstall
+# pour ne pas casser la base Postgres (password divergerait du volume DB)
+_PREV_SECRETS="${APP_CONFIG_DIR}/secrets.env"
 SECRET_KEY=$(openssl rand -hex 50)
 DB_PASS=$(openssl rand -hex 20)
 ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 ADMIN_TOKEN=$(openssl rand -hex 32)
+if [[ -f "${_PREV_SECRETS}" ]]; then
+    _P_SK=$(grep "^AUTHENTIK_SECRET_KEY=" "${_PREV_SECRETS}" 2>/dev/null | cut -d= -f2-) && [[ -n "${_P_SK}" ]] && SECRET_KEY="${_P_SK}"
+    _P_DB=$(grep "^POSTGRES_PASSWORD=" "${_PREV_SECRETS}" 2>/dev/null | cut -d= -f2-)  && [[ -n "${_P_DB}" ]] && DB_PASS="${_P_DB}"
+    _P_AP=$(grep "^AUTHENTIK_BOOTSTRAP_PASSWORD=" "${_PREV_SECRETS}" 2>/dev/null | cut -d= -f2-) && [[ -n "${_P_AP}" ]] && ADMIN_PASS="${_P_AP}"
+    _P_AT=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${_PREV_SECRETS}" 2>/dev/null | cut -d= -f2-)   && [[ -n "${_P_AT}" ]] && ADMIN_TOKEN="${_P_AT}"
+    echo "  ✓ Secrets existants conservés (réinstall)"
+fi
 
 cat > "${APP_CONFIG_DIR}/secrets.env" << EOF
 # PostgreSQL
@@ -30,6 +39,11 @@ AUTHENTIK_POSTGRESQL__PASSWORD=${DB_PASS}
 # Authentik core
 AUTHENTIK_SECRET_KEY=${SECRET_KEY}
 AUTHENTIK_ERROR_REPORTING__ENABLED=false
+
+# URL externe navigateur — séparée de l'URL interne Docker (http://authentik-server:9000)
+# pour que le discovery document OIDC retourne une authorization_endpoint accessible
+# par le navigateur, tout en gardant le token_endpoint sur l'URL interne Docker.
+AUTHENTIK_HOST_BROWSER=https://${CALEOPE_DOMAIN}
 
 # Bootstrap admin (premier démarrage uniquement)
 AUTHENTIK_BOOTSTRAP_EMAIL=admin@${CALEOPE_DOMAIN}
