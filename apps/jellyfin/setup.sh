@@ -232,13 +232,9 @@ if [[ -n "\${AK_TOKEN}" && -n "\${JF_TOKEN}" ]]; then
     echo ""
     echo "→ Configuration SSO OIDC Authentik..."
 
-    # Vérifier si le provider SSO est déjà configuré (idempotence)
-    _sso_exists=\$(curl -sf -o /dev/null -w "%{http_code}" \
-        "\${JF_URL}/sso/OID/Get/\${JF_SSO_PROVIDER}?api_key=\${JF_TOKEN}" 2>/dev/null) || _sso_exists="000"
-
-    if [[ "\${_sso_exists}" == "200" ]]; then
-        echo "  ℹ SSO Authentik déjà configuré — ignoré"
-    else
+    # Toujours reconfigurer SSO — le endpoint Add fait un upsert
+    # Un reinstall doit appliquer les nouveaux paramètres (ex: canonicalLinks)
+    if true; then
         # Vérifier si Authentik est joignable
         _ak_up=false
         for _i in \$(seq 1 6); do
