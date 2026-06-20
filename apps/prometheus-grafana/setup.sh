@@ -157,8 +157,8 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
         fi
 
         if [ -n "${AK_TOKEN}" ] && [ -n "${AK_DOMAIN}" ]; then
-            AK_PORT=$(grep "^CALEOPE_PORT_WEB=" "${CALEOPE_BASE_DIR}/apps-installed/authentik/app.env" 2>/dev/null | cut -d= -f2-)
-            AK_PORT="${AK_PORT:-8000}"
+            AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null)
+            AK_PORT="${AK_PORT:-9000}"
             AK_BASE="http://localhost:${AK_PORT}/api/v3"
             AK_HA="Authorization: Bearer ${AK_TOKEN}"
             AK_HJ="Content-Type: application/json"
