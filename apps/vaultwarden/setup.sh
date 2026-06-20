@@ -82,10 +82,16 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
                 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
             if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
-                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
-                    "${AK_BASE}/providers/proxy/" \
-                    -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
-                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                # Récupérer le provider existant ou en créer un nouveau
+                PROV_PK=$(curl -s --max-time 10 -H "${AK_HA}" \
+                    "${AK_BASE}/providers/proxy/?search=Vaultwarden" \
+                    | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null || echo "")
+                if [ -z "${PROV_PK}" ]; then
+                    PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/providers/proxy/" \
+                        -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
+                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                fi
 
                 if [ -n "${PROV_PK}" ]; then
                     curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
