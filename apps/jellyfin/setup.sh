@@ -319,17 +319,19 @@ print(json.dumps(body))" | curl -sf -X POST "\${AK_INT_URL}/api/v3/providers/oau
                     # URL interne Docker (HTTP) pour que Jellyfin puisse contacter
                     # Authentik depuis le réseau caleope-public sans SSL — l'URL
                     # externe HTTPS échoue en LAN (certs auto-signés ou ACME non résolu)
-                    # URL interne Docker — Authentik répond sans TLS, le discovery doc retourne :
-                    #   authorization_endpoint → https://ak.domain/... (via AUTHENTIK_HOST_BROWSER)
-                    #   token_endpoint         → http://authentik-server:9000/... (interne Docker ✓)
-                    # DoNotValidateEndpoints : authorization_endpoint et issuer ont des bases différentes
-                    # DoNotValidateIssuerName : le token iss est signé avec l'URL externe (HTTPS), pas l'interne
+                    # Stratégie SSO split-URL :
+                    #   oidEndpoint (discovery + token exchange) = http://authentik-server:9000 (Docker interne)
+                    #   canonicalLinks = réécriture http://authentik-server:9000 → https://AK_DOMAIN
+                    #     → le plugin SSO remplace l'URL interne par l'URL externe dans l'authorization_endpoint
+                    #       retourné au navigateur, sans toucher au token_endpoint (utilisé côté serveur)
+                    #   doNotValidateEndpoints : authorization_endpoint (réécriture HTTPS) ≠ base issuer (HTTP interne)
+                    #   doNotValidateIssuerName : le iss du token peut différer selon le chemin d'accès Authentik
                     _OID_EP="http://authentik-server:9000/application/o/\${AK_SLUG}/"
                     _SSO_CODE=\$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
                         "\${JF_URL}/sso/OID/Add/\${JF_SSO_PROVIDER}" \
                         -H "Content-Type: application/json" \
                         -H "Authorization: MediaBrowser Token=\"\${JF_TOKEN}\"" \
-                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[],\"doNotValidateEndpoints\":true,\"doNotValidateIssuerName\":true}" \
+                        -d "{\"oidEndpoint\":\"\${_OID_EP}\",\"oidClientId\":\"\${_AK_CLIENT_ID}\",\"oidSecret\":\"\${_AK_SECRET}\",\"enabled\":true,\"enableAuthorization\":true,\"enableAllFolders\":true,\"enabledFolders\":[],\"roles\":[],\"adminRoles\":[],\"roleClaim\":\"groups\",\"oidScopes\":[],\"doNotValidateEndpoints\":true,\"doNotValidateIssuerName\":true,\"canonicalLinks\":{\"http://authentik-server:9000\":\"https://${AK_DOMAIN}\"}}" \
                         2>/dev/null) || _SSO_CODE="000"
 
                     if [[ "\${_SSO_CODE}" == "200" || "\${_SSO_CODE}" == "204" || "\${_SSO_CODE}" == "201" ]]; then
@@ -452,6 +454,12 @@ CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}
 CALEOPE_AK_DOMAIN=${AK_DOMAIN}
 ENV
 chmod 600 "${CALEOPE_BASE_DIR}/app-config/jellyfin/app.env"
+
+# Propager dans l'app.env du compose (CALEOPE_APP_DIR = apps-installed/jellyfin/)
+# pour que docker compose puisse interpoler ${CALEOPE_AK_DOMAIN} dans extra_hosts
+# et ${CALEOPE_AUTH_MIDDLEWARE} dans les labels Traefik
+grep -q "^CALEOPE_AK_DOMAIN=" "${CALEOPE_APP_DIR}/app.env" 2>/dev/null || \
+    printf "\nCALEOPE_AK_DOMAIN=%s\nCALEOPE_AUTH_MIDDLEWARE=%s\n" "${AK_DOMAIN}" "${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_APP_DIR}/app.env"
 
 # ── Branding Jellyfin : bouton SSO sur la page de login ───────────────
 # Jellyfin 10.11+ lit le LoginDisclaimer depuis config/config/branding.xml
