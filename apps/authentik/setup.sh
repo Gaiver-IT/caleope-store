@@ -62,10 +62,17 @@ mkdir -p "${TRAEFIK_CERTS}" "${TRAEFIK_DYN}"
 [[ -d "${TRAEFIK_CERTS}/authentik.crt" ]] && rm -rf "${TRAEFIK_CERTS}/authentik.crt"
 [[ -d "${TRAEFIK_CERTS}/authentik.key" ]] && rm -rf "${TRAEFIK_CERTS}/authentik.key"
 
+# CALEOPE_DOMAIN est ici le domaine complet de l'app (ex: authentik.caleope-redberry.guernaham.bzh)
+# On régénère si le cert n'existe pas ou si le CN ne correspond pas (détecte les mauvais certs)
 _REGEN_CERT=true
-if [[ -f "${TRAEFIK_CERTS}/authentik.crt" ]] && \
-   openssl x509 -noout -in "${TRAEFIK_CERTS}/authentik.crt" 2>/dev/null; then
-    _REGEN_CERT=false
+if [[ -f "${TRAEFIK_CERTS}/authentik.crt" ]]; then
+    _ACTUAL_CN=$(openssl x509 -noout -subject -in "${TRAEFIK_CERTS}/authentik.crt" 2>/dev/null \
+        | sed 's/.*CN\s*=\s*//')
+    if [[ "${_ACTUAL_CN}" == "${CALEOPE_DOMAIN}" ]]; then
+        _REGEN_CERT=false
+    else
+        echo "  ℹ Cert existant (CN=${_ACTUAL_CN}) ≠ attendu (${CALEOPE_DOMAIN}) — regénération"
+    fi
 fi
 
 if ${_REGEN_CERT}; then
@@ -73,12 +80,12 @@ if ${_REGEN_CERT}; then
         -keyout "${TRAEFIK_CERTS}/authentik.key" \
         -out    "${TRAEFIK_CERTS}/authentik.crt" \
         -days 3650 -nodes \
-        -subj "/CN=authentik.${CALEOPE_DOMAIN}" \
-        -addext "subjectAltName=DNS:authentik.${CALEOPE_DOMAIN}" \
+        -subj "/CN=${CALEOPE_DOMAIN}" \
+        -addext "subjectAltName=DNS:${CALEOPE_DOMAIN}" \
         2>/dev/null
     chmod 600 "${TRAEFIK_CERTS}/authentik.key"
     chmod 644 "${TRAEFIK_CERTS}/authentik.crt"
-    echo "  ✓ Certificat auto-signé généré pour authentik.${CALEOPE_DOMAIN}"
+    echo "  ✓ Certificat auto-signé généré pour ${CALEOPE_DOMAIN}"
 else
     echo "  ✓ Certificat auto-signé existant conservé"
 fi
