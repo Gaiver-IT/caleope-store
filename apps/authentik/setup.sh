@@ -104,6 +104,29 @@ tls:
 TRAFTLS
 echo "  ✓ Config TLS Traefik écrite (dynamic/authentik-tls.yml)"
 
+# ── Blueprint : configure l'outpost embedded au premier démarrage ──────────
+# Authentik applique automatiquement les blueprints dans /blueprints/custom/
+# L'outpost embedded a besoin de authentik_host = URL publique pour que les
+# redirects ForwardAuth pointent vers le domaine public et non 0.0.0.0:9000
+BLUEPRINTS_DIR="${CALEOPE_BASE_DIR}/app-data/authentik/blueprints"
+mkdir -p "${BLUEPRINTS_DIR}"
+cat > "${BLUEPRINTS_DIR}/caleope-outpost-config.yaml" << BLUEPRINT
+version: 1
+metadata:
+  name: Caleope - Embedded outpost host
+entries:
+  - model: authentik_outposts.outpost
+    state: present
+    identifiers:
+      managed: goauthentik.io/outposts/embedded
+    attrs:
+      config:
+        authentik_host: https://${CALEOPE_DOMAIN}
+        authentik_host_browser: https://${CALEOPE_DOMAIN}
+        authentik_host_insecure: false
+BLUEPRINT
+echo "  ✓ Blueprint outpost embedded écrit (blueprints/caleope-outpost-config.yaml)"
+
 cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
 
   ┌──────────────────────────────────────────────────────────────────┐
