@@ -47,6 +47,10 @@ AUTHENTIK_BOOTSTRAP_TOKEN=${ADMIN_TOKEN}
 
 # Domaine Authentik (lu par les autres apps pour l'auto-enregistrement)
 AUTHENTIK_DOMAIN=${CALEOPE_DOMAIN}
+
+# URL publique d'Authentik (nécessaire pour que l'outpost embedded génère
+# des redirect URIs correctes au lieu de 0.0.0.0:9000)
+AUTHENTIK_AUTHENTIK__URL=https://${CALEOPE_DOMAIN}
 EOF
 chmod 600 "${APP_CONFIG_DIR}/secrets.env"
 
