@@ -58,6 +58,23 @@ _ADMIN_TOKEN_PLAIN=${ADMIN_TOKEN_PLAIN}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
+# ── CA bundle + AUTHENTIK_DOMAIN ────────────────────────────────────────────────
+# Vaultwarden (Rust/OpenSSL) doit valider le cert TLS d'Authentik (auto-signé).
+# On crée un bundle = CAs système + cert Authentik, monté dans le container.
+# AUTHENTIK_DOMAIN est écrit dans secrets.env pour l'interpolation compose (extra_hosts).
+BASE_DOMAIN=$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)
+_AK_DOMAIN_EARLY=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
+[ -n "${_AK_DOMAIN_EARLY}" ] || _AK_DOMAIN_EARLY="authentik.${BASE_DOMAIN}"
+echo "AUTHENTIK_DOMAIN=${_AK_DOMAIN_EARLY}" >> "${CONFIG_DIR}/secrets.env"
+
+AK_CERT="${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
+if [ -f "${AK_CERT}" ]; then
+    cat /etc/ssl/certs/ca-certificates.crt "${AK_CERT}" > "${CONFIG_DIR}/ca-bundle.pem"
+else
+    cp /etc/ssl/certs/ca-certificates.crt "${CONFIG_DIR}/ca-bundle.pem"
+fi
+chmod 644 "${CONFIG_DIR}/ca-bundle.pem"
+
 # ── Authentik SSO (OIDC natif) ────────────────────────────────────────────────
 # Vaultwarden supporte nativement l'OIDC depuis v1.30 → bouton "Se connecter
 # avec SSO" dans l'UI + support des clients Bitwarden (mobile, extension).

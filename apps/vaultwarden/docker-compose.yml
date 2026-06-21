@@ -8,6 +8,9 @@ services:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
       - {{.BaseDir}}/app-data/vaultwarden/data:/data
+      - {{.BaseDir}}/app-config/{{.AppID}}/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
+    extra_hosts:
+      - "${AUTHENTIK_DOMAIN}:host-gateway"
     {{- range .Ports}}
     ports:
       - "{{.Host}}:{{.Container}}"
