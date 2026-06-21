@@ -101,6 +101,11 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
                 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
             if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                # Clé de signature RSA par défaut d'Authentik (nécessaire pour RS256 / JWKS)
+                SIGNING_KEY=$(curl -s --max-time 10 -H "${AK_HA}" \
+                    "${AK_BASE}/crypto/certificatekeypairs/?has_key=true" \
+                    | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null || echo "")
+
                 # Chercher un provider OAuth2 existant (idempotent)
                 EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
                     "${AK_BASE}/providers/oauth2/?search=Vaultwarden" \
@@ -109,18 +114,27 @@ import sys,json
 d=json.load(sys.stdin)
 r=d.get('results',[])
 if r:
-    print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+    print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret'],'sk':r[0].get('signing_key')}))
 " 2>/dev/null || echo "")
 
                 if [ -n "${EXISTING}" ]; then
                     PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
                     SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
                     SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+                    EXISTING_SK=$(echo "${EXISTING}" | python3 -c "import sys,json; v=json.load(sys.stdin).get('sk'); print(v if v else '')" 2>/dev/null || echo "")
+                    # Patcher la signing_key si absente (migration depuis HS256)
+                    if [ -z "${EXISTING_SK}" ] && [ -n "${SIGNING_KEY}" ]; then
+                        curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/providers/oauth2/${PROV_PK}/" \
+                            -d "{\"signing_key\":\"${SIGNING_KEY}\"}" >/dev/null 2>&1 || true
+                        echo "  ✓ signing_key ajoutée au provider existant (RS256)"
+                    fi
                 else
                     REDIRECT_URI="https://${CALEOPE_DOMAIN}/identity/connect/oidc-signin"
+                    SIGN_KEY_JSON=$([ -n "${SIGNING_KEY}" ] && echo ",\"signing_key\":\"${SIGNING_KEY}\"" || echo "")
                     PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
                         "${AK_BASE}/providers/oauth2/" \
-                        -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                        -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true${SIGN_KEY_JSON}}" \
                         2>/dev/null || echo "")
                     PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
                     SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
@@ -149,14 +163,24 @@ print(r[0]['slug'] if r else '')
                         APP_SLUG=$(echo "${APP_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('slug','vaultwarden'))" 2>/dev/null || echo "vaultwarden")
                     fi
 
-                    # Injecter la config SSO dans secrets.env (slug réel de l'application)
+                    # Port HTTP interne d'Authentik (évite TLS rustls sur cert auto-signé)
+                    AK_HTTP_PORT=$(python3 -c "
+import json
+d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json'))
+print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
+" 2>/dev/null || echo "9000")
+
+                    # Injecter la config SSO dans secrets.env
+                    # SSO_AUTHORITY = HTTP interne (rustls ne vérifie pas le cert auto-signé)
+                    # SSO_JWT_ISSUER = URL publique HTTPS (pour validation des JWT)
                     cat >> "${CONFIG_DIR}/secrets.env" << SSOENV
 
 # SSO Authentik (OIDC natif — bouton "Se connecter avec SSO" dans l'UI)
 SSO_ENABLED=true
 SSO_ONLY=false
 SSO_PROVIDER_NAME=Authentik
-SSO_AUTHORITY=https://${AK_DOMAIN}/application/o/${APP_SLUG}/
+SSO_AUTHORITY=http://authentik-server:${AK_HTTP_PORT}/application/o/${APP_SLUG}/
+SSO_JWT_ISSUER=https://${AK_DOMAIN}/application/o/${APP_SLUG}/
 SSO_CLIENT_ID=${SSO_CLIENT_ID}
 SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
 SSOENV
