@@ -17,7 +17,6 @@ if command -v argon2 >/dev/null 2>&1; then
     SALT=$(openssl rand -hex 8)
     ADMIN_TOKEN_HASH=$(echo -n "${ADMIN_TOKEN_PLAIN}" | argon2 "${SALT}" -e -id -k 65536 -t 3 -p 4 2>/dev/null || echo "")
 else
-    # Token brut accepté si argon2 indisponible (mode dégradé)
     ADMIN_TOKEN_HASH="${ADMIN_TOKEN_PLAIN}"
 fi
 
@@ -38,7 +37,6 @@ SMTP_FROM=${SMTP_FROM}
 SMTP_SECURITY=starttls"
 fi
 
-# Sans SMTP : les inscriptions directes sont ouvertes, pas d'envoi d'email
 REQUIRE_EMAIL_CONFIRMATION="false"
 [ -n "${SMTP_HOST}" ] && REQUIRE_EMAIL_CONFIRMATION="true"
 
@@ -60,14 +58,16 @@ _ADMIN_TOKEN_PLAIN=${ADMIN_TOKEN_PLAIN}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── Authentik ForwardAuth ─────────────────────────────────────────────────────
-# Vaultwarden n'a pas d'OIDC natif → ForwardAuth via Traefik (authentik@docker).
-# L'API Authentik est accessible en http://localhost:8000 depuis le serveur hôte.
+# ── Authentik SSO (OIDC natif) ────────────────────────────────────────────────
+# Vaultwarden supporte nativement l'OIDC depuis v1.30 → bouton "Se connecter
+# avec SSO" dans l'UI + support des clients Bitwarden (mobile, extension).
+# On crée un provider OAuth2/OIDC dans Authentik (pas un proxy ForwardAuth).
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${AK_SECRETS}" ]; then
         AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-        if [ -n "${AK_TOKEN}" ]; then
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        if [ -n "${AK_TOKEN}" ] && [ -n "${AK_DOMAIN}" ]; then
             AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null)
             AK_PORT="${AK_PORT:-9000}"
             AK_BASE="http://localhost:${AK_PORT}/api/v3"
@@ -82,56 +82,52 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
                 | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
 
             if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
-                # Récupérer le provider existant ou en créer un nouveau
-                PROV_PK=$(curl -s --max-time 10 -H "${AK_HA}" \
-                    "${AK_BASE}/providers/proxy/?search=Vaultwarden" \
-                    | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null || echo "")
-                if [ -z "${PROV_PK}" ]; then
-                    PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
-                        "${AK_BASE}/providers/proxy/" \
-                        -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"external_host\":\"https://${CALEOPE_DOMAIN}\",\"mode\":\"forward_single\"}" \
-                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                # Chercher un provider OAuth2 existant (idempotent)
+                EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
+                    "${AK_BASE}/providers/oauth2/?search=Vaultwarden" \
+                    | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=d.get('results',[])
+if r:
+    print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+" 2>/dev/null || echo "")
+
+                if [ -n "${EXISTING}" ]; then
+                    PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
+                    SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
+                    SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+                else
+                    REDIRECT_URI="https://${CALEOPE_DOMAIN}/identity/connect/oidc-signin"
+                    PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/providers/oauth2/" \
+                        -d "{\"name\":\"Vaultwarden\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                        2>/dev/null || echo "")
+                    PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                    SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
+                    SSO_CLIENT_SECRET=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
                 fi
 
-                if [ -n "${PROV_PK}" ]; then
+                if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
+                    # Créer l'application Authentik
                     curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
                         "${AK_BASE}/core/applications/" \
-                        -d "{\"name\":\"Vaultwarden\",\"slug\":\"vaultwarden-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        -d "{\"name\":\"Vaultwarden\",\"slug\":\"vaultwarden\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
                         >/dev/null 2>&1 || true
 
-                    # Ajouter le provider à l'outpost embarqué
-                    OUTPOST_PK=$(curl -s --max-time 10 -H "${AK_HA}" \
-                        "${AK_BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
-                        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-                    if [ -n "${OUTPOST_PK}" ]; then
-                        CUR_PROVS=$(curl -s --max-time 10 -H "${AK_HA}" \
-                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
-                            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
-                        NEW_PROVS=$(python3 -c "
-import json
-l=json.loads('${CUR_PROVS}')
-if ${PROV_PK} not in l: l.append(${PROV_PK})
-print(json.dumps(l))
-" 2>/dev/null || echo "[${PROV_PK}]")
-                        curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
-                            "${AK_BASE}/outposts/instances/${OUTPOST_PK}/" \
-                            -d "{\"providers\":${NEW_PROVS}}" >/dev/null 2>&1 || true
-                    fi
+                    # Injecter la config SSO dans secrets.env
+                    cat >> "${CONFIG_DIR}/secrets.env" << SSOENV
 
-                    # Injecter middleware authentik dans le compose
-                    awk '
-/traefik.http.routers.vaultwarden.entrypoints/ && !done {
-    print
-    indent = substr($0, 1, index($0, "-") - 1) "- "
-    print indent "\"traefik.http.routers.vaultwarden.middlewares=authentik@docker\""
-    done=1
-    next
-}
-{ print }
-' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/vw_compose_sso.yml && \
-                    mv /tmp/vw_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+# SSO Authentik (OIDC natif — bouton "Se connecter avec SSO" dans l'UI)
+SSO_ENABLED=true
+SSO_ONLY=false
+SSO_PROVIDER_NAME=Authentik
+SSO_AUTHORITY=https://${AK_DOMAIN}/application/o/vaultwarden/
+SSO_CLIENT_ID=${SSO_CLIENT_ID}
+SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
+SSOENV
 
-                    echo "  ✓ Vaultwarden ForwardAuth configuré dans Authentik (PK=${PROV_PK})"
+                    echo "  ✓ Vaultwarden OIDC configuré dans Authentik (client_id=${SSO_CLIENT_ID})"
                 fi
             fi
         fi
@@ -150,8 +146,9 @@ cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
   │    URL   : https://${CALEOPE_DOMAIN}/admin                       │
   │    Token : ${ADMIN_TOKEN_PLAIN}
   │                                                                  │
-  │  Les inscriptions sont ouvertes par défaut.                      │
-  │  Pour les fermer : SIGNUPS_ALLOWED=false dans secrets.env        │
+  │  Connexion SSO : bouton "Se connecter avec SSO" dans l'UI        │
+  │    → Utilise Authentik (OIDC). Les comptes locaux restent        │
+  │    disponibles en parallèle (SSO_ONLY=false).                    │
   │                                                                  │
   │  Extension navigateur : Bitwarden (compatible Vaultwarden)       │
   │    → Entrer https://${CALEOPE_DOMAIN}/ comme URL serveur         │
