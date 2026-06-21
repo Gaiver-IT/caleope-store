@@ -172,16 +172,37 @@ d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json'))
 print(next((p['container'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
 " 2>/dev/null || echo "9000")
 
+                    # Sidecar nginx qui proxie vers Authentik avec X-Forwarded headers.
+                    # Sans ces headers, Authentik retourne des URLs internes
+                    # (http://authentik-server:PORT/...) dans le discovery doc, ce qui
+                    # rend le browser redirect inaccessible depuis l'extérieur.
+                    # Avec X-Forwarded-Host + X-Forwarded-Proto, Authentik retourne
+                    # les URLs publiques HTTPS dans authorization_endpoint et issuer.
+                    # SSO_JWT_ISSUER override le check d'issuer pour la validation JWT.
+                    cat > "${CONFIG_DIR}/authentik-proxy.conf" << NGINXCONF
+server {
+    listen 9001;
+    location / {
+        proxy_pass http://authentik-server:${AK_HTTP_PORT};
+        proxy_set_header X-Forwarded-Host ${AK_DOMAIN};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_set_header Host ${AK_DOMAIN};
+    }
+}
+NGINXCONF
+
                     # Injecter la config SSO dans secrets.env
-                    # SSO_AUTHORITY = HTTP interne (rustls ne vérifie pas le cert auto-signé)
-                    # SSO_JWT_ISSUER = URL publique HTTPS (pour validation des JWT)
+                    # SSO_AUTHORITY = proxy nginx interne (qui ajoute X-Forwarded headers)
+                    # SSO_JWT_ISSUER = URL publique HTTPS (override pour validation JWT
+                    #   et check issuer dans le discovery)
                     cat >> "${CONFIG_DIR}/secrets.env" << SSOENV
 
 # SSO Authentik (OIDC natif — bouton "Se connecter avec SSO" dans l'UI)
 SSO_ENABLED=true
 SSO_ONLY=false
 SSO_PROVIDER_NAME=Authentik
-SSO_AUTHORITY=http://authentik-server:${AK_HTTP_PORT}/application/o/${APP_SLUG}/
+SSO_AUTHORITY=http://vaultwarden-ak-proxy:9001/application/o/${APP_SLUG}/
 SSO_JWT_ISSUER=https://${AK_DOMAIN}/application/o/${APP_SLUG}/
 SSO_CLIENT_ID=${SSO_CLIENT_ID}
 SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}

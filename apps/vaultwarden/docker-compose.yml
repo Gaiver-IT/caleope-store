@@ -9,8 +9,6 @@ services:
     volumes:
       - {{.BaseDir}}/app-data/vaultwarden/data:/data
       - {{.BaseDir}}/app-config/{{.AppID}}/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
-    extra_hosts:
-      - "${AUTHENTIK_DOMAIN}:host-gateway"
     {{- range .Ports}}
     ports:
       - "{{.Host}}:{{.Container}}"
@@ -26,6 +24,15 @@ services:
       - "traefik.http.routers.vaultwarden-ws.entrypoints=web"
       - "traefik.http.routers.vaultwarden-ws.service=vaultwarden-ws"
       - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"
+    networks:
+      - caleope-public
+
+  vaultwarden-ak-proxy:
+    image: nginx:alpine
+    container_name: vaultwarden-ak-proxy
+    restart: unless-stopped
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/authentik-proxy.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - caleope-public
 
