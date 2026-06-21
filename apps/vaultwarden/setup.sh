@@ -182,10 +182,64 @@ print(next((p['container'] for p in d.get('ports',[]) if p['name']=='web'), 9000
                     # pour que le discovery doc retourne les URLs publiques HTTPS, puis
                     # réécrit les URLs backend (token, jwks, userinfo...) vers le proxy interne.
                     # authorization_endpoint reste l'URL publique pour le browser redirect.
-                    # Deux contraintes rendent nginx insuffisant :
-                    #  1. ngx_http_sub_module ne supporte qu'une sub_filter par location
-                    #  2. Les endpoints backend (jwks, token...) sont en HTTPS → hairpin NAT
-                    #     échoue + rustls rejette le cert auto-signé Authentik
+                    #
+                    # Problème fondamental (Vaultwarden v1.36.0 + openidconnect crate) :
+                    #   - Le discovery doc doit avoir issuer == URL proxy (validation discovery)
+                    #   - Le JWT id_token d'Authentik a iss == domaine public Authentik
+                    #   - vw_id_token_verifier() vérifie iss == issuer du discovery → MISMATCH
+                    #   - SSO_JWT_ISSUER n'existe pas en v1.36.0 (c'est une constante interne)
+                    # Solution : le proxy re-signe l'id_token avec une clé RSA locale et
+                    # expose cette clé via /jwks/. L'issuer est réécrit vers l'URL proxy.
+                    # Clé RSA générée une fois à l'installation (pure Python, sans dépendances).
+                    echo "  → Génération clé RSA proxy JWT (peut prendre ~30s)..."
+                    RSA_KEY_JSON=$(python3 << 'PYGENRSA'
+import os, json
+
+def is_prime(n, k=20):
+    if n < 2: return False
+    if n in (2, 3): return True
+    if n % 2 == 0: return False
+    r, d = 0, n - 1
+    while d % 2 == 0:
+        r += 1; d //= 2
+    for _ in range(k):
+        a = int.from_bytes(os.urandom(4), 'big') % (n - 3) + 2
+        x = pow(a, d, n)
+        if x in (1, n - 1): continue
+        for _ in range(r - 1):
+            x = pow(x, 2, n)
+            if x == n - 1: break
+        else: return False
+    return True
+
+def gen_prime(bits):
+    while True:
+        nb = os.urandom(bits // 8)
+        n = int.from_bytes(nb, 'big') | (1 << (bits - 1)) | 1
+        if is_prime(n): return n
+
+def modinv(a, m):
+    old_r, r, old_s, s = m, a, 0, 1
+    while r != 0:
+        q = old_r // r
+        old_r, r = r, old_r - q * r
+        old_s, s = s, old_s - q * s
+    return old_s % m
+
+e = 65537
+p = gen_prime(1024)
+q = gen_prime(1024)
+while q == p: q = gen_prime(1024)
+n = p * q
+phi = (p - 1) * (q - 1)
+d = modinv(e, phi)
+print(json.dumps({'n': str(n), 'e': str(e), 'd': str(d)}))
+PYGENRSA
+)
+                    RSA_N=$(echo "${RSA_KEY_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin)['n'])")
+                    RSA_E=$(echo "${RSA_KEY_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin)['e'])")
+                    RSA_D=$(echo "${RSA_KEY_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin)['d'])")
+
                     cat > "${CONFIG_DIR}/authentik-proxy.py" << PYHEAD
 # Constantes générées à l'installation
 AK_HOST = "authentik-server"
@@ -193,12 +247,59 @@ AK_PORT = ${AK_HTTP_PORT}
 AK_DOMAIN = "${AK_DOMAIN}"
 PROXY_PORT = 9001
 PROXY_HOST = "vaultwarden-ak-proxy"
+RSA_N = ${RSA_N}
+RSA_E = ${RSA_E}
+RSA_D = ${RSA_D}
 PYHEAD
                     cat >> "${CONFIG_DIR}/authentik-proxy.py" << 'PYBODY'
-import http.server, urllib.request, urllib.error, json
+import http.server, urllib.request, urllib.error, json, hashlib, base64, re
+
+def _b64u(data):
+    if isinstance(data, int):
+        ln = (data.bit_length() + 7) // 8
+        data = data.to_bytes(ln, 'big')
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+def _b64ud(s):
+    return base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+
+def _rsa_sign(msg, d, n):
+    if isinstance(msg, str): msg = msg.encode()
+    h = hashlib.sha256(msg).digest()
+    pfx = bytes([0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,0x02,0x01,0x05,0x00,0x04,0x20])
+    T = pfx + h
+    kl = (n.bit_length() + 7) // 8
+    em = b'\x00\x01' + b'\xff' * (kl - len(T) - 3) + b'\x00' + T
+    return pow(int.from_bytes(em, 'big'), d, n).to_bytes(kl, 'big')
+
+def _resign(token, new_iss, d, n):
+    try:
+        p = token.split('.')
+        if len(p) != 3: return token
+        payload = json.loads(_b64ud(p[1]))
+        payload['iss'] = new_iss
+        hdr = _b64u(json.dumps({'typ':'JWT','alg':'RS256','kid':'proxy-1'},separators=(',',':')).encode())
+        pld = _b64u(json.dumps(payload,separators=(',',':')).encode())
+        si = f"{hdr}.{pld}"
+        return f"{si}.{_b64u(_rsa_sign(si, d, n))}"
+    except Exception:
+        return token
+
+JWKS_BODY = json.dumps({"keys":[{
+    "kty":"RSA","use":"sig","alg":"RS256","kid":"proxy-1",
+    "n":_b64u(RSA_N),"e":_b64u(RSA_E)
+}]}).encode()
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def proxy_request(self, method, body=None):
+        # JWKS : retourner notre clé locale (pas Authentik) pour vérifier les JWT re-signés
+        if '/jwks/' in self.path:
+            self.send_response(200)
+            self.send_header('Content-Type','application/json')
+            self.send_header('Content-Length',len(JWKS_BODY))
+            self.end_headers()
+            self.wfile.write(JWKS_BODY)
+            return
         url = f"http://{AK_HOST}:{AK_PORT}{self.path}"
         headers = {
             "X-Forwarded-Host": AK_DOMAIN,
@@ -214,42 +315,48 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
-                resp_body = resp.read()
+                rb = resp.read()
                 ct = resp.headers.get("Content-Type", "")
                 if "application/json" in ct and ".well-known/openid-configuration" in self.path:
                     try:
-                        doc = json.loads(resp_body)
-                        pub_base = f"https://{AK_DOMAIN}/"
-                        prx_base = f"http://{PROXY_HOST}:{PROXY_PORT}/"
-                        # Sauvegarder authorization_endpoint (doit rester public → browser)
-                        auth_ep = doc.get("authorization_endpoint", "")
-                        # Réécrire toutes les URLs backend publiques → proxy interne HTTP
-                        for k, v in doc.items():
-                            if isinstance(v, str) and v.startswith(pub_base):
-                                doc[k] = v.replace(pub_base, prx_base, 1)
-                        # Restaurer authorization_endpoint
-                        if auth_ep:
-                            doc["authorization_endpoint"] = auth_ep
-                        resp_body = json.dumps(doc, indent=2).encode()
-                    except Exception:
-                        pass
+                        doc = json.loads(rb)
+                        pub = f"https://{AK_DOMAIN}/"
+                        prx = f"http://{PROXY_HOST}:{PROXY_PORT}/"
+                        auth_ep = doc.get("authorization_endpoint","")
+                        for k,v in doc.items():
+                            if isinstance(v,str) and v.startswith(pub):
+                                doc[k] = v.replace(pub,prx,1)
+                        if auth_ep: doc["authorization_endpoint"] = auth_ep
+                        rb = json.dumps(doc,indent=2).encode()
+                    except Exception: pass
+                elif "application/json" in ct and "/token/" in self.path:
+                    # Re-signer l'id_token avec notre clé locale + réécrire l'issuer
+                    # pour que Vaultwarden (openidconnect crate) accepte la validation
+                    try:
+                        data = json.loads(rb)
+                        if "id_token" in data:
+                            m = re.search(r'/application/o/([^/]+)/token/', self.path)
+                            slug = m.group(1) if m else "unknown"
+                            new_iss = f"http://{PROXY_HOST}:{PROXY_PORT}/application/o/{slug}/"
+                            data["id_token"] = _resign(data["id_token"], new_iss, RSA_D, RSA_N)
+                            rb = json.dumps(data).encode()
+                    except Exception: pass
                 self.send_response(resp.status)
-                skip = {"transfer-encoding", "content-encoding", "content-length", "connection"}
-                for h, v in resp.headers.items():
-                    if h.lower() not in skip:
-                        self.send_header(h, v)
-                self.send_header("Content-Length", len(resp_body))
+                skip = {"transfer-encoding","content-encoding","content-length","connection"}
+                for h,v in resp.headers.items():
+                    if h.lower() not in skip: self.send_header(h,v)
+                self.send_header("Content-Length",len(rb))
                 self.end_headers()
-                self.wfile.write(resp_body)
+                self.wfile.write(rb)
         except urllib.error.URLError as e:
             self.send_error(502, str(e))
     def do_GET(self): self.proxy_request("GET")
     def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0))
-        self.proxy_request("POST", self.rfile.read(n) if n else None)
+        cl = int(self.headers.get("Content-Length",0))
+        self.proxy_request("POST", self.rfile.read(cl) if cl else None)
     def log_message(self, *a): pass
 
-http.server.HTTPServer(("0.0.0.0", PROXY_PORT), ProxyHandler).serve_forever()
+http.server.HTTPServer(("0.0.0.0",PROXY_PORT),ProxyHandler).serve_forever()
 PYBODY
 
                     # Injecter la config SSO dans secrets.env
@@ -263,7 +370,6 @@ SSO_ENABLED=true
 SSO_ONLY=false
 SSO_PROVIDER_NAME=Authentik
 SSO_AUTHORITY=http://vaultwarden-ak-proxy:9001/application/o/${APP_SLUG}/
-SSO_JWT_ISSUER=https://${AK_DOMAIN}/application/o/${APP_SLUG}/
 SSO_CLIENT_ID=${SSO_CLIENT_ID}
 SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
 SSOENV
