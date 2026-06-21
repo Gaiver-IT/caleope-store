@@ -122,13 +122,19 @@ if r:
                     SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
                     SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
                     EXISTING_SK=$(echo "${EXISTING}" | python3 -c "import sys,json; v=json.load(sys.stdin).get('sk'); print(v if v else '')" 2>/dev/null || echo "")
-                    # Patcher la signing_key si absente (migration depuis HS256)
+                    # Patch OIDC natif : corriger signing_key + redirect_uris si migration depuis ForwardAuth
+                    # (l'ancien setup ForwardAuth laissait des redirect_uris /outpost.goauthentik.io/callback)
+                    REDIRECT_URI="https://${CALEOPE_DOMAIN}/identity/connect/oidc-signin"
+                    REDIRECT_SSO="https://${CALEOPE_DOMAIN}/sso-connector.html"
+                    PATCH_JSON="{\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"},{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_SSO}\"}]"
                     if [ -z "${EXISTING_SK}" ] && [ -n "${SIGNING_KEY}" ]; then
-                        curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
-                            "${AK_BASE}/providers/oauth2/${PROV_PK}/" \
-                            -d "{\"signing_key\":\"${SIGNING_KEY}\"}" >/dev/null 2>&1 || true
-                        echo "  ✓ signing_key ajoutée au provider existant (RS256)"
+                        PATCH_JSON="${PATCH_JSON},\"signing_key\":\"${SIGNING_KEY}\""
                     fi
+                    PATCH_JSON="${PATCH_JSON}}"
+                    curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/providers/oauth2/${PROV_PK}/" \
+                        -d "${PATCH_JSON}" >/dev/null 2>&1 || true
+                    echo "  ✓ redirect_uris et signing_key patchées (migration ForwardAuth → OIDC natif)"
                 else
                     REDIRECT_URI="https://${CALEOPE_DOMAIN}/identity/connect/oidc-signin"
                     SIGN_KEY_JSON=$([ -n "${SIGNING_KEY}" ] && echo ",\"signing_key\":\"${SIGNING_KEY}\"" || echo "")
