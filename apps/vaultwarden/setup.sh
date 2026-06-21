@@ -252,7 +252,7 @@ RSA_E = ${RSA_E}
 RSA_D = ${RSA_D}
 PYHEAD
                     cat >> "${CONFIG_DIR}/authentik-proxy.py" << 'PYBODY'
-import http.server, urllib.request, urllib.error, json, hashlib, base64, re
+import http.server, urllib.request, urllib.error, json, hashlib, base64
 
 def _b64u(data):
     if isinstance(data, int):
@@ -272,12 +272,19 @@ def _rsa_sign(msg, d, n):
     em = b'\x00\x01' + b'\xff' * (kl - len(T) - 3) + b'\x00' + T
     return pow(int.from_bytes(em, 'big'), d, n).to_bytes(kl, 'big')
 
-def _resign(token, new_iss, d, n):
+def _resign(token, d, n):
     try:
         p = token.split('.')
         if len(p) != 3: return token
         payload = json.loads(_b64ud(p[1]))
-        payload['iss'] = new_iss
+        # Réécrire l'issuer : remplacer le domaine public Authentik par l'URL proxy
+        # Ex: https://authentik.example.com/application/o/vaultwarden-sso/
+        #  -> http://vaultwarden-ak-proxy:9001/application/o/vaultwarden-sso/
+        old_iss = payload.get('iss', '')
+        pub = f"https://{AK_DOMAIN}/"
+        prx = f"http://{PROXY_HOST}:{PROXY_PORT}/"
+        if old_iss.startswith(pub):
+            payload['iss'] = old_iss.replace(pub, prx, 1)
         hdr = _b64u(json.dumps({'typ':'JWT','alg':'RS256','kid':'proxy-1'},separators=(',',':')).encode())
         pld = _b64u(json.dumps(payload,separators=(',',':')).encode())
         si = f"{hdr}.{pld}"
@@ -331,14 +338,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     except Exception: pass
                 elif "application/json" in ct and "/token/" in self.path:
                     # Re-signer l'id_token avec notre clé locale + réécrire l'issuer
-                    # pour que Vaultwarden (openidconnect crate) accepte la validation
+                    # pour que Vaultwarden (openidconnect crate) accepte la validation.
+                    # Le slug est extrait de l'iss original du JWT (pas du path token endpoint)
                     try:
                         data = json.loads(rb)
                         if "id_token" in data:
-                            m = re.search(r'/application/o/([^/]+)/token/', self.path)
-                            slug = m.group(1) if m else "unknown"
-                            new_iss = f"http://{PROXY_HOST}:{PROXY_PORT}/application/o/{slug}/"
-                            data["id_token"] = _resign(data["id_token"], new_iss, RSA_D, RSA_N)
+                            data["id_token"] = _resign(data["id_token"], RSA_D, RSA_N)
                             rb = json.dumps(data).encode()
                     except Exception: pass
                 self.send_response(resp.status)
