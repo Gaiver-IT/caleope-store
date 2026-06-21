@@ -172,30 +172,79 @@ d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json'))
 print(next((p['container'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
 " 2>/dev/null || echo "9000")
 
-                    # Sidecar nginx : proxie vers Authentik avec X-Forwarded headers pour
-                    # que le discovery doc retourne les URLs publiques HTTPS.
-                    # sub_filter réécrit l'issuer dans le JSON discovery :
-                    #   "issuer": "https://ak.domain/..." → "http://vaultwarden-ak-proxy:9001/..."
-                    # Cela permet au check openidconnect (issuer == discovery_url) de passer.
-                    # authorization_endpoint reste l'URL publique → browser redirect OK.
-                    # SSO_JWT_ISSUER override l'expected issuer pour la validation JWT
-                    # (les tokens Authentik contiennent l'issuer public HTTPS).
-                    cat > "${CONFIG_DIR}/authentik-proxy.conf" << NGINXCONF
-server {
-    listen 9001;
-    location / {
-        proxy_pass http://authentik-server:${AK_HTTP_PORT};
-        proxy_set_header X-Forwarded-Host ${AK_DOMAIN};
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-Port 443;
-        proxy_set_header Host ${AK_DOMAIN};
-        proxy_set_header Accept-Encoding "";
-        sub_filter '"issuer": "https://${AK_DOMAIN}/application/o/${APP_SLUG}/"' '"issuer": "http://vaultwarden-ak-proxy:9001/application/o/${APP_SLUG}/"';
-        sub_filter_once on;
-        sub_filter_types application/json;
-    }
-}
-NGINXCONF
+                    # Sidecar proxy Python : proxie vers Authentik avec X-Forwarded headers
+                    # pour que le discovery doc retourne les URLs publiques HTTPS, puis
+                    # réécrit les URLs backend (token, jwks, userinfo...) vers le proxy interne.
+                    # authorization_endpoint reste l'URL publique pour le browser redirect.
+                    # Deux contraintes rendent nginx insuffisant :
+                    #  1. ngx_http_sub_module ne supporte qu'une sub_filter par location
+                    #  2. Les endpoints backend (jwks, token...) sont en HTTPS → hairpin NAT
+                    #     échoue + rustls rejette le cert auto-signé Authentik
+                    cat > "${CONFIG_DIR}/authentik-proxy.py" << PYHEAD
+# Constantes générées à l'installation
+AK_HOST = "authentik-server"
+AK_PORT = ${AK_HTTP_PORT}
+AK_DOMAIN = "${AK_DOMAIN}"
+PROXY_PORT = 9001
+PROXY_HOST = "vaultwarden-ak-proxy"
+PYHEAD
+                    cat >> "${CONFIG_DIR}/authentik-proxy.py" << 'PYBODY'
+import http.server, urllib.request, urllib.error, json
+
+class ProxyHandler(http.server.BaseHTTPRequestHandler):
+    def proxy_request(self, method, body=None):
+        url = f"http://{AK_HOST}:{AK_PORT}{self.path}"
+        headers = {
+            "X-Forwarded-Host": AK_DOMAIN,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443",
+            "Host": AK_DOMAIN,
+        }
+        for h in ["Content-Type", "Authorization", "Accept"]:
+            if h in self.headers:
+                headers[h] = self.headers[h]
+        if body:
+            headers["Content-Length"] = str(len(body))
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                resp_body = resp.read()
+                ct = resp.headers.get("Content-Type", "")
+                if "application/json" in ct and ".well-known/openid-configuration" in self.path:
+                    try:
+                        doc = json.loads(resp_body)
+                        pub_base = f"https://{AK_DOMAIN}/"
+                        prx_base = f"http://{PROXY_HOST}:{PROXY_PORT}/"
+                        # Sauvegarder authorization_endpoint (doit rester public → browser)
+                        auth_ep = doc.get("authorization_endpoint", "")
+                        # Réécrire toutes les URLs backend publiques → proxy interne HTTP
+                        for k, v in doc.items():
+                            if isinstance(v, str) and v.startswith(pub_base):
+                                doc[k] = v.replace(pub_base, prx_base, 1)
+                        # Restaurer authorization_endpoint
+                        if auth_ep:
+                            doc["authorization_endpoint"] = auth_ep
+                        resp_body = json.dumps(doc, indent=2).encode()
+                    except Exception:
+                        pass
+                self.send_response(resp.status)
+                skip = {"transfer-encoding", "content-encoding", "content-length", "connection"}
+                for h, v in resp.headers.items():
+                    if h.lower() not in skip:
+                        self.send_header(h, v)
+                self.send_header("Content-Length", len(resp_body))
+                self.end_headers()
+                self.wfile.write(resp_body)
+        except urllib.error.URLError as e:
+            self.send_error(502, str(e))
+    def do_GET(self): self.proxy_request("GET")
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length", 0))
+        self.proxy_request("POST", self.rfile.read(n) if n else None)
+    def log_message(self, *a): pass
+
+http.server.HTTPServer(("0.0.0.0", PROXY_PORT), ProxyHandler).serve_forever()
+PYBODY
 
                     # Injecter la config SSO dans secrets.env
                     # SSO_AUTHORITY = proxy nginx interne (qui ajoute X-Forwarded headers)
