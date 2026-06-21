@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       - LOG_LEVEL=debug
+      - RUST_LOG=rustls=trace,vaultwarden::sso_client=trace,reqwest=debug
     env_file:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
