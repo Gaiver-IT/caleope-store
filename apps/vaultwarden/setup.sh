@@ -172,13 +172,14 @@ d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json'))
 print(next((p['container'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
 " 2>/dev/null || echo "9000")
 
-                    # Sidecar nginx qui proxie vers Authentik avec X-Forwarded headers.
-                    # Sans ces headers, Authentik retourne des URLs internes
-                    # (http://authentik-server:PORT/...) dans le discovery doc, ce qui
-                    # rend le browser redirect inaccessible depuis l'extérieur.
-                    # Avec X-Forwarded-Host + X-Forwarded-Proto, Authentik retourne
-                    # les URLs publiques HTTPS dans authorization_endpoint et issuer.
-                    # SSO_JWT_ISSUER override le check d'issuer pour la validation JWT.
+                    # Sidecar nginx : proxie vers Authentik avec X-Forwarded headers pour
+                    # que le discovery doc retourne les URLs publiques HTTPS.
+                    # sub_filter réécrit l'issuer dans le JSON discovery :
+                    #   "issuer": "https://ak.domain/..." → "http://vaultwarden-ak-proxy:9001/..."
+                    # Cela permet au check openidconnect (issuer == discovery_url) de passer.
+                    # authorization_endpoint reste l'URL publique → browser redirect OK.
+                    # SSO_JWT_ISSUER override l'expected issuer pour la validation JWT
+                    # (les tokens Authentik contiennent l'issuer public HTTPS).
                     cat > "${CONFIG_DIR}/authentik-proxy.conf" << NGINXCONF
 server {
     listen 9001;
@@ -188,6 +189,10 @@ server {
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-Port 443;
         proxy_set_header Host ${AK_DOMAIN};
+        proxy_set_header Accept-Encoding "";
+        sub_filter '"issuer": "https://${AK_DOMAIN}/application/o/${APP_SLUG}/"' '"issuer": "http://vaultwarden-ak-proxy:9001/application/o/${APP_SLUG}/"';
+        sub_filter_once on;
+        sub_filter_types application/json;
     }
 }
 NGINXCONF
