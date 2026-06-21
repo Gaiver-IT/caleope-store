@@ -398,9 +398,13 @@ cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
   │    URL   : https://${CALEOPE_DOMAIN}/admin                       │
   │    Token : ${ADMIN_TOKEN_PLAIN}
   │                                                                  │
-  │  Connexion SSO : bouton "Se connecter avec SSO" dans l'UI        │
-  │    → Utilise Authentik (OIDC). Les comptes locaux restent        │
-  │    disponibles en parallèle (SSO_ONLY=false).                    │
+  │  Connexion SSO (Authentik) :                                     │
+  │    1. Entrer son adresse email dans le champ (requis par l'UI)   │
+  │    2. Cliquer "Utiliser l'authentification unique"                │
+  │    → Redirige vers Authentik pour le login                       │
+  │    → Premier login SSO : définir un mot de passe maître          │
+  │    Note : le champ email est obligatoire côté web vault          │
+  │    (validation client Bitwarden) même si SSO ignore l'email.     │
   │                                                                  │
   │  Extension navigateur : Bitwarden (compatible Vaultwarden)       │
   │    → Entrer https://${CALEOPE_DOMAIN}/ comme URL serveur         │
