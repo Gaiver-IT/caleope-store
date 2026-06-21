@@ -163,11 +163,13 @@ print(r[0]['slug'] if r else '')
                         APP_SLUG=$(echo "${APP_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('slug','vaultwarden'))" 2>/dev/null || echo "vaultwarden")
                     fi
 
-                    # Port HTTP interne d'Authentik (évite TLS rustls sur cert auto-signé)
+                    # Port CONTAINER d'Authentik (pour accès Docker-to-Docker sans TLS)
+                    # On utilise p['container'] et non p['host'] (le host port ne répond pas
+                    # depuis le réseau Docker interne — seul le port container est accessible)
                     AK_HTTP_PORT=$(python3 -c "
 import json
 d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json'))
-print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
+print(next((p['container'] for p in d.get('ports',[]) if p['name']=='web'), 9000))
 " 2>/dev/null || echo "9000")
 
                     # Injecter la config SSO dans secrets.env
