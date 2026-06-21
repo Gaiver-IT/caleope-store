@@ -128,25 +128,33 @@ if r:
                 fi
 
                 if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
-                    # Créer l'application Authentik
-                    curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
-                        "${AK_BASE}/core/applications/" \
-                        -d "{\"name\":\"Vaultwarden\",\"slug\":\"vaultwarden\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
-                        >/dev/null 2>&1 || true
+                    # Chercher l'application existante liée à ce provider (par pk, pas par slug)
+                    APP_SLUG=$(curl -s --max-time 10 -H "${AK_HA}" \
+                        "${AK_BASE}/core/applications/?provider=${PROV_PK}" \
+                        | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['slug'] if r else '')" 2>/dev/null || echo "")
 
-                    # Injecter la config SSO dans secrets.env
+                    if [ -z "${APP_SLUG}" ]; then
+                        # Créer l'application Authentik avec slug canonique
+                        APP_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/core/applications/" \
+                            -d "{\"name\":\"Vaultwarden\",\"slug\":\"vaultwarden\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                            2>/dev/null || echo "")
+                        APP_SLUG=$(echo "${APP_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('slug','vaultwarden'))" 2>/dev/null || echo "vaultwarden")
+                    fi
+
+                    # Injecter la config SSO dans secrets.env (slug réel de l'application)
                     cat >> "${CONFIG_DIR}/secrets.env" << SSOENV
 
 # SSO Authentik (OIDC natif — bouton "Se connecter avec SSO" dans l'UI)
 SSO_ENABLED=true
 SSO_ONLY=false
 SSO_PROVIDER_NAME=Authentik
-SSO_AUTHORITY=https://${AK_DOMAIN}/application/o/vaultwarden/
+SSO_AUTHORITY=https://${AK_DOMAIN}/application/o/${APP_SLUG}/
 SSO_CLIENT_ID=${SSO_CLIENT_ID}
 SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
 SSOENV
 
-                    echo "  ✓ Vaultwarden OIDC configuré dans Authentik (client_id=${SSO_CLIENT_ID})"
+                    echo "  ✓ Vaultwarden OIDC configuré dans Authentik (slug=${APP_SLUG}, client_id=${SSO_CLIENT_ID})"
                 fi
             fi
         fi
