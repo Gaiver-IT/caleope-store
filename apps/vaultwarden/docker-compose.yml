@@ -5,7 +5,9 @@ services:
     restart: unless-stopped
     environment:
       - LOG_LEVEL=debug
-      - RUST_LOG=rustls=trace,vaultwarden::sso_client=trace,reqwest=debug
+      - RUST_LOG=rustls=debug,vaultwarden::sso_client=debug
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+      - SSL_CERT_DIR=/etc/ssl/certs
     env_file:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
