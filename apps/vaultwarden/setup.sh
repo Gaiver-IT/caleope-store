@@ -128,10 +128,17 @@ if r:
                 fi
 
                 if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
-                    # Chercher l'application existante liée à ce provider (par pk, pas par slug)
+                    # Chercher l'application existante liée à ce provider (filtrage client-side
+                    # car l'API Authentik ne supporte pas ?provider=pk comme filtre)
                     APP_SLUG=$(curl -s --max-time 10 -H "${AK_HA}" \
-                        "${AK_BASE}/core/applications/?provider=${PROV_PK}" \
-                        | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['slug'] if r else '')" 2>/dev/null || echo "")
+                        "${AK_BASE}/core/applications/" \
+                        | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+pk=int('${PROV_PK}')
+r=[a for a in d.get('results',[]) if a.get('provider')==pk]
+print(r[0]['slug'] if r else '')
+" 2>/dev/null || echo "")
 
                     if [ -z "${APP_SLUG}" ]; then
                         # Créer l'application Authentik avec slug canonique
