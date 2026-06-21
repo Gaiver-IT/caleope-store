@@ -65,7 +65,9 @@ chmod 600 "${CONFIG_DIR}/secrets.env"
 BASE_DOMAIN=$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)
 _AK_DOMAIN_EARLY=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
 [ -n "${_AK_DOMAIN_EARLY}" ] || _AK_DOMAIN_EARLY="authentik.${BASE_DOMAIN}"
-echo "AUTHENTIK_DOMAIN=${_AK_DOMAIN_EARLY}" >> "${CONFIG_DIR}/secrets.env"
+# Écrire dans app.env (projet compose) AVANT docker up pour l'interpolation extra_hosts
+# (generateCompose tourne avant setup.sh → secrets.env vide → app.env sans AUTHENTIK_DOMAIN)
+echo "AUTHENTIK_DOMAIN=${_AK_DOMAIN_EARLY}" >> "${CALEOPE_APP_DIR}/app.env"
 
 AK_CERT="${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
 if [ -f "${AK_CERT}" ]; then
