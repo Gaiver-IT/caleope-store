@@ -435,6 +435,10 @@ fi
 
 echo "[glpi-init] Initialisation terminée ✓"
 
+# Fix permissions — les commandes php bin/console tournent en root,
+# ce qui crée files/_cache/ en root:root ; Apache (www-data) ne peut pas les lire.
+chown -R www-data:www-data "${GLPI_DIR}/files/" 2>/dev/null || true
+
 # Reste en vie tant qu'Apache tourne
 wait $MAIN_PID
 INITSCRIPT

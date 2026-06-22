@@ -3,7 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: wikijs-db
     restart: unless-stopped
-    env_file: app.env
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
       - {{.BaseDir}}/app-data/wikijs/db:/var/lib/postgresql/data
     networks:
