@@ -1,0 +1,26 @@
+[
+  {
+    "id":          "site_title",
+    "label":       "Titre du site",
+    "description": "Affiché dans l'onglet et l'en-tête du site",
+    "type":        "string",
+    "required":    false,
+    "default":     "Mon Site"
+  },
+  {
+    "id":          "admin_user",
+    "label":       "Identifiant administrateur",
+    "description": "Login pour wp-admin",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin"
+  },
+  {
+    "id":          "admin_email",
+    "label":       "Email administrateur",
+    "description": "Utilisé pour les notifications et la récupération de mot de passe",
+    "type":        "string",
+    "required":    false,
+    "default":     ""
+  }
+]

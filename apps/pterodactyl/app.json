@@ -1,0 +1,28 @@
+{
+  "id": "pterodactyl",
+  "name": "Pterodactyl",
+  "category": "gaming",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": true
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web",   "container": 80,   "dynamic": true },
+    { "name": "wings", "container": 8080, "dynamic": true, "protocol": "tcp", "firewall": true },
+    { "name": "sftp",  "container": 2022, "dynamic": true, "protocol": "tcp", "firewall": true }
+  ],
+  "volumes": [
+    { "source": "app-data/pterodactyl/panel",  "target": "/app/var" },
+    { "source": "app-data/pterodactyl/logs",   "target": "/app/storage/logs" },
+    { "source": "app-data/pterodactyl/nginx",  "target": "/etc/nginx/http.d" },
+    { "source": "app-data/pterodactyl/db",     "target": "/var/lib/mysql" },
+    { "source": "app-data/pterodactyl/servers","target": "/var/lib/pterodactyl/volumes" }
+  ],
+  "backup": { "enabled": true },
+  "no_container": false
+}

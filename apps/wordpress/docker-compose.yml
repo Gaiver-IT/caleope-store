@@ -1,36 +1,37 @@
 services:
-  wikijs-db:
-    image: postgres:15-alpine
-    container_name: wikijs-db
+  wordpress-db:
+    image: mariadb:11
+    container_name: wordpress-db
     restart: unless-stopped
     env_file:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
-      - {{.BaseDir}}/app-data/wikijs/db:/var/lib/postgresql/data
+      - {{.BaseDir}}/app-data/wordpress/db:/var/lib/mysql
     networks:
       - caleope-internal
 
-  wikijs:
-    image: requarks/wiki:2
-    container_name: wikijs
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress
     restart: unless-stopped
     depends_on:
-      - wikijs-db
+      - wordpress-db
     env_file:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/wordpress/html:/var/www/html
     ports:
       {{- range .Ports}}
       - "{{.Host}}:{{.Container}}"
       {{- end}}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.wikijs.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.wikijs.entrypoints=web"
-      - "traefik.http.services.wikijs.loadbalancer.server.port=3000"
+      - "traefik.http.routers.wordpress.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.wordpress.entrypoints=web"
+      - "traefik.http.services.wordpress.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
-      - "traefik.http.routers.wikijs.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
     networks:
       - caleope-public
       - caleope-internal

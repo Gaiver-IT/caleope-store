@@ -1,0 +1,83 @@
+services:
+  pterodactyl-db:
+    image: mariadb:10.11
+    container_name: pterodactyl-db
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/pterodactyl/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  pterodactyl-cache:
+    image: redis:7-alpine
+    container_name: pterodactyl-cache
+    restart: unless-stopped
+    networks:
+      - caleope-internal
+
+  pterodactyl-panel:
+    image: ghcr.io/pterodactyl/panel:latest
+    container_name: pterodactyl-panel
+    restart: unless-stopped
+    depends_on:
+      - pterodactyl-db
+      - pterodactyl-cache
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/pterodactyl/panel:/app/var/
+      - {{.BaseDir}}/app-data/pterodactyl/logs:/app/storage/logs
+      - {{.BaseDir}}/app-data/pterodactyl/nginx:/etc/nginx/http.d
+    ports:
+      {{- range .Ports}}
+      {{- if eq .Name "web"}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+      {{- end}}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pterodactyl.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.pterodactyl.entrypoints=web"
+      - "traefik.http.services.pterodactyl.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  pterodactyl-wings:
+    image: ghcr.io/pterodactyl/wings:latest
+    container_name: pterodactyl-wings
+    restart: unless-stopped
+    depends_on:
+      - pterodactyl-panel
+    pid: host
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers/:/var/lib/docker/containers/
+      - /tmp/pterodactyl/:/tmp/pterodactyl/
+      - {{.BaseDir}}/app-config/{{.AppID}}/wings.yml:/etc/pterodactyl/config.yml
+      - {{.BaseDir}}/app-data/pterodactyl/servers:/var/lib/pterodactyl/volumes
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+    ports:
+      {{- range .Ports}}
+      {{- if eq .Name "wings"}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+      {{- if eq .Name "sftp"}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+      {{- end}}
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    driver: bridge
