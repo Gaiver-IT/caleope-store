@@ -357,6 +357,8 @@ services:
     container_name: jellyfin-vue
     restart: unless-stopped
     dns_search: []
+    environment:
+      - DEFAULT_SERVERS=https://jellyfin.{{.Domain}}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin-vue.rule=Host(`vue.{{.Domain}}`)"
