@@ -1,0 +1,21 @@
+{
+  "id": "navidrome",
+  "name": "Navidrome",
+  "description": "Serveur de musique moderne et léger compatible Subsonic — streamez votre collection musicale.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 4533, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/navidrome/data", "target": "/data" },
+    { "source": "app-data/navidrome/music", "target": "/music:ro" }
+  ],
+  "backup": { "enabled": true }
+}

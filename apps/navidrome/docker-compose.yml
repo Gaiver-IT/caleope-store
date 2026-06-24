@@ -1,0 +1,22 @@
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/navidrome/secrets.env
+    ports:
+      - "${NAVIDROME_PORT_WEB:-4533}:4533"
+    volumes:
+      - ${CALEOPE_APP_DATA}/navidrome/data:/data
+      - ${CALEOPE_APP_DATA}/navidrome/music:/music:ro
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
