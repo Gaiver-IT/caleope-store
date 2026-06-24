@@ -90,7 +90,7 @@ fi
 _mm_ready=false
 echo "→ Attente démarrage Memos..."
 for _i in $(seq 1 20); do
-    if curl -sf --max-time 3 "http://localhost:${MEMOS_PORT_WEB}/api/v1/users" >/dev/null 2>&1; then
+    if curl -sf --max-time 3 "http://localhost:${MEMOS_PORT_WEB}/api/v1/auth/status" >/dev/null 2>&1; then
         _mm_ready=true; break
     fi
     sleep 3
@@ -104,15 +104,34 @@ if ${_mm_ready}; then
         >/dev/null 2>&1 || true
     echo "  ✓ Compte admin Memos configuré"
 
-    # Obtenir le token d'accès
+    # Générer un JWT access token en lisant la secretKey depuis la DB memos
+    # (compatible memos v0.29+ — le signin bcrypt ne fonctionne pas depuis un script externe)
     if [ -z "${MEMOS_API_TOKEN}" ]; then
-        _token_resp=$(curl -sf --max-time 10 -X POST "http://localhost:${MEMOS_PORT_WEB}/api/v1/auth/signin" \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${MEMOS_ADMIN_USER}\",\"password\":\"${MEMOS_ADMIN_PASS}\"}" 2>/dev/null) || _token_resp=""
-        _token=$(echo "${_token_resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null) || _token=""
+        _db="${CALEOPE_BASE_DIR}/app-data/memos/data/memos_prod.db"
+        _token=$(python3 - "${_db}" "${MEMOS_ADMIN_USER}" <<'PYEOF' 2>/dev/null
+import sys, json, base64, hmac, hashlib, time, sqlite3
+db_path, username = sys.argv[1], sys.argv[2]
+try:
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT value FROM system_setting WHERE name='BASIC'").fetchone()
+    conn.close()
+    if not row: sys.exit(1)
+    secret_key = json.loads(row[0])['secretKey']
+    def b64u(d):
+        if isinstance(d, dict): d = json.dumps(d, separators=(',',':')).encode()
+        return base64.urlsafe_b64encode(d).rstrip(b'=').decode()
+    h = {'alg':'HS256','typ':'JWT'}
+    p = {'name':f'users/{username}','iat':int(time.time()),'exp':int(time.time())+86400*3650}
+    s = f'{b64u(h)}.{b64u(p)}'
+    sig = hmac.new(secret_key.encode(), s.encode(), hashlib.sha256).digest()
+    print(f'{s}.{b64u(sig)}')
+except Exception as e:
+    sys.exit(1)
+PYEOF
+) || _token=""
         if [ -n "${_token}" ]; then
             MEMOS_API_TOKEN="${_token}"
-            echo "  ✓ Token API Memos généré"
+            echo "  ✓ Token JWT Memos généré"
         fi
     fi
 fi
