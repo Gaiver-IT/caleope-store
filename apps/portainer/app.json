@@ -1,0 +1,22 @@
+{
+  "id": "portainer",
+  "name": "Portainer",
+  "category": "system",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": false },
+  "ports": [
+    { "name": "web", "container": 9000, "dynamic": true },
+    { "name": "agent", "container": 8000, "dynamic": false }
+  ],
+  "volumes": [
+    { "source": "app-data/portainer/data", "target": "/data" }
+  ],
+  "backup": { "enabled": true }
+}

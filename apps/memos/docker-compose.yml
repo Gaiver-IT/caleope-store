@@ -1,0 +1,20 @@
+services:
+  memos:
+    image: neosmemo/memos:stable
+    container_name: memos
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/memos/secrets.env
+    ports:
+      - "${MEMOS_PORT_WEB:-5230}:5230"
+    volumes:
+      - ${CALEOPE_APP_DATA}/memos/data:/var/opt/memos
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -5,10 +5,22 @@ CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/wikijs/db"
 
-# Générer les secrets
-DB_PASSWORD=$(openssl rand -hex 24)
-JWT_SECRET=$(openssl rand -hex 32)
-ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
+# ── Préserver les secrets existants ───────────────────────────────────────────
+DB_PASSWORD=""
+JWT_SECRET=""
+ADMIN_PASSWORD=""
+ADMIN_EMAIL=""
+if [ -f "${CONFIG_DIR}/secrets.env" ]; then
+    DB_PASSWORD=$(grep "^POSTGRES_PASSWORD=" "${CONFIG_DIR}/secrets.env" | cut -d= -f2-) || true
+    JWT_SECRET=$(grep  "^JWT_SECRET="         "${CONFIG_DIR}/secrets.env" | cut -d= -f2-) || true
+    ADMIN_PASSWORD=$(grep "^WIKIJS_ADMIN_PASSWORD=" "${CONFIG_DIR}/secrets.env" | cut -d= -f2-) || true
+    ADMIN_EMAIL=$(grep    "^WIKIJS_ADMIN_EMAIL="    "${CONFIG_DIR}/secrets.env" | cut -d= -f2-) || true
+fi
+
+[ -z "${DB_PASSWORD}"    ] && DB_PASSWORD=$(openssl rand -hex 24)
+[ -z "${JWT_SECRET}"     ] && JWT_SECRET=$(openssl rand -hex 32)
+[ -z "${ADMIN_PASSWORD}" ] && ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
+[ -z "${ADMIN_EMAIL}"    ] && ADMIN_EMAIL="admin@${CALEOPE_DOMAIN}"
 
 # Écrire secrets.env (fusionné dans app.env par Caleope)
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
@@ -26,6 +38,8 @@ DB_PASS=${DB_PASSWORD}
 DB_NAME=wiki
 APP_URL=https://${CALEOPE_DOMAIN}
 JWT_SECRET=${JWT_SECRET}
+WIKIJS_ADMIN_EMAIL=${ADMIN_EMAIL}
+WIKIJS_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
@@ -118,20 +132,94 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${CONFIG_DIR}/secrets.env"
 
+# ── Auto-setup Wiki.js (finalize + API key) ───────────────────────────────────
+_WK_PORT="3000"
+_WK_URL="http://localhost:8000"
+
+echo ""
+echo "→ Attente démarrage Wiki.js (max 90s)..."
+_wk_ready=false
+for _i in $(seq 1 30); do
+    if curl -sf --max-time 3 "${_WK_URL}" >/dev/null 2>&1; then
+        _wk_ready=true
+        break
+    fi
+    sleep 3
+done
+
+if ${_wk_ready}; then
+    # Vérifier si le wizard de finalisation est encore nécessaire
+    _needs_setup=$(curl -sf --max-time 5 "${_WK_URL}/finalize" -o /dev/null -w "%{http_code}") || _needs_setup="000"
+    _existing_jwt=$(grep "^WIKIJS_API_TOKEN=" "${CONFIG_DIR}/secrets.env" 2>/dev/null | cut -d= -f2-) || _existing_jwt=""
+
+    if [ "${_needs_setup}" = "200" ] && [ -z "${_existing_jwt}" ]; then
+        echo "  → Finalisation Wiki.js (création compte admin)..."
+        _finalize_result=$(curl -sf --max-time 15 -X POST "${_WK_URL}/finalize" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"adminEmail\": \"${ADMIN_EMAIL}\",
+                \"adminPassword\": \"${ADMIN_PASSWORD}\",
+                \"adminPasswordConfirm\": \"${ADMIN_PASSWORD}\",
+                \"siteUrl\": \"https://${CALEOPE_DOMAIN}\",
+                \"telemetry\": false
+            }" 2>/dev/null) || _finalize_result=""
+
+        if echo "${_finalize_result}" | grep -q '"ok":true'; then
+            echo "  ✓ Compte admin créé (${ADMIN_EMAIL})"
+            sleep 2
+        else
+            echo "  ⚠ Finalisation échouée ou déjà effectuée : ${_finalize_result}" | head -c 200
+        fi
+    fi
+
+    # Créer la clé API CaleOpe si absente
+    if [ -z "${_existing_jwt}" ]; then
+        echo "  → Création clé API CaleOpe..."
+        _login_resp=$(curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { authentication { login(username: \\\"${ADMIN_EMAIL}\\\", password: \\\"${ADMIN_PASSWORD}\\\", strategy: \\\"local\\\") { jwt responseResult { succeeded message } } } }\"}" 2>/dev/null) || _login_resp=""
+
+        _wk_jwt=$(echo "${_login_resp}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['authentication']['login']['jwt'])" 2>/dev/null) || _wk_jwt=""
+
+        if [ -n "${_wk_jwt}" ]; then
+            _api_resp=$(curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${_wk_jwt}" \
+                -d "{\"query\":\"mutation { authentication { createApiKey(name: \\\"CaleOpe\\\", expiration: \\\"87600h\\\", fullAccess: true, group: 1) { responseResult { succeeded message } key } } }\"}" 2>/dev/null) || _api_resp=""
+
+            _api_key=$(echo "${_api_resp}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['authentication']['createApiKey']['key'])" 2>/dev/null) || _api_key=""
+
+            if [ -n "${_api_key}" ]; then
+                sed -i '/^WIKIJS_API_TOKEN/d' "${CONFIG_DIR}/secrets.env"
+                echo "WIKIJS_API_TOKEN=${_api_key}" >> "${CONFIG_DIR}/secrets.env"
+                echo "  ✓ Clé API Wiki.js générée et sauvegardée"
+            else
+                echo "  ⚠ Création clé API échouée — ajouter manuellement WIKIJS_API_TOKEN"
+            fi
+        else
+            echo "  ⚠ Login Wiki.js échoué — clé API à créer manuellement"
+        fi
+    else
+        echo "  ℹ Clé API Wiki.js déjà présente"
+    fi
+else
+    echo "  ⚠ Wiki.js non joignable — clé API à créer manuellement"
+    echo "    1. Aller sur http://<IP>:8000 → Admin → Developer Tools → API Access"
+    echo "    2. Créer une clé et l'ajouter dans secrets.env : WIKIJS_API_TOKEN=<clé>"
+fi
+
 # post-install.txt
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔══════════════════════════════════════════════════════════════╗
 ║              Wiki.js — Premiers accès                        ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  URL          : https://${CALEOPE_DOMAIN}                    ║
-║                                                              ║
-║  ⚠️  À la PREMIÈRE ouverture, Wiki.js affiche un wizard      ║
-║     de configuration. Renseigne :                            ║
-║       • Admin email    : n'importe quel email (ex: admin@…)  ║
-║       • Admin password : ${ADMIN_PASSWORD}                   ║
-║       • (La base de données est déjà configurée)             ║
+║  Admin email  : ${ADMIN_EMAIL}                               ║
+║  Admin pass   : ${ADMIN_PASSWORD}                            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  APRÈS le wizard — activer lecture publique :                ║
+║  L'admin est créé automatiquement — pas de wizard.           ║
+║                                                              ║
+║  Activer lecture publique (optionnel) :                      ║
 ║    Administration → Groups → Guests                          ║
 ║    → cocher "read:pages" et "read:assets"                    ║
 ╠══════════════════════════════════════════════════════════════╣

@@ -1,0 +1,19 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "category": "monitoring",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 3001, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/uptime-kuma/data", "target": "/app/data" }
+  ],
+  "backup": { "enabled": true }
+}

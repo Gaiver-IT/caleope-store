@@ -1,0 +1,20 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/uptime-kuma/secrets.env
+    ports:
+      - "${UPTIME_KUMA_PORT_WEB:-3025}:3001"
+    volumes:
+      - ${CALEOPE_APP_DATA}/uptime-kuma/data:/app/data
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
