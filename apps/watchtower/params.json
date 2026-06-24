@@ -1,0 +1,26 @@
+[
+  {
+    "key":         "WATCHTOWER_SCHEDULE",
+    "label":       "Planification (cron)",
+    "description": "Cron expression pour la vérification (ex: 0 0 4 * * * = chaque jour à 4h)",
+    "type":        "text",
+    "required":    false,
+    "default":     "0 0 4 * * *"
+  },
+  {
+    "key":         "WATCHTOWER_CLEANUP",
+    "label":       "Nettoyage des anciennes images",
+    "description": "Supprimer automatiquement les anciennes images après mise à jour",
+    "type":        "bool",
+    "required":    false,
+    "default":     "true"
+  },
+  {
+    "key":         "WATCHTOWER_INCLUDE_STOPPED",
+    "label":       "Inclure les conteneurs arrêtés",
+    "description": "Mettre à jour aussi les conteneurs non démarrés",
+    "type":        "bool",
+    "required":    false,
+    "default":     "false"
+  }
+]

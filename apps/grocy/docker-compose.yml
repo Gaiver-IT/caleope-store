@@ -1,0 +1,24 @@
+services:
+  grocy:
+    image: lscr.io/linuxserver/grocy:latest
+    container_name: grocy
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/grocy/secrets.env
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    ports:
+      - "${GROCY_PORT_WEB:-9283}:80"
+    volumes:
+      - ${CALEOPE_APP_DATA}/grocy/data:/config
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -1,0 +1,15 @@
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/watchtower/secrets.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true

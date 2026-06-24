@@ -1,0 +1,18 @@
+{
+  "id": "watchtower",
+  "name": "Watchtower",
+  "description": "Met à jour automatiquement vos conteneurs Docker vers les dernières images disponibles.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": true },
+  "ports": [],
+  "volumes": [],
+  "backup": { "enabled": false }
+}

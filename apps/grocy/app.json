@@ -1,0 +1,20 @@
+{
+  "id": "grocy",
+  "name": "Grocy",
+  "description": "ERP self-hosted pour la maison : gestion de stock, courses, recettes et équipement.",
+  "category": "lifestyle",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/grocy/data", "target": "/var/www/data" }
+  ],
+  "backup": { "enabled": true }
+}
