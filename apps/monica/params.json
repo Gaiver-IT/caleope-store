@@ -1,0 +1,26 @@
+[
+  {
+    "key":         "MONICA_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Monica",
+    "type":        "port",
+    "required":    false,
+    "default":     "8082"
+  },
+  {
+    "key":         "MYSQL_PASSWORD",
+    "label":       "Mot de passe base de données",
+    "description": "Mot de passe MySQL pour le compte monica",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "MYSQL_ROOT_PASSWORD",
+    "label":       "Mot de passe root MySQL",
+    "description": "Mot de passe root pour le serveur MySQL",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]

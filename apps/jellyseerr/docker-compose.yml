@@ -1,0 +1,23 @@
+services:
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/jellyseerr/secrets.env
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=Europe/Paris
+    ports:
+      - "${JELLYSEERR_PORT_WEB:-5099}:5055"
+    volumes:
+      - ${CALEOPE_APP_DATA}/jellyseerr/config:/app/config
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -1,0 +1,36 @@
+services:
+  monica-db:
+    image: mysql:8.0
+    container_name: monica-db
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/monica/secrets.env
+    environment:
+      - MYSQL_DATABASE=monica
+      - MYSQL_USER=monica
+    volumes:
+      - ${CALEOPE_APP_DATA}/monica/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  monica:
+    image: monica:latest
+    container_name: monica
+    restart: unless-stopped
+    depends_on:
+      - monica-db
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/monica/secrets.env
+    ports:
+      - "${MONICA_PORT_WEB:-8082}:80"
+    volumes:
+      - ${CALEOPE_APP_DATA}/monica/data:/var/www/html/storage
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
