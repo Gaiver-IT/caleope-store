@@ -1,0 +1,26 @@
+services:
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:master-omnibus
+    container_name: scrutiny
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
+    privileged: true
+    environment:
+      - SCRUTINY_WEB_INFLUXDB_HOST=localhost
+    volumes:
+      - ${CALEOPE_APP_DATA}/scrutiny/config:/opt/scrutiny/config
+      - ${CALEOPE_APP_DATA}/scrutiny/influxdb:/opt/scrutiny/influxdb
+      - /run/udev:/run/udev:ro
+    devices:
+      - /dev/sda:/dev/sda
+      - /dev/sdb:/dev/sdb
+    ports:
+      - "${SCRUTINY_PORT:-8086}:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.scrutiny.rule=Host(`scrutiny.${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny.entrypoints=websecure"
+      - "traefik.http.routers.scrutiny.tls=true"
+      - "traefik.http.services.scrutiny.loadbalancer.server.port=8080"
+    restart: unless-stopped

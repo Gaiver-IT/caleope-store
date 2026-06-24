@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "SCRUTINY_PORT",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Scrutiny",
+    "type":        "port",
+    "required":    false,
+    "default":     "8086"
+  }
+]

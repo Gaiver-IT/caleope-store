@@ -1,0 +1,26 @@
+[
+  {
+    "key":         "KOMGA_PORT",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Komga",
+    "type":        "port",
+    "required":    false,
+    "default":     "8085"
+  },
+  {
+    "key":         "KOMGA_ADMIN_EMAIL",
+    "label":       "Email administrateur",
+    "description": "Email du compte admin créé au premier démarrage",
+    "type":        "email",
+    "required":    true,
+    "default":     ""
+  },
+  {
+    "key":         "KOMGA_ADMIN_PASSWORD",
+    "label":       "Mot de passe administrateur",
+    "description": "Mot de passe du compte admin (8 caractères minimum)",
+    "type":        "secret",
+    "required":    true,
+    "default":     ""
+  }
+]

@@ -1,0 +1,21 @@
+services:
+  komga:
+    image: gotson/komga:latest
+    container_name: komga
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ${CALEOPE_APP_DATA}/komga/config:/config
+      - ${CALEOPE_APP_DATA}/komga/comics:/comics
+      - ${CALEOPE_APP_DATA}/komga/mangas:/mangas
+    ports:
+      - "${KOMGA_PORT:-8085}:25600"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.komga.rule=Host(`komga.${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.komga.entrypoints=websecure"
+      - "traefik.http.routers.komga.tls=true"
+      - "traefik.http.services.komga.loadbalancer.server.port=25600"
+    restart: unless-stopped
