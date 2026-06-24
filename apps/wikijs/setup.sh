@@ -182,6 +182,12 @@ if ${_wk_ready}; then
         _wk_jwt=$(echo "${_login_resp}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['authentication']['login']['jwt'])" 2>/dev/null) || _wk_jwt=""
 
         if [ -n "${_wk_jwt}" ]; then
+            # Activer l'API (désactivée par défaut)
+            curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${_wk_jwt}" \
+                -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1 || true
+
             _api_resp=$(curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer ${_wk_jwt}" \
