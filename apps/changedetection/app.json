@@ -1,0 +1,20 @@
+{
+  "id": "changedetection",
+  "name": "Changedetection.io",
+  "description": "Surveillance de changements de pages web avec alertes et historique.",
+  "category": "monitoring",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 5000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/changedetection/data", "target": "/datastore" }
+  ],
+  "backup": { "enabled": true }
+}

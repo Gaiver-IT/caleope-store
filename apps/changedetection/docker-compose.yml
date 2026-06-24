@@ -1,0 +1,20 @@
+services:
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    container_name: changedetection
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/changedetection/secrets.env
+    ports:
+      - "${CHANGEDETECTION_PORT_WEB:-5055}:5000"
+    volumes:
+      - ${CALEOPE_APP_DATA}/changedetection/data:/datastore
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
