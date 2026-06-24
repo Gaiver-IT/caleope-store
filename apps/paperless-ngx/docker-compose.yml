@@ -1,0 +1,63 @@
+services:
+  paperless-broker:
+    image: docker.io/library/redis:7
+    container_name: paperless-broker
+    restart: unless-stopped
+    volumes:
+      - ${CALEOPE_APP_DATA}/paperless-ngx/redis:/data
+    networks:
+      - caleope-internal
+
+  paperless-db:
+    image: docker.io/library/postgres:16
+    container_name: paperless-db
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/paperless-ngx/secrets.env
+    environment:
+      - POSTGRES_DB=${PAPERLESS_DBNAME:-paperless}
+      - POSTGRES_USER=${PAPERLESS_DBUSER:-paperless}
+      - POSTGRES_PASSWORD=${PAPERLESS_DBPASS}
+    volumes:
+      - ${CALEOPE_APP_DATA}/paperless-ngx/db:/var/lib/postgresql/data
+    networks:
+      - caleope-internal
+
+  paperless-ngx:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: paperless-ngx
+    restart: unless-stopped
+    depends_on:
+      - paperless-broker
+      - paperless-db
+    ports:
+      - "${PAPERLESS_PORT_WEB:-8080}:8000"
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/paperless-ngx/secrets.env
+    environment:
+      - PAPERLESS_REDIS=redis://paperless-broker:6379
+      - PAPERLESS_DBHOST=paperless-db
+      - PAPERLESS_DBNAME=${PAPERLESS_DBNAME:-paperless}
+      - PAPERLESS_DBUSER=${PAPERLESS_DBUSER:-paperless}
+      - PAPERLESS_DBPASS=${PAPERLESS_DBPASS}
+      - PAPERLESS_SECRET_KEY=${PAPERLESS_SECRET_KEY}
+      - PAPERLESS_ADMIN_USER=${PAPERLESS_ADMIN_USER:-admin}
+      - PAPERLESS_ADMIN_PASSWORD=${PAPERLESS_ADMIN_PASS}
+      - PAPERLESS_URL=https://${PAPERLESS_DOMAIN:-paperless.local}
+      - PAPERLESS_ALLOWED_HOSTS=*
+      - PAPERLESS_OCR_LANGUAGE=fra+eng
+      - PAPERLESS_TIME_ZONE=Europe/Paris
+    volumes:
+      - ${CALEOPE_APP_DATA}/paperless-ngx/data:/usr/src/paperless/data
+      - ${CALEOPE_APP_DATA}/paperless-ngx/media:/usr/src/paperless/media
+      - ${CALEOPE_APP_DATA}/paperless-ngx/export:/usr/src/paperless/export
+      - ${CALEOPE_APP_DATA}/paperless-ngx/consume:/usr/src/paperless/consume
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -1,0 +1,26 @@
+services:
+  freshrss:
+    image: freshrss/freshrss:latest
+    container_name: freshrss
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/freshrss/secrets.env
+    ports:
+      - "${FRESHRSS_PORT_WEB:-8065}:80"
+    volumes:
+      - ${CALEOPE_APP_DATA}/freshrss/data:/var/www/FreshRSS/data
+      - ${CALEOPE_APP_DATA}/freshrss/extensions:/var/www/FreshRSS/extensions
+    environment:
+      - TZ=Europe/Paris
+      - CRON_MIN=1,31
+      - FRESHRSS_INSTALL=--db-type sqlite --db-base freshrss
+      - FRESHRSS_USER=--username ${FRESHRSS_ADMIN_USER:-admin} --password ${FRESHRSS_ADMIN_PASS}
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

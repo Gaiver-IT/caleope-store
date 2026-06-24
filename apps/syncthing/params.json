@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "SYNCTHING_PORT_WEB",
+    "label":       "Port interface web",
+    "description": "Port d'accès à l'interface Syncthing",
+    "type":        "port",
+    "required":    false,
+    "default":     "8384"
+  }
+]

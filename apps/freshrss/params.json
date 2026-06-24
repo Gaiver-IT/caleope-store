@@ -1,0 +1,25 @@
+[
+  {
+    "key":         "FRESHRSS_ADMIN_USER",
+    "label":       "Utilisateur admin",
+    "description": "Nom du compte administrateur FreshRSS",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin"
+  },
+  {
+    "key":         "FRESHRSS_ADMIN_PASS",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe admin (laisser vide pour générer)",
+    "type":        "password",
+    "required":    false
+  },
+  {
+    "key":         "FRESHRSS_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface FreshRSS",
+    "type":        "port",
+    "required":    false,
+    "default":     "8065"
+  }
+]

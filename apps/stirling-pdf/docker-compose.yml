@@ -1,0 +1,19 @@
+services:
+  stirling-pdf:
+    image: frooodle/s-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    ports:
+      - "${STIRLING_PDF_PORT_WEB:-8088}:8080"
+    volumes:
+      - ${CALEOPE_APP_DATA}/stirling-pdf/configs:/configs
+      - ${CALEOPE_APP_DATA}/stirling-pdf/logs:/logs
+    environment:
+      - DOCKER_ENABLE_SECURITY=false
+      - LANGS=fr_FR
+    networks:
+      - caleope-public
+
+networks:
+  caleope-public:
+    external: true

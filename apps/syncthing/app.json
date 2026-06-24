@@ -1,0 +1,23 @@
+{
+  "id": "syncthing",
+  "name": "Syncthing",
+  "category": "storage",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": false },
+  "ports": [
+    { "name": "web",   "container": 8384, "dynamic": true },
+    { "name": "sync",  "container": 22000, "dynamic": false },
+    { "name": "disco", "container": 21027, "dynamic": false }
+  ],
+  "volumes": [
+    { "source": "app-data/syncthing/config", "target": "/var/syncthing" }
+  ],
+  "backup": { "enabled": true }
+}

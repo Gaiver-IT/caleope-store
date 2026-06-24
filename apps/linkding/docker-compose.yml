@@ -1,0 +1,24 @@
+services:
+  linkding:
+    image: sissbruecker/linkding:latest
+    container_name: linkding
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/linkding/secrets.env
+    ports:
+      - "${LINKDING_PORT_WEB:-9090}:9090"
+    volumes:
+      - ${CALEOPE_APP_DATA}/linkding/data:/etc/linkding/data
+    environment:
+      - LD_SUPERUSER_NAME=${LINKDING_ADMIN_USER:-admin}
+      - LD_SUPERUSER_PASSWORD=${LINKDING_ADMIN_PASS}
+      - LD_CONTEXT_PATH=${LINKDING_CONTEXT_PATH:-}
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

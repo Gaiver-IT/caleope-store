@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "STIRLING_PDF_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Stirling PDF",
+    "type":        "port",
+    "required":    false,
+    "default":     "8088"
+  }
+]
