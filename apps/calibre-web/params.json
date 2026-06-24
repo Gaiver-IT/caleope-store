@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "CALIBREWEB_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Calibre-Web",
+    "type":        "port",
+    "required":    false,
+    "default":     "8083"
+  }
+]

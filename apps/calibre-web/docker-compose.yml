@@ -1,0 +1,26 @@
+services:
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/calibre-web/secrets.env
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+    ports:
+      - "${CALIBREWEB_PORT_WEB:-8083}:8083"
+    volumes:
+      - ${CALEOPE_APP_DATA}/calibre-web/config:/config
+      - ${CALEOPE_APP_DATA}/calibre-web/books:/books
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

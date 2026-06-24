@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "HA_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Home Assistant",
+    "type":        "port",
+    "required":    false,
+    "default":     "8123"
+  }
+]
