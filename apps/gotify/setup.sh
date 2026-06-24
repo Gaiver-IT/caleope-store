@@ -79,6 +79,35 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
+# ── Token client Gotify pour Caleope ─────────────────────────────────────────
+GOTIFY_CLIENT_TOKEN=""
+if [ -f "${_SECRETS}" ]; then
+    GOTIFY_CLIENT_TOKEN=$(grep "^GOTIFY_CLIENT_TOKEN=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+fi
+if [ -z "${GOTIFY_CLIENT_TOKEN}" ]; then
+    echo "→ Génération token client Gotify..."
+    _gt_ready=false
+    for _i in $(seq 1 20); do
+        if curl -sf --max-time 3 "http://localhost:${GOTIFY_PORT_WEB}/version" >/dev/null 2>&1; then
+            _gt_ready=true; break
+        fi
+        sleep 3
+    done
+    if ${_gt_ready}; then
+        _client_resp=$(curl -sf --max-time 10 -u "admin:${GOTIFY_DEFAULTUSER_PASS}" -X POST \
+            "http://localhost:${GOTIFY_PORT_WEB}/client" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"caleope-panel\"}" 2>/dev/null) || _client_resp=""
+        _token=$(echo "${_client_resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null) || _token=""
+        if [ -n "${_token}" ]; then
+            echo "GOTIFY_CLIENT_TOKEN=${_token}" >> "${_SECRETS}"
+            echo "  ✓ Token client Gotify généré"
+        else
+            echo "  ⚠ Token Gotify non obtenu"
+        fi
+    fi
+fi
+
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 Gotify est démarré.
 Interface : http://<IP>:${GOTIFY_PORT_WEB}

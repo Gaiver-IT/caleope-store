@@ -77,6 +77,32 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
+# ── Token API ChangeDetection ─────────────────────────────────────────────────
+CHANGEDETECTION_API_TOKEN=""
+if [ -f "${_SECRETS}" ]; then
+    CHANGEDETECTION_API_TOKEN=$(grep "^CHANGEDETECTION_API_TOKEN=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+fi
+if [ -z "${CHANGEDETECTION_API_TOKEN}" ]; then
+    _data_file="${CALEOPE_BASE_DIR}/app-data/changedetection/data/changedetection.json"
+    _cd_ready=false
+    for _i in $(seq 1 20); do
+        if [ -f "${_data_file}" ]; then _cd_ready=true; break; fi
+        sleep 3
+    done
+    if ${_cd_ready}; then
+        _token=$(python3 -c "
+import json
+with open('${_data_file}') as f:
+    d = json.load(f)
+print(d.get('settings',{}).get('application',{}).get('api_access_token',''))
+" 2>/dev/null) || _token=""
+        if [ -n "${_token}" ]; then
+            echo "CHANGEDETECTION_API_TOKEN=${_token}" >> "${_SECRETS}"
+            echo "  ✓ Token API ChangeDetection extrait"
+        fi
+    fi
+fi
+
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 Changedetection.io est démarré.
 Interface : http://<IP>:${CHANGEDETECTION_PORT_WEB}
