@@ -1,0 +1,25 @@
+[
+  {
+    "key":         "PIHOLE_WEBPASSWORD",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe de l'interface Pi-hole (laisser vide pour en générer un)",
+    "type":        "password",
+    "required":    false
+  },
+  {
+    "key":         "PIHOLE_DNS1",
+    "label":       "DNS upstream 1",
+    "description": "Serveur DNS upstream principal (ex: 1.1.1.1 ou 9.9.9.9)",
+    "type":        "string",
+    "required":    false,
+    "default":     "1.1.1.1"
+  },
+  {
+    "key":         "PIHOLE_DNS2",
+    "label":       "DNS upstream 2",
+    "description": "Serveur DNS upstream secondaire",
+    "type":        "string",
+    "required":    false,
+    "default":     "1.0.0.1"
+  }
+]

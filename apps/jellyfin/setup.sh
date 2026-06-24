@@ -236,6 +236,27 @@ elif [[ -z "\$JF_TOKEN" ]]; then
     echo "  ⚠ Auth Jellyfin échouée — bibliothèques à créer manuellement"
 fi
 
+# ── Clé API Jellyfin (pour Caleope UI proxy) ──────────────────────────
+if [[ -n "\$JF_TOKEN" ]]; then
+    # Vérifier si une clé API Caleope existe déjà
+    _PREV_API_KEY=\$(grep "^JELLYFIN_API_KEY=" "${CONFIG_DIR}/secrets.env" 2>/dev/null | cut -d= -f2-) || _PREV_API_KEY=""
+    if [[ -z "\${_PREV_API_KEY}" ]]; then
+        echo ""
+        echo "→ Génération clé API Jellyfin pour Caleope UI..."
+        _API_RESP=\$(curl -sf -X POST "\${JF_URL}/Auth/Keys?app=CaleOpe" \
+            -H "Authorization: MediaBrowser Token=\"\$JF_TOKEN\"" 2>/dev/null) || _API_RESP=""
+        _API_KEY=\$(echo "\${_API_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('AccessToken',''))" 2>/dev/null) || _API_KEY=""
+        if [[ -n "\${_API_KEY}" ]]; then
+            echo "JELLYFIN_API_KEY=\${_API_KEY}" >> "${CONFIG_DIR}/secrets.env"
+            echo "  ✓ Clé API Jellyfin générée et stockée"
+        else
+            echo "  ⚠ Génération clé API échouée — relancer la reconfiguration pour réessayer"
+        fi
+    else
+        echo "  ℹ Clé API Jellyfin déjà présente"
+    fi
+fi
+
 # ── SSO OIDC Authentik ────────────────────────────────────────────────
 if [[ -n "\${AK_TOKEN}" && -n "\${JF_TOKEN}" ]]; then
     echo ""

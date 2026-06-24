@@ -1,0 +1,25 @@
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/adguard/secrets.env
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "${ADGUARD_PORT_WEB:-3080}:3000"
+    volumes:
+      - ${CALEOPE_APP_DATA}/adguard/work:/opt/adguardhome/work
+      - ${CALEOPE_APP_DATA}/adguard/conf:/opt/adguardhome/conf
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

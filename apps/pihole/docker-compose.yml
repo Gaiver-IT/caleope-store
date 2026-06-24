@@ -1,0 +1,29 @@
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/pihole/secrets.env
+    environment:
+      TZ: ${CALEOPE_TZ:-Europe/Paris}
+      WEBTHEME: default-dark
+      PIHOLE_DNS_: ${PIHOLE_DNS1:-1.1.1.1};${PIHOLE_DNS2:-1.0.0.1}
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "${PIHOLE_PORT_WEB:-8053}:80"
+    volumes:
+      - ${CALEOPE_APP_DATA}/pihole/etc-pihole:/etc/pihole
+      - ${CALEOPE_APP_DATA}/pihole/etc-dnsmasq:/etc/dnsmasq.d
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

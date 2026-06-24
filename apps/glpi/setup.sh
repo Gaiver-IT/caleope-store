@@ -34,6 +34,7 @@ MARIADB_PASSWORD=${DB_PASS}
 AUTHENTIK_DOMAIN=${AUTHENTIK_DOMAIN}
 
 # Compte admin local GLPI (conservé même avec SSO activé)
+GLPI_ADMIN_USER=glpi
 GLPI_ADMIN_PASSWORD=${ADMIN_PASS}
 
 # URL publique de GLPI (utilisée pour url_base dans glpi_configs)
@@ -432,6 +433,26 @@ echo '[glpi-init] Configuration OIDC sauvegardée'.PHP_EOL;
 else
     echo "[glpi-init] Pas de config OIDC — SSO non activé"
 fi
+
+echo "[glpi-init] Activation de l'API REST GLPI..."
+php -r "
+\$pdo = new PDO('mysql:host='.getenv('MARIADB_HOST').';dbname='.getenv('MARIADB_DATABASE'),
+               getenv('MARIADB_USER'), getenv('MARIADB_PASSWORD'),
+               [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+// Activer l'API REST
+\$s = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$s->execute();
+// Désactiver l'obligation d'app token (utilisation par credentials seuls)
+\$s2 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api_login',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$s2->execute();
+\$s3 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','api_url_base',?)
+    ON DUPLICATE KEY UPDATE value=?\");
+\$base = (getenv('GLPI_URL_BASE') ?: '') . '/apirest.php';
+\$s3->execute([\$base, \$base]);
+echo '[glpi-init] API REST activée' . PHP_EOL;
+" 2>/dev/null || echo "[glpi-init] ⚠ Activation API REST échouée"
 
 echo "[glpi-init] Initialisation terminée ✓"
 

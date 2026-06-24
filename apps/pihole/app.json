@@ -1,0 +1,25 @@
+{
+  "id": "pihole",
+  "name": "Pi-hole",
+  "category": "network",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false,
+    "cap_net_admin": true
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web",     "container": 80,  "dynamic": true  },
+    { "name": "dns-tcp", "container": 53,  "dynamic": false },
+    { "name": "dns-udp", "container": 53,  "dynamic": false, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-data/pihole/etc-pihole",   "target": "/etc/pihole"   },
+    { "source": "app-data/pihole/etc-dnsmasq",  "target": "/etc/dnsmasq.d" }
+  ],
+  "backup": { "enabled": true }
+}
