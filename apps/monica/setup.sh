@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/monica"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/monica"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/monica/data"
-mkdir -p "${CALEOPE_APP_DATA}/monica/db"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/monica/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/monica/db"
 
 MONICA_PORT_WEB=""
 MYSQL_PASSWORD=""
@@ -18,9 +18,9 @@ if [ -f "${_SECRETS}" ]; then
     MYSQL_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     APP_KEY=$(grep "^APP_KEY=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_MONICA_PORT_WEB:-}" ] && MONICA_PORT_WEB="${PARAM_MONICA_PORT_WEB}"
-[ -n "${PARAM_MYSQL_PASSWORD:-}" ] && MYSQL_PASSWORD="${PARAM_MYSQL_PASSWORD}"
-[ -n "${PARAM_MYSQL_ROOT_PASSWORD:-}" ] && MYSQL_ROOT_PASSWORD="${PARAM_MYSQL_ROOT_PASSWORD}"
+[ -n "${CALEOPE_PARAM_MONICA_PORT_WEB:-}" ] && MONICA_PORT_WEB="${CALEOPE_PARAM_MONICA_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_MYSQL_PASSWORD:-}" ] && MYSQL_PASSWORD="${CALEOPE_PARAM_MYSQL_PASSWORD}"
+[ -n "${CALEOPE_PARAM_MYSQL_ROOT_PASSWORD:-}" ] && MYSQL_ROOT_PASSWORD="${CALEOPE_PARAM_MYSQL_ROOT_PASSWORD}"
 [ -z "${MONICA_PORT_WEB}" ] && MONICA_PORT_WEB="8082"
 [ -z "${MYSQL_PASSWORD}" ] && MYSQL_PASSWORD="$(openssl rand -base64 18)"
 [ -z "${MYSQL_ROOT_PASSWORD}" ] && MYSQL_ROOT_PASSWORD="$(openssl rand -base64 18)"

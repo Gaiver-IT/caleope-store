@@ -4,14 +4,14 @@ services:
     container_name: adguardhome
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/adguard/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/adguard/secrets.env
     ports:
       - "53:53/tcp"
       - "53:53/udp"
       - "${ADGUARD_PORT_WEB:-3080}:3000"
     volumes:
-      - ${CALEOPE_APP_DATA}/adguard/work:/opt/adguardhome/work
-      - ${CALEOPE_APP_DATA}/adguard/conf:/opt/adguardhome/conf
+      - ${CALEOPE_BASE_DIR}/app-data/adguard/work:/opt/adguardhome/work
+      - ${CALEOPE_BASE_DIR}/app-data/adguard/conf:/opt/adguardhome/conf
     cap_add:
       - NET_ADMIN
     networks:

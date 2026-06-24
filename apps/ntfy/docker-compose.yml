@@ -5,12 +5,12 @@ services:
     restart: unless-stopped
     command: serve
     env_file:
-      - ${CALEOPE_APP_CONFIG}/ntfy/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/ntfy/secrets.env
     ports:
       - "${NTFY_PORT_WEB:-8070}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/ntfy/data:/var/lib/ntfy
-      - ${CALEOPE_APP_DATA}/ntfy/config:/etc/ntfy
+      - ${CALEOPE_BASE_DIR}/app-data/ntfy/data:/var/lib/ntfy
+      - ${CALEOPE_BASE_DIR}/app-data/ntfy/config:/etc/ntfy
     networks:
       - caleope-public
       - caleope-internal

@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/photoprism"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/photoprism"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/photoprism/originals"
-mkdir -p "${CALEOPE_APP_DATA}/photoprism/storage"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/photoprism/originals"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/photoprism/storage"
 
 PHOTOPRISM_PORT_WEB=""
 PHOTOPRISM_ADMIN_PASSWORD=""
@@ -14,8 +14,8 @@ if [ -f "${_SECRETS}" ]; then
     PHOTOPRISM_PORT_WEB=$(grep "^PHOTOPRISM_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     PHOTOPRISM_ADMIN_PASSWORD=$(grep "^PHOTOPRISM_ADMIN_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_PHOTOPRISM_PORT_WEB:-}" ] && PHOTOPRISM_PORT_WEB="${PARAM_PHOTOPRISM_PORT_WEB}"
-[ -n "${PARAM_PHOTOPRISM_ADMIN_PASSWORD:-}" ] && PHOTOPRISM_ADMIN_PASSWORD="${PARAM_PHOTOPRISM_ADMIN_PASSWORD}"
+[ -n "${CALEOPE_PARAM_PHOTOPRISM_PORT_WEB:-}" ] && PHOTOPRISM_PORT_WEB="${CALEOPE_PARAM_PHOTOPRISM_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_PHOTOPRISM_ADMIN_PASSWORD:-}" ] && PHOTOPRISM_ADMIN_PASSWORD="${CALEOPE_PARAM_PHOTOPRISM_ADMIN_PASSWORD}"
 [ -z "${PHOTOPRISM_PORT_WEB}" ] && PHOTOPRISM_PORT_WEB="2342"
 [ -z "${PHOTOPRISM_ADMIN_PASSWORD}" ] && PHOTOPRISM_ADMIN_PASSWORD="$(openssl rand -base64 12)"
 
@@ -106,7 +106,7 @@ Identifiants : admin / ${PHOTOPRISM_ADMIN_PASSWORD}
 Changez le mot de passe immédiatement.
 
 Vos photos doivent être placées dans :
-${CALEOPE_APP_DATA}/photoprism/originals/
+${CALEOPE_BASE_DIR}/app-data/photoprism/originals/
 
 Lancez une indexation depuis l'interface : Library > Index
 INFO

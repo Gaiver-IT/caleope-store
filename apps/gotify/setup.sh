@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/gotify"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/gotify"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/gotify/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/gotify/data"
 
 GOTIFY_PORT_WEB=""
 GOTIFY_DEFAULTUSER_PASS=""
@@ -13,8 +13,8 @@ if [ -f "${_SECRETS}" ]; then
     GOTIFY_PORT_WEB=$(grep "^GOTIFY_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     GOTIFY_DEFAULTUSER_PASS=$(grep "^GOTIFY_DEFAULTUSER_PASS=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_GOTIFY_PORT_WEB:-}" ] && GOTIFY_PORT_WEB="${PARAM_GOTIFY_PORT_WEB}"
-[ -n "${PARAM_GOTIFY_DEFAULTUSER_PASS:-}" ] && GOTIFY_DEFAULTUSER_PASS="${PARAM_GOTIFY_DEFAULTUSER_PASS}"
+[ -n "${CALEOPE_PARAM_GOTIFY_PORT_WEB:-}" ] && GOTIFY_PORT_WEB="${CALEOPE_PARAM_GOTIFY_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_GOTIFY_DEFAULTUSER_PASS:-}" ] && GOTIFY_DEFAULTUSER_PASS="${CALEOPE_PARAM_GOTIFY_DEFAULTUSER_PASS}"
 [ -z "${GOTIFY_PORT_WEB}" ] && GOTIFY_PORT_WEB="8090"
 [ -z "${GOTIFY_DEFAULTUSER_PASS}" ] && GOTIFY_DEFAULTUSER_PASS="$(openssl rand -base64 12)"
 

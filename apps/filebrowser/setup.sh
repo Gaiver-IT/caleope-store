@@ -1,18 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/filebrowser"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/filebrowser"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/filebrowser/db"
-mkdir -p "${CALEOPE_APP_DATA}/filebrowser/conf"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/filebrowser/db"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/filebrowser/conf"
 
 FILEBROWSER_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     FILEBROWSER_PORT_WEB=$(grep "^FILEBROWSER_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_FILEBROWSER_PORT_WEB:-}" ] && FILEBROWSER_PORT_WEB="${PARAM_FILEBROWSER_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_FILEBROWSER_PORT_WEB:-}" ] && FILEBROWSER_PORT_WEB="${CALEOPE_PARAM_FILEBROWSER_PORT_WEB}"
 [ -z "${FILEBROWSER_PORT_WEB}" ] && FILEBROWSER_PORT_WEB="8085"
 
 cat > "${_SECRETS}" <<ENV
@@ -21,7 +21,7 @@ ENV
 chmod 600 "${_SECRETS}"
 
 # Créer le fichier de config filebrowser si absent
-FB_CONF="${CALEOPE_APP_DATA}/filebrowser/conf/.filebrowser.json"
+FB_CONF="${CALEOPE_BASE_DIR}/app-data/filebrowser/conf/.filebrowser.json"
 if [ ! -f "${FB_CONF}" ]; then
     cat > "${FB_CONF}" <<CONF
 {
@@ -37,7 +37,7 @@ CONF
 fi
 
 # Créer un fichier DB vide si absent (sera initialisé par filebrowser)
-touch "${CALEOPE_APP_DATA}/filebrowser/db/filebrowser.db"
+touch "${CALEOPE_BASE_DIR}/app-data/filebrowser/db/filebrowser.db"
 
 echo "  ✓ File Browser configuré"
 

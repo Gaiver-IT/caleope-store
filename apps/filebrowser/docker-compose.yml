@@ -5,13 +5,13 @@ services:
     restart: unless-stopped
     user: "0:0"
     env_file:
-      - ${CALEOPE_APP_CONFIG}/filebrowser/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/filebrowser/secrets.env
     ports:
       - "${FILEBROWSER_PORT_WEB:-8085}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/filebrowser:/srv
-      - ${CALEOPE_APP_DATA}/filebrowser/db/filebrowser.db:/database/filebrowser.db
-      - ${CALEOPE_APP_DATA}/filebrowser/conf/.filebrowser.json:/.filebrowser.json
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser:/srv
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser/db/filebrowser.db:/database/filebrowser.db
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser/conf/.filebrowser.json:/.filebrowser.json
     networks:
       - caleope-public
       - caleope-internal

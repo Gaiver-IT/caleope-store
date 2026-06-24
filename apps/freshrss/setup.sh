@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/freshrss"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/freshrss"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/freshrss"/{data,extensions}
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/freshrss"/{data,extensions}
 
 FRESHRSS_ADMIN_USER=""
 FRESHRSS_ADMIN_PASS=""
@@ -16,9 +16,9 @@ if [ -f "${_SECRETS}" ]; then
     FRESHRSS_PORT_WEB=$(grep   "^FRESHRSS_PORT_WEB="   "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
 
-[ -n "${PARAM_FRESHRSS_ADMIN_USER:-}" ] && FRESHRSS_ADMIN_USER="${PARAM_FRESHRSS_ADMIN_USER}"
-[ -n "${PARAM_FRESHRSS_ADMIN_PASS:-}" ] && FRESHRSS_ADMIN_PASS="${PARAM_FRESHRSS_ADMIN_PASS}"
-[ -n "${PARAM_FRESHRSS_PORT_WEB:-}"   ] && FRESHRSS_PORT_WEB="${PARAM_FRESHRSS_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_FRESHRSS_ADMIN_USER:-}" ] && FRESHRSS_ADMIN_USER="${CALEOPE_PARAM_FRESHRSS_ADMIN_USER}"
+[ -n "${CALEOPE_PARAM_FRESHRSS_ADMIN_PASS:-}" ] && FRESHRSS_ADMIN_PASS="${CALEOPE_PARAM_FRESHRSS_ADMIN_PASS}"
+[ -n "${CALEOPE_PARAM_FRESHRSS_PORT_WEB:-}"   ] && FRESHRSS_PORT_WEB="${CALEOPE_PARAM_FRESHRSS_PORT_WEB}"
 [ -z "${FRESHRSS_ADMIN_USER}" ] && FRESHRSS_ADMIN_USER="admin"
 [ -z "${FRESHRSS_ADMIN_PASS}" ] && FRESHRSS_ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 [ -z "${FRESHRSS_PORT_WEB}"   ] && FRESHRSS_PORT_WEB="8065"

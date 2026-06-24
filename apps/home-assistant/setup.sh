@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/home-assistant"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/home-assistant"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/home-assistant/config"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/home-assistant/config"
 
 HA_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     HA_PORT_WEB=$(grep "^HA_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_HA_PORT_WEB:-}" ] && HA_PORT_WEB="${PARAM_HA_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_HA_PORT_WEB:-}" ] && HA_PORT_WEB="${CALEOPE_PARAM_HA_PORT_WEB}"
 [ -z "${HA_PORT_WEB}" ] && HA_PORT_WEB="8123"
 
 cat > "${_SECRETS}" <<ENV
@@ -22,7 +22,7 @@ echo "  ✓ Home Assistant configuré"
 
 # ── Trusted proxies pour Traefik ─────────────────────────────────────────────
 # Home Assistant nécessite de déclarer les proxies de confiance dans configuration.yaml
-HA_CONFIG="${CALEOPE_APP_DATA}/home-assistant/config/configuration.yaml"
+HA_CONFIG="${CALEOPE_BASE_DIR}/app-data/home-assistant/config/configuration.yaml"
 if [ ! -f "${HA_CONFIG}" ]; then
     cat > "${HA_CONFIG}" <<YAML
 # Généré par Caleope

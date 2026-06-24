@@ -4,11 +4,11 @@ services:
     container_name: uptime-kuma
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/uptime-kuma/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/uptime-kuma/secrets.env
     ports:
       - "${UPTIME_KUMA_PORT_WEB:-3025}:3001"
     volumes:
-      - ${CALEOPE_APP_DATA}/uptime-kuma/data:/app/data
+      - ${CALEOPE_BASE_DIR}/app-data/uptime-kuma/data:/app/data
     networks:
       - caleope-public
       - caleope-internal

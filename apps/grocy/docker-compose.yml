@@ -4,7 +4,7 @@ services:
     container_name: grocy
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/grocy/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/grocy/secrets.env
     environment:
       - PUID=1000
       - PGID=1000
@@ -12,7 +12,7 @@ services:
     ports:
       - "${GROCY_PORT_WEB:-9283}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/grocy/data:/config
+      - ${CALEOPE_BASE_DIR}/app-data/grocy/data:/config
     networks:
       - caleope-public
       - caleope-internal

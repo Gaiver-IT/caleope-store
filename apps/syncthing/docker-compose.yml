@@ -10,7 +10,7 @@ services:
       - "22000:22000/udp"
       - "21027:21027/udp"
     volumes:
-      - ${CALEOPE_APP_DATA}/syncthing/config:/var/syncthing
+      - ${CALEOPE_BASE_DIR}/app-data/syncthing/config:/var/syncthing
     environment:
       - PCAP=
     networks:

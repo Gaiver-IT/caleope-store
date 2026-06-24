@@ -4,11 +4,11 @@ services:
     container_name: changedetection
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/changedetection/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/changedetection/secrets.env
     ports:
       - "${CHANGEDETECTION_PORT_WEB:-5055}:5000"
     volumes:
-      - ${CALEOPE_APP_DATA}/changedetection/data:/datastore
+      - ${CALEOPE_BASE_DIR}/app-data/changedetection/data:/datastore
     networks:
       - caleope-public
       - caleope-internal

@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/memos"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/memos"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/memos/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/memos/data"
 
 MEMOS_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     MEMOS_PORT_WEB=$(grep "^MEMOS_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_MEMOS_PORT_WEB:-}" ] && MEMOS_PORT_WEB="${PARAM_MEMOS_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_MEMOS_PORT_WEB:-}" ] && MEMOS_PORT_WEB="${CALEOPE_PARAM_MEMOS_PORT_WEB}"
 [ -z "${MEMOS_PORT_WEB}" ] && MEMOS_PORT_WEB="5230"
 
 cat > "${_SECRETS}" <<ENV

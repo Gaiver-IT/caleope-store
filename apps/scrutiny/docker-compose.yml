@@ -9,8 +9,8 @@ services:
     environment:
       - SCRUTINY_WEB_INFLUXDB_HOST=localhost
     volumes:
-      - ${CALEOPE_APP_DATA}/scrutiny/config:/opt/scrutiny/config
-      - ${CALEOPE_APP_DATA}/scrutiny/influxdb:/opt/scrutiny/influxdb
+      - ${CALEOPE_BASE_DIR}/app-data/scrutiny/config:/opt/scrutiny/config
+      - ${CALEOPE_BASE_DIR}/app-data/scrutiny/influxdb:/opt/scrutiny/influxdb
       - /run/udev:/run/udev:ro
     devices:
       - /dev/sda:/dev/sda

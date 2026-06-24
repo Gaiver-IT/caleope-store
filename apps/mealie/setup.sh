@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/mealie"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/mealie"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/mealie/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/mealie/data"
 
 MEALIE_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     MEALIE_PORT_WEB=$(grep "^MEALIE_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_MEALIE_PORT_WEB:-}" ] && MEALIE_PORT_WEB="${PARAM_MEALIE_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_MEALIE_PORT_WEB:-}" ] && MEALIE_PORT_WEB="${CALEOPE_PARAM_MEALIE_PORT_WEB}"
 [ -z "${MEALIE_PORT_WEB}" ] && MEALIE_PORT_WEB="9000"
 
 BASE_DOMAIN="${CALEOPE_DOMAIN#*.}"

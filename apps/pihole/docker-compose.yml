@@ -4,7 +4,7 @@ services:
     container_name: pihole
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/pihole/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/pihole/secrets.env
     environment:
       TZ: ${CALEOPE_TZ:-Europe/Paris}
       WEBTHEME: default-dark
@@ -14,8 +14,8 @@ services:
       - "53:53/udp"
       - "${PIHOLE_PORT_WEB:-8053}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/pihole/etc-pihole:/etc/pihole
-      - ${CALEOPE_APP_DATA}/pihole/etc-dnsmasq:/etc/dnsmasq.d
+      - ${CALEOPE_BASE_DIR}/app-data/pihole/etc-pihole:/etc/pihole
+      - ${CALEOPE_BASE_DIR}/app-data/pihole/etc-dnsmasq:/etc/dnsmasq.d
     cap_add:
       - NET_ADMIN
     networks:

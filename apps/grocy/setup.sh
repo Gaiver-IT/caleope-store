@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/grocy"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/grocy"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/grocy/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/grocy/data"
 
 GROCY_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     GROCY_PORT_WEB=$(grep "^GROCY_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_GROCY_PORT_WEB:-}" ] && GROCY_PORT_WEB="${PARAM_GROCY_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_GROCY_PORT_WEB:-}" ] && GROCY_PORT_WEB="${CALEOPE_PARAM_GROCY_PORT_WEB}"
 [ -z "${GROCY_PORT_WEB}" ] && GROCY_PORT_WEB="9283"
 
 cat > "${_SECRETS}" <<ENV

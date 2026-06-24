@@ -7,9 +7,9 @@ services:
       - PGID=1000
       - TZ=${TZ:-Europe/Paris}
     volumes:
-      - ${CALEOPE_APP_DATA}/komga/config:/config
-      - ${CALEOPE_APP_DATA}/komga/comics:/comics
-      - ${CALEOPE_APP_DATA}/komga/mangas:/mangas
+      - ${CALEOPE_BASE_DIR}/app-data/komga/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/komga/comics:/comics
+      - ${CALEOPE_BASE_DIR}/app-data/komga/mangas:/mangas
     ports:
       - "${KOMGA_PORT:-8085}:25600"
     labels:

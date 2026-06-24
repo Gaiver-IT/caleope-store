@@ -4,11 +4,11 @@ services:
     container_name: mealie
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/mealie/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/mealie/secrets.env
     ports:
       - "${MEALIE_PORT_WEB:-9000}:9000"
     volumes:
-      - ${CALEOPE_APP_DATA}/mealie/data:/app/data
+      - ${CALEOPE_BASE_DIR}/app-data/mealie/data:/app/data
     networks:
       - caleope-public
       - caleope-internal

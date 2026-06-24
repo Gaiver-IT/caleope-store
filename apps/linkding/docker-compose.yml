@@ -4,11 +4,11 @@ services:
     container_name: linkding
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/linkding/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/linkding/secrets.env
     ports:
       - "${LINKDING_PORT_WEB:-9090}:9090"
     volumes:
-      - ${CALEOPE_APP_DATA}/linkding/data:/etc/linkding/data
+      - ${CALEOPE_BASE_DIR}/app-data/linkding/data:/etc/linkding/data
     environment:
       - LD_SUPERUSER_NAME=${LINKDING_ADMIN_USER:-admin}
       - LD_SUPERUSER_PASSWORD=${LINKDING_ADMIN_PASS}

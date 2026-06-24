@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/portainer"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/portainer"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/portainer/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/portainer/data"
 
 PORTAINER_PORT_WEB=""
 PORTAINER_ADMIN_PASS=""
@@ -13,7 +13,7 @@ if [ -f "${_SECRETS}" ]; then
     PORTAINER_PORT_WEB=$(grep  "^PORTAINER_PORT_WEB="   "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     PORTAINER_ADMIN_PASS=$(grep "^PORTAINER_ADMIN_PASS=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_PORTAINER_PORT_WEB:-}" ] && PORTAINER_PORT_WEB="${PARAM_PORTAINER_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_PORTAINER_PORT_WEB:-}" ] && PORTAINER_PORT_WEB="${CALEOPE_PARAM_PORTAINER_PORT_WEB}"
 [ -z "${PORTAINER_PORT_WEB}"   ] && PORTAINER_PORT_WEB="9000"
 [ -z "${PORTAINER_ADMIN_PASS}" ] && PORTAINER_ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 

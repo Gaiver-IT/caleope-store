@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/syncthing"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/syncthing"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/syncthing/config"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/syncthing/config"
 
 SYNCTHING_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     SYNCTHING_PORT_WEB=$(grep "^SYNCTHING_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_SYNCTHING_PORT_WEB:-}" ] && SYNCTHING_PORT_WEB="${PARAM_SYNCTHING_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_SYNCTHING_PORT_WEB:-}" ] && SYNCTHING_PORT_WEB="${CALEOPE_PARAM_SYNCTHING_PORT_WEB}"
 [ -z "${SYNCTHING_PORT_WEB}" ] && SYNCTHING_PORT_WEB="8384"
 
 cat > "${_SECRETS}" <<ENV
@@ -24,10 +24,10 @@ echo "  ✓ Syncthing configuré"
 echo ""
 echo "→ Attente démarrage Syncthing (max 30s)..."
 for _i in $(seq 1 10); do
-    if [ -f "${CALEOPE_APP_DATA}/syncthing/config/config.xml" ]; then
+    if [ -f "${CALEOPE_BASE_DIR}/app-data/syncthing/config/config.xml" ]; then
         # Remplacer 127.0.0.1 par 0.0.0.0 pour l'accès distant
         sed -i 's|<address>127.0.0.1:8384</address>|<address>0.0.0.0:8384</address>|' \
-            "${CALEOPE_APP_DATA}/syncthing/config/config.xml" 2>/dev/null || true
+            "${CALEOPE_BASE_DIR}/app-data/syncthing/config/config.xml" 2>/dev/null || true
         echo "  ✓ Syncthing GUI configurée pour accès distant"
         break
     fi

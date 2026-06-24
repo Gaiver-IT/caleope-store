@@ -7,12 +7,12 @@ services:
       - seccomp:unconfined
       - apparmor:unconfined
     env_file:
-      - ${CALEOPE_APP_CONFIG}/photoprism/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/photoprism/secrets.env
     ports:
       - "${PHOTOPRISM_PORT_WEB:-2342}:2342"
     volumes:
-      - ${CALEOPE_APP_DATA}/photoprism/originals:/photoprism/originals
-      - ${CALEOPE_APP_DATA}/photoprism/storage:/photoprism/storage
+      - ${CALEOPE_BASE_DIR}/app-data/photoprism/originals:/photoprism/originals
+      - ${CALEOPE_BASE_DIR}/app-data/photoprism/storage:/photoprism/storage
     networks:
       - caleope-public
       - caleope-internal

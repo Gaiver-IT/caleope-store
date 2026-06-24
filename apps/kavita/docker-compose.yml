@@ -4,13 +4,13 @@ services:
     container_name: kavita
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/kavita/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/kavita/secrets.env
     ports:
       - "${KAVITA_PORT_WEB:-5001}:5000"
     volumes:
-      - ${CALEOPE_APP_DATA}/kavita/config:/kavita/config
-      - ${CALEOPE_APP_DATA}/kavita/manga:/manga
-      - ${CALEOPE_APP_DATA}/kavita/comics:/comics
+      - ${CALEOPE_BASE_DIR}/app-data/kavita/config:/kavita/config
+      - ${CALEOPE_BASE_DIR}/app-data/kavita/manga:/manga
+      - ${CALEOPE_BASE_DIR}/app-data/kavita/comics:/comics
     networks:
       - caleope-public
       - caleope-internal

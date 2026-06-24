@@ -4,11 +4,11 @@ services:
     container_name: gotify
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/gotify/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/gotify/secrets.env
     ports:
       - "${GOTIFY_PORT_WEB:-8090}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/gotify/data:/app/data
+      - ${CALEOPE_BASE_DIR}/app-data/gotify/data:/app/data
     networks:
       - caleope-public
       - caleope-internal

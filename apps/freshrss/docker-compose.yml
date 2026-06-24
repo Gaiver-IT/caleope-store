@@ -4,12 +4,12 @@ services:
     container_name: freshrss
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/freshrss/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/freshrss/secrets.env
     ports:
       - "${FRESHRSS_PORT_WEB:-8065}:80"
     volumes:
-      - ${CALEOPE_APP_DATA}/freshrss/data:/var/www/FreshRSS/data
-      - ${CALEOPE_APP_DATA}/freshrss/extensions:/var/www/FreshRSS/extensions
+      - ${CALEOPE_BASE_DIR}/app-data/freshrss/data:/var/www/FreshRSS/data
+      - ${CALEOPE_BASE_DIR}/app-data/freshrss/extensions:/var/www/FreshRSS/extensions
     environment:
       - TZ=Europe/Paris
       - CRON_MIN=1,31

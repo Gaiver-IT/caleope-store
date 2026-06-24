@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/navidrome"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/navidrome"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/navidrome/data"
-mkdir -p "${CALEOPE_APP_DATA}/navidrome/music"
-chown -R 1000:1000 "${CALEOPE_APP_DATA}/navidrome" 2>/dev/null || true
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/navidrome/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/navidrome/music"
+chown -R 1000:1000 "${CALEOPE_BASE_DIR}/app-data/navidrome" 2>/dev/null || true
 
 NAVIDROME_PORT_WEB=""
 ND_LOGLEVEL=""
@@ -15,8 +15,8 @@ if [ -f "${_SECRETS}" ]; then
     NAVIDROME_PORT_WEB=$(grep "^NAVIDROME_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     ND_LOGLEVEL=$(grep "^ND_LOGLEVEL=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_NAVIDROME_PORT_WEB:-}" ] && NAVIDROME_PORT_WEB="${PARAM_NAVIDROME_PORT_WEB}"
-[ -n "${PARAM_ND_LOGLEVEL:-}" ] && ND_LOGLEVEL="${PARAM_ND_LOGLEVEL}"
+[ -n "${CALEOPE_PARAM_NAVIDROME_PORT_WEB:-}" ] && NAVIDROME_PORT_WEB="${CALEOPE_PARAM_NAVIDROME_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_ND_LOGLEVEL:-}" ] && ND_LOGLEVEL="${CALEOPE_PARAM_ND_LOGLEVEL}"
 [ -z "${NAVIDROME_PORT_WEB}" ] && NAVIDROME_PORT_WEB="4533"
 [ -z "${ND_LOGLEVEL}" ] && ND_LOGLEVEL="info"
 
@@ -90,7 +90,7 @@ Navidrome est démarré.
 Interface : http://<IP>:${NAVIDROME_PORT_WEB}
 
 Créez le compte admin lors du premier accès.
-Placez votre musique dans : ${CALEOPE_APP_DATA}/navidrome/music/
+Placez votre musique dans : ${CALEOPE_BASE_DIR}/app-data/navidrome/music/
 Compatible avec les clients Subsonic (DSub, Symfonium, Ultrasonic, etc.)
 INFO
 

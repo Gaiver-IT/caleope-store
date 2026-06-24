@@ -4,7 +4,7 @@ services:
     container_name: plex
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/plex/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/plex/secrets.env
     environment:
       - PUID=1000
       - PGID=1000
@@ -13,10 +13,10 @@ services:
     ports:
       - "${PLEX_PORT_WEB:-32400}:32400"
     volumes:
-      - ${CALEOPE_APP_DATA}/plex/config:/config
-      - ${CALEOPE_APP_DATA}/plex/tv:/tv
-      - ${CALEOPE_APP_DATA}/plex/movies:/movies
-      - ${CALEOPE_APP_DATA}/plex/music:/music
+      - ${CALEOPE_BASE_DIR}/app-data/plex/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/plex/tv:/tv
+      - ${CALEOPE_BASE_DIR}/app-data/plex/movies:/movies
+      - ${CALEOPE_BASE_DIR}/app-data/plex/music:/music
     networks:
       - caleope-public
       - caleope-internal

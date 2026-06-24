@@ -4,11 +4,11 @@ services:
     container_name: memos
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/memos/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/memos/secrets.env
     ports:
       - "${MEMOS_PORT_WEB:-5230}:5230"
     volumes:
-      - ${CALEOPE_APP_DATA}/memos/data:/var/opt/memos
+      - ${CALEOPE_BASE_DIR}/app-data/memos/data:/var/opt/memos
     networks:
       - caleope-public
       - caleope-internal

@@ -1,18 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/uptime-kuma"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/uptime-kuma"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/uptime-kuma/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/uptime-kuma/data"
 
 # Préserver les settings existants
 UPTIME_KUMA_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     UPTIME_KUMA_PORT_WEB=$(grep "^UPTIME_KUMA_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_UPTIME_KUMA_PORT_WEB:-}" ] && UPTIME_KUMA_PORT_WEB="${PARAM_UPTIME_KUMA_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_UPTIME_KUMA_PORT_WEB:-}" ] && UPTIME_KUMA_PORT_WEB="${CALEOPE_PARAM_UPTIME_KUMA_PORT_WEB}"
 [ -z "${UPTIME_KUMA_PORT_WEB}" ] && UPTIME_KUMA_PORT_WEB="3025"
 
 cat > "${_SECRETS}" <<ENV

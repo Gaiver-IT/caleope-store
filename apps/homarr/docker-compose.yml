@@ -4,13 +4,13 @@ services:
     container_name: homarr
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/homarr/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/homarr/secrets.env
     ports:
       - "${HOMARR_PORT_WEB:-7575}:7575"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${CALEOPE_APP_DATA}/homarr/data:/app/data
-      - ${CALEOPE_APP_DATA}/homarr/configs:/app/public/custom-icons
+      - ${CALEOPE_BASE_DIR}/app-data/homarr/data:/app/data
+      - ${CALEOPE_BASE_DIR}/app-data/homarr/configs:/app/public/custom-icons
     networks:
       - caleope-public
       - caleope-internal

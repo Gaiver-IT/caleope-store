@@ -1,18 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/calibre-web"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/calibre-web"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/calibre-web/config"
-mkdir -p "${CALEOPE_APP_DATA}/calibre-web/books"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/calibre-web/config"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/calibre-web/books"
 
 CALIBREWEB_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     CALIBREWEB_PORT_WEB=$(grep "^CALIBREWEB_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_CALIBREWEB_PORT_WEB:-}" ] && CALIBREWEB_PORT_WEB="${PARAM_CALIBREWEB_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_CALIBREWEB_PORT_WEB:-}" ] && CALIBREWEB_PORT_WEB="${CALEOPE_PARAM_CALIBREWEB_PORT_WEB}"
 [ -z "${CALIBREWEB_PORT_WEB}" ] && CALIBREWEB_PORT_WEB="8083"
 
 cat > "${_SECRETS}" <<ENV
@@ -83,7 +83,7 @@ Identifiants par défaut : admin / admin123
 Changez le mot de passe immédiatement.
 
 Votre bibliothèque Calibre doit se trouver dans :
-${CALEOPE_APP_DATA}/calibre-web/books/
+${CALEOPE_BASE_DIR}/app-data/calibre-web/books/
 
 Configurez le chemin de la bibliothèque lors du premier accès.
 INFO

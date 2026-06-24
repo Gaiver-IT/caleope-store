@@ -4,7 +4,7 @@ services:
     container_name: paperless-broker
     restart: unless-stopped
     volumes:
-      - ${CALEOPE_APP_DATA}/paperless-ngx/redis:/data
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/redis:/data
     networks:
       - caleope-internal
 
@@ -13,13 +13,13 @@ services:
     container_name: paperless-db
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/paperless-ngx/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/paperless-ngx/secrets.env
     environment:
       - POSTGRES_DB=${PAPERLESS_DBNAME:-paperless}
       - POSTGRES_USER=${PAPERLESS_DBUSER:-paperless}
       - POSTGRES_PASSWORD=${PAPERLESS_DBPASS}
     volumes:
-      - ${CALEOPE_APP_DATA}/paperless-ngx/db:/var/lib/postgresql/data
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/db:/var/lib/postgresql/data
     networks:
       - caleope-internal
 
@@ -33,7 +33,7 @@ services:
     ports:
       - "${PAPERLESS_PORT_WEB:-8080}:8000"
     env_file:
-      - ${CALEOPE_APP_CONFIG}/paperless-ngx/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/paperless-ngx/secrets.env
     environment:
       - PAPERLESS_REDIS=redis://paperless-broker:6379
       - PAPERLESS_DBHOST=paperless-db
@@ -48,10 +48,10 @@ services:
       - PAPERLESS_OCR_LANGUAGE=fra+eng
       - PAPERLESS_TIME_ZONE=Europe/Paris
     volumes:
-      - ${CALEOPE_APP_DATA}/paperless-ngx/data:/usr/src/paperless/data
-      - ${CALEOPE_APP_DATA}/paperless-ngx/media:/usr/src/paperless/media
-      - ${CALEOPE_APP_DATA}/paperless-ngx/export:/usr/src/paperless/export
-      - ${CALEOPE_APP_DATA}/paperless-ngx/consume:/usr/src/paperless/consume
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/data:/usr/src/paperless/data
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/media:/usr/src/paperless/media
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/export:/usr/src/paperless/export
+      - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/consume:/usr/src/paperless/consume
     networks:
       - caleope-public
       - caleope-internal

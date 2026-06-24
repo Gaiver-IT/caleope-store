@@ -4,13 +4,13 @@ services:
     container_name: portainer
     restart: unless-stopped
     env_file:
-      - ${CALEOPE_APP_CONFIG}/portainer/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/portainer/secrets.env
     ports:
       - "${PORTAINER_PORT_WEB:-9000}:9000"
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CALEOPE_APP_DATA}/portainer/data:/data
+      - ${CALEOPE_BASE_DIR}/app-data/portainer/data:/data
     networks:
       - caleope-public
 

@@ -1,19 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/kavita"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/kavita"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/kavita/config"
-mkdir -p "${CALEOPE_APP_DATA}/kavita/manga"
-mkdir -p "${CALEOPE_APP_DATA}/kavita/comics"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/config"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/manga"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/comics"
 
 KAVITA_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     KAVITA_PORT_WEB=$(grep "^KAVITA_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_KAVITA_PORT_WEB:-}" ] && KAVITA_PORT_WEB="${PARAM_KAVITA_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_KAVITA_PORT_WEB:-}" ] && KAVITA_PORT_WEB="${CALEOPE_PARAM_KAVITA_PORT_WEB}"
 [ -z "${KAVITA_PORT_WEB}" ] && KAVITA_PORT_WEB="5001"
 
 cat > "${_SECRETS}" <<ENV
@@ -82,8 +82,8 @@ Interface : http://<IP>:${KAVITA_PORT_WEB}
 
 Créez le compte admin lors du premier accès.
 Placez vos fichiers dans :
-  Mangas  : ${CALEOPE_APP_DATA}/kavita/manga/
-  Comics  : ${CALEOPE_APP_DATA}/kavita/comics/
+  Mangas  : ${CALEOPE_BASE_DIR}/app-data/kavita/manga/
+  Comics  : ${CALEOPE_BASE_DIR}/app-data/kavita/comics/
 
 Formats supportés : CBZ, CBR, PDF, EPUB, MOBI, AZW3
 INFO

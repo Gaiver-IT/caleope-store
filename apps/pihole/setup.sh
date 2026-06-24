@@ -2,7 +2,7 @@
 # Pi-hole setup — génère les secrets, configure le reverse proxy et l'API token
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/pihole"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/pihole"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 # ── Credentials ───────────────────────────────────────────────────────────────
@@ -20,9 +20,9 @@ if [ -f "${_SECRETS}" ]; then
 fi
 
 # Paramètres fournis par Caleope (depuis params.json)
-[ -n "${PARAM_PIHOLE_WEBPASSWORD:-}" ] && PIHOLE_WEBPASSWORD="${PARAM_PIHOLE_WEBPASSWORD}"
-[ -n "${PARAM_PIHOLE_DNS1:-}" ]        && PIHOLE_DNS1="${PARAM_PIHOLE_DNS1}"
-[ -n "${PARAM_PIHOLE_DNS2:-}" ]        && PIHOLE_DNS2="${PARAM_PIHOLE_DNS2}"
+[ -n "${CALEOPE_PARAM_PIHOLE_WEBPASSWORD:-}" ] && PIHOLE_WEBPASSWORD="${CALEOPE_PARAM_PIHOLE_WEBPASSWORD}"
+[ -n "${CALEOPE_PARAM_PIHOLE_DNS1:-}" ]        && PIHOLE_DNS1="${CALEOPE_PARAM_PIHOLE_DNS1}"
+[ -n "${CALEOPE_PARAM_PIHOLE_DNS2:-}" ]        && PIHOLE_DNS2="${CALEOPE_PARAM_PIHOLE_DNS2}"
 
 [ -z "${PIHOLE_WEBPASSWORD}" ] && \
     PIHOLE_WEBPASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-16)

@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/n8n"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/n8n"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/n8n/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/n8n/data"
 
 N8N_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     N8N_PORT_WEB=$(grep "^N8N_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_N8N_PORT_WEB:-}" ] && N8N_PORT_WEB="${PARAM_N8N_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_N8N_PORT_WEB:-}" ] && N8N_PORT_WEB="${CALEOPE_PARAM_N8N_PORT_WEB}"
 [ -z "${N8N_PORT_WEB}" ] && N8N_PORT_WEB="5678"
 
 # Détecter le domaine de base

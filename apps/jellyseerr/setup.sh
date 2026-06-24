@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/jellyseerr"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/jellyseerr"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/jellyseerr/config"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/jellyseerr/config"
 
 JELLYSEERR_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     JELLYSEERR_PORT_WEB=$(grep "^JELLYSEERR_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_JELLYSEERR_PORT_WEB:-}" ] && JELLYSEERR_PORT_WEB="${PARAM_JELLYSEERR_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_JELLYSEERR_PORT_WEB:-}" ] && JELLYSEERR_PORT_WEB="${CALEOPE_PARAM_JELLYSEERR_PORT_WEB}"
 [ -z "${JELLYSEERR_PORT_WEB}" ] && JELLYSEERR_PORT_WEB="5099"
 
 cat > "${_SECRETS}" <<ENV

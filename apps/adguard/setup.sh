@@ -2,7 +2,7 @@
 # AdGuard Home setup — génère les secrets et configure AdGuard Home via son API
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/adguard"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/adguard"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 # ── Credentials ───────────────────────────────────────────────────────────────
@@ -22,10 +22,10 @@ if [ -f "${_SECRETS}" ]; then
     [ -n "${_PREV_DNS2}" ] && ADGUARD_DNS2="${_PREV_DNS2}"
 fi
 
-[ -n "${PARAM_ADGUARD_USERNAME:-}" ] && ADGUARD_USERNAME="${PARAM_ADGUARD_USERNAME}"
-[ -n "${PARAM_ADGUARD_PASSWORD:-}" ] && ADGUARD_PASSWORD="${PARAM_ADGUARD_PASSWORD}"
-[ -n "${PARAM_ADGUARD_DNS1:-}"     ] && ADGUARD_DNS1="${PARAM_ADGUARD_DNS1}"
-[ -n "${PARAM_ADGUARD_DNS2:-}"     ] && ADGUARD_DNS2="${PARAM_ADGUARD_DNS2}"
+[ -n "${CALEOPE_PARAM_ADGUARD_USERNAME:-}" ] && ADGUARD_USERNAME="${CALEOPE_PARAM_ADGUARD_USERNAME}"
+[ -n "${CALEOPE_PARAM_ADGUARD_PASSWORD:-}" ] && ADGUARD_PASSWORD="${CALEOPE_PARAM_ADGUARD_PASSWORD}"
+[ -n "${CALEOPE_PARAM_ADGUARD_DNS1:-}"     ] && ADGUARD_DNS1="${CALEOPE_PARAM_ADGUARD_DNS1}"
+[ -n "${CALEOPE_PARAM_ADGUARD_DNS2:-}"     ] && ADGUARD_DNS2="${CALEOPE_PARAM_ADGUARD_DNS2}"
 
 [ -z "${ADGUARD_PASSWORD}" ] && \
     ADGUARD_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-16)

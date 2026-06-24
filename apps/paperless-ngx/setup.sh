@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/paperless-ngx"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/paperless-ngx"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/paperless-ngx"/{data,media,export,consume,db,redis}
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/paperless-ngx"/{data,media,export,consume,db,redis}
 
 # Préserver les secrets existants
 PAPERLESS_DBPASS=""
@@ -21,9 +21,9 @@ if [ -f "${_SECRETS}" ]; then
     PAPERLESS_PORT_WEB=$(grep   "^PAPERLESS_PORT_WEB="   "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
 
-[ -n "${PARAM_PAPERLESS_ADMIN_USER:-}" ] && PAPERLESS_ADMIN_USER="${PARAM_PAPERLESS_ADMIN_USER}"
-[ -n "${PARAM_PAPERLESS_ADMIN_PASS:-}" ] && PAPERLESS_ADMIN_PASS="${PARAM_PAPERLESS_ADMIN_PASS}"
-[ -n "${PARAM_PAPERLESS_PORT_WEB:-}"   ] && PAPERLESS_PORT_WEB="${PARAM_PAPERLESS_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_PAPERLESS_ADMIN_USER:-}" ] && PAPERLESS_ADMIN_USER="${CALEOPE_PARAM_PAPERLESS_ADMIN_USER}"
+[ -n "${CALEOPE_PARAM_PAPERLESS_ADMIN_PASS:-}" ] && PAPERLESS_ADMIN_PASS="${CALEOPE_PARAM_PAPERLESS_ADMIN_PASS}"
+[ -n "${CALEOPE_PARAM_PAPERLESS_PORT_WEB:-}"   ] && PAPERLESS_PORT_WEB="${CALEOPE_PARAM_PAPERLESS_PORT_WEB}"
 [ -z "${PAPERLESS_DBPASS}"     ] && PAPERLESS_DBPASS=$(openssl rand -hex 24)
 [ -z "${PAPERLESS_SECRET_KEY}" ] && PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
 [ -z "${PAPERLESS_ADMIN_USER}" ] && PAPERLESS_ADMIN_USER="admin"
@@ -139,7 +139,7 @@ Interface : http://<IP>:${PAPERLESS_PORT_WEB}
 Utilisateur admin : ${PAPERLESS_ADMIN_USER}
 Mot de passe      : ${PAPERLESS_ADMIN_PASS}
 
-Répertoire d'import automatique : ${CALEOPE_APP_DATA}/paperless-ngx/consume
+Répertoire d'import automatique : ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/consume
 INFO
 
 echo "✓ Paperless-NGX prêt — http://<IP>:${PAPERLESS_PORT_WEB}"

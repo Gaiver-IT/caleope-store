@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/changedetection"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/changedetection"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/changedetection/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/changedetection/data"
 
 CHANGEDETECTION_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     CHANGEDETECTION_PORT_WEB=$(grep "^CHANGEDETECTION_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_CHANGEDETECTION_PORT_WEB:-}" ] && CHANGEDETECTION_PORT_WEB="${PARAM_CHANGEDETECTION_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_CHANGEDETECTION_PORT_WEB:-}" ] && CHANGEDETECTION_PORT_WEB="${CALEOPE_PARAM_CHANGEDETECTION_PORT_WEB}"
 [ -z "${CHANGEDETECTION_PORT_WEB}" ] && CHANGEDETECTION_PORT_WEB="5055"
 
 BASE_DOMAIN="${CALEOPE_DOMAIN#*.}"

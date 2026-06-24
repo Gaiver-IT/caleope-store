@@ -5,13 +5,13 @@ services:
     restart: unless-stopped
     privileged: false
     env_file:
-      - ${CALEOPE_APP_CONFIG}/home-assistant/secrets.env
+      - ${CALEOPE_BASE_DIR}/app-config/home-assistant/secrets.env
     environment:
       - TZ=Europe/Paris
     ports:
       - "${HA_PORT_WEB:-8123}:8123"
     volumes:
-      - ${CALEOPE_APP_DATA}/home-assistant/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/home-assistant/config:/config
     networks:
       - caleope-public
       - caleope-internal

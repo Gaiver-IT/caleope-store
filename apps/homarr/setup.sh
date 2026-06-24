@@ -1,18 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-CONFIG_DIR="${CALEOPE_APP_CONFIG}/homarr"
+CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/homarr"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_APP_DATA}/homarr/data"
-mkdir -p "${CALEOPE_APP_DATA}/homarr/configs"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/data"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/configs"
 
 HOMARR_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     HOMARR_PORT_WEB=$(grep "^HOMARR_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${PARAM_HOMARR_PORT_WEB:-}" ] && HOMARR_PORT_WEB="${PARAM_HOMARR_PORT_WEB}"
+[ -n "${CALEOPE_PARAM_HOMARR_PORT_WEB:-}" ] && HOMARR_PORT_WEB="${CALEOPE_PARAM_HOMARR_PORT_WEB}"
 [ -z "${HOMARR_PORT_WEB}" ] && HOMARR_PORT_WEB="7575"
 
 cat > "${_SECRETS}" <<ENV
