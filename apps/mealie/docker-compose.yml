@@ -1,0 +1,20 @@
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:latest
+    container_name: mealie
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/mealie/secrets.env
+    ports:
+      - "${MEALIE_PORT_WEB:-9000}:9000"
+    volumes:
+      - ${CALEOPE_APP_DATA}/mealie/data:/app/data
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
