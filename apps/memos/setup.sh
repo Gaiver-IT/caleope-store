@@ -74,11 +74,64 @@ if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
 fi
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
+# ── Compte admin Memos + token API ───────────────────────────────────────────
+MEMOS_ADMIN_USER=""
+MEMOS_ADMIN_PASS=""
+MEMOS_API_TOKEN=""
+if [ -f "${_SECRETS}" ]; then
+    MEMOS_ADMIN_USER=$(grep "^MEMOS_ADMIN_USER=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    MEMOS_ADMIN_PASS=$(grep "^MEMOS_ADMIN_PASS=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    MEMOS_API_TOKEN=$(grep "^MEMOS_API_TOKEN=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+fi
+[ -z "${MEMOS_ADMIN_USER}" ] && MEMOS_ADMIN_USER="admin"
+[ -z "${MEMOS_ADMIN_PASS}" ] && MEMOS_ADMIN_PASS="$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+
+# Attendre que memos soit prêt
+_mm_ready=false
+echo "→ Attente démarrage Memos..."
+for _i in $(seq 1 20); do
+    if curl -sf --max-time 3 "http://localhost:${MEMOS_PORT_WEB}/api/v1/users" >/dev/null 2>&1; then
+        _mm_ready=true; break
+    fi
+    sleep 3
+done
+
+if ${_mm_ready}; then
+    # Créer l'utilisateur admin (idempotent - ignore si déjà existant)
+    curl -sf --max-time 10 -X POST "http://localhost:${MEMOS_PORT_WEB}/api/v1/users" \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"${MEMOS_ADMIN_USER}\",\"password\":\"${MEMOS_ADMIN_PASS}\",\"role\":\"HOST\"}" \
+        >/dev/null 2>&1 || true
+    echo "  ✓ Compte admin Memos configuré"
+
+    # Obtenir le token d'accès
+    if [ -z "${MEMOS_API_TOKEN}" ]; then
+        _token_resp=$(curl -sf --max-time 10 -X POST "http://localhost:${MEMOS_PORT_WEB}/api/v1/auth/signin" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${MEMOS_ADMIN_USER}\",\"password\":\"${MEMOS_ADMIN_PASS}\"}" 2>/dev/null) || _token_resp=""
+        _token=$(echo "${_token_resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null) || _token=""
+        if [ -n "${_token}" ]; then
+            MEMOS_API_TOKEN="${_token}"
+            echo "  ✓ Token API Memos généré"
+        fi
+    fi
+fi
+
+# Stocker les credentials
+{
+    grep -v "^MEMOS_ADMIN_USER=\|^MEMOS_ADMIN_PASS=\|^MEMOS_API_TOKEN=" "${_SECRETS}" 2>/dev/null || true
+    echo "MEMOS_ADMIN_USER=${MEMOS_ADMIN_USER}"
+    echo "MEMOS_ADMIN_PASS=${MEMOS_ADMIN_PASS}"
+    [ -n "${MEMOS_API_TOKEN}" ] && echo "MEMOS_API_TOKEN=${MEMOS_API_TOKEN}"
+} > "${_SECRETS}.tmp" && mv "${_SECRETS}.tmp" "${_SECRETS}"
+chmod 600 "${_SECRETS}"
+
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 Memos est démarré.
 Interface : http://<IP>:${MEMOS_PORT_WEB}
 
-Créer un compte admin à la première connexion.
+Utilisateur : ${MEMOS_ADMIN_USER}
+Mot de passe : ${MEMOS_ADMIN_PASS}
 INFO
 
 echo "✓ Memos prêt — http://<IP>:${MEMOS_PORT_WEB}"
