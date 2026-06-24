@@ -1,0 +1,20 @@
+{
+  "id": "gotify",
+  "name": "Gotify",
+  "description": "Serveur de notifications push auto-hébergé, simple et léger.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/gotify/data", "target": "/app/data" }
+  ],
+  "backup": { "enabled": true }
+}

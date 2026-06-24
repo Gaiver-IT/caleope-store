@@ -1,0 +1,21 @@
+{
+  "id": "homarr",
+  "name": "Homarr",
+  "description": "Dashboard de liens et widgets pour centraliser vos applications self-hosted.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 7575, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/homarr/data", "target": "/app/data" },
+    { "source": "app-data/homarr/configs", "target": "/app/public/custom-icons" }
+  ],
+  "backup": { "enabled": true }
+}

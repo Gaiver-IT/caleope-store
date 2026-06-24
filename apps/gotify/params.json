@@ -1,0 +1,18 @@
+[
+  {
+    "key":         "GOTIFY_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Gotify",
+    "type":        "port",
+    "required":    false,
+    "default":     "8090"
+  },
+  {
+    "key":         "GOTIFY_DEFAULTUSER_PASS",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe du compte admin par défaut",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]
