@@ -1,0 +1,22 @@
+services:
+  kavita:
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/kavita/secrets.env
+    ports:
+      - "${KAVITA_PORT_WEB:-5001}:5000"
+    volumes:
+      - ${CALEOPE_APP_DATA}/kavita/config:/kavita/config
+      - ${CALEOPE_APP_DATA}/kavita/manga:/manga
+      - ${CALEOPE_APP_DATA}/kavita/comics:/comics
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

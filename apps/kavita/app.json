@@ -1,0 +1,22 @@
+{
+  "id": "kavita",
+  "name": "Kavita",
+  "description": "Serveur de lecture auto-hébergé pour mangas, comics, ebooks et BD — interface web et mobile.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 5000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/kavita/config", "target": "/kavita/config" },
+    { "source": "app-data/kavita/manga",  "target": "/manga" },
+    { "source": "app-data/kavita/comics", "target": "/comics" }
+  ],
+  "backup": { "enabled": true }
+}
