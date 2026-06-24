@@ -1,0 +1,26 @@
+{
+  "id": "plex",
+  "name": "Plex",
+  "description": "Serveur multimédia populaire — streamez films, séries et musique sur tous vos appareils.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web",  "container": 32400, "dynamic": true },
+    { "name": "dlna", "container": 1900,  "dynamic": false }
+  ],
+  "volumes": [
+    { "source": "app-data/plex/config",  "target": "/config" },
+    { "source": "app-data/plex/tv",      "target": "/tv" },
+    { "source": "app-data/plex/movies",  "target": "/movies" },
+    { "source": "app-data/plex/music",   "target": "/music" }
+  ],
+  "backup": { "enabled": true }
+}

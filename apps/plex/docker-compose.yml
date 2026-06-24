@@ -1,0 +1,28 @@
+services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_APP_CONFIG}/plex/secrets.env
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - VERSION=docker
+    ports:
+      - "${PLEX_PORT_WEB:-32400}:32400"
+    volumes:
+      - ${CALEOPE_APP_DATA}/plex/config:/config
+      - ${CALEOPE_APP_DATA}/plex/tv:/tv
+      - ${CALEOPE_APP_DATA}/plex/movies:/movies
+      - ${CALEOPE_APP_DATA}/plex/music:/music
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

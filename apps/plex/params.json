@@ -1,0 +1,18 @@
+[
+  {
+    "key":         "PLEX_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Plex (32400 par défaut)",
+    "type":        "port",
+    "required":    false,
+    "default":     "32400"
+  },
+  {
+    "key":         "PLEX_CLAIM",
+    "label":       "Plex Claim Token",
+    "description": "Token de revendication depuis plex.tv/claim (valide 4 minutes)",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]
