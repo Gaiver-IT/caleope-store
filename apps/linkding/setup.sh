@@ -94,7 +94,7 @@ echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 # ── Token API Linkding ────────────────────────────────────────────────────────
 if [ -z "${LINKDING_API_TOKEN}" ]; then
     echo ""
-    echo "→ Attente démarrage Linkding (max 60s)..."
+    echo "→ Génération token API Linkding..."
     _ld_ready=false
     for _i in $(seq 1 20); do
         if curl -sf --max-time 3 "http://localhost:${LINKDING_PORT_WEB}/health" >/dev/null 2>&1; then
@@ -104,19 +104,15 @@ if [ -z "${LINKDING_API_TOKEN}" ]; then
     done
 
     if ${_ld_ready}; then
-        _token_resp=$(curl -sf --max-time 10 -X POST \
-            "http://localhost:${LINKDING_PORT_WEB}/api/auth-token/" \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${LINKDING_ADMIN_USER}\",\"password\":\"${LINKDING_ADMIN_PASS}\"}" 2>/dev/null) || _token_resp=""
-
-        _token=$(echo "${_token_resp}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null) || _token=""
+        _token=$(docker exec linkding python manage.py drf_create_token "${LINKDING_ADMIN_USER}" 2>/dev/null \
+            | grep -oP 'Generated token \K\S+') || _token=""
 
         if [ -n "${_token}" ]; then
             sed -i '/^LINKDING_API_TOKEN/d' "${_SECRETS}"
             echo "LINKDING_API_TOKEN=${_token}" >> "${_SECRETS}"
             echo "  ✓ Token API Linkding généré"
         else
-            echo "  ⚠ Token API non obtenu"
+            echo "  ⚠ Token API non obtenu (générer manuellement dans Paramètres > Intégrations)"
         fi
     fi
 fi
