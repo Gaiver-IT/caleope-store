@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "FILEBROWSER_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface File Browser",
+    "type":        "port",
+    "required":    false,
+    "default":     "8085"
+  }
+]
