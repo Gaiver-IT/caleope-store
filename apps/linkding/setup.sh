@@ -104,8 +104,23 @@ if [ -z "${LINKDING_API_TOKEN}" ]; then
     done
 
     if ${_ld_ready}; then
-        _token=$(docker exec linkding python manage.py drf_create_token "${LINKDING_ADMIN_USER}" 2>/dev/null \
-            | grep -oP 'Generated token \K\S+') || _token=""
+        # linkding 1.31+ utilise bookmarks_apitoken (pas DRF authtoken)
+        _token=$(docker exec linkding python manage.py shell -c "
+import binascii, os
+from django.db import connection
+from django.contrib.auth.models import User
+from django.utils import timezone
+u = User.objects.get(username='${LINKDING_ADMIN_USER}')
+rows = connection.cursor().execute('SELECT key FROM bookmarks_apitoken WHERE user_id=?', [u.id]).fetchall()
+if rows:
+    print(rows[0][0])
+else:
+    key = binascii.hexlify(os.urandom(20)).decode()
+    with connection.cursor() as c:
+        c.execute('INSERT INTO bookmarks_apitoken (key, name, created, user_id) VALUES (?,?,?,?)',
+                  [key, 'caleope', timezone.now().isoformat(), u.id])
+    print(key)
+" 2>/dev/null | tail -1) || _token=""
 
         if [ -n "${_token}" ]; then
             sed -i '/^LINKDING_API_TOKEN/d' "${_SECRETS}"
