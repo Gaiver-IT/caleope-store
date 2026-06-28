@@ -11,13 +11,8 @@ mkdir -p "${DATA_DIR}/"{content,db}
 
 # ── Params ──────────────────────────────────────────────────────────────────
 BLOG_TITLE="${CALEOPE_PARAM_BLOG_TITLE:-Mon Blog}"
-ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-}"
+ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 ADMIN_NAME="${CALEOPE_PARAM_ADMIN_NAME:-Admin}"
-
-if [ -z "${ADMIN_EMAIL}" ]; then
-    echo "❌ ADMIN_EMAIL est requis" >&2
-    exit 1
-fi
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
 DB_ROOT_PASS=$(openssl rand -hex 24)
