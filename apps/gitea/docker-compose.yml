@@ -38,8 +38,9 @@ services:
       - caleope-internal
 
   gitea-bootstrap:
-    image: curlimages/curl:latest
+    image: gitea/gitea:latest
     container_name: gitea-bootstrap
+    user: "git"
     restart: "no"
     depends_on:
       - gitea
@@ -47,6 +48,7 @@ services:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     entrypoint: ["/bin/sh", "/bootstrap.sh"]
     volumes:
+      - {{.BaseDir}}/app-data/gitea/data:/data
       - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
     networks:
       - caleope-internal
