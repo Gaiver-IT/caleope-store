@@ -12,6 +12,12 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/filebrowser:/srv
       - ${CALEOPE_BASE_DIR}/app-data/filebrowser/db/filebrowser.db:/database/filebrowser.db
       - ${CALEOPE_BASE_DIR}/app-data/filebrowser/conf/.filebrowser.json:/.filebrowser.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.filebrowser.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.filebrowser.entrypoints=websecure"
+      - "traefik.http.routers.filebrowser.tls=true"
+      - "traefik.http.services.filebrowser.loadbalancer.server.port=80"
     networks:
       - caleope-public
       - caleope-internal
