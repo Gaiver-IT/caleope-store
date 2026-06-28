@@ -28,10 +28,13 @@ fi
     PIHOLE_WEBPASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-16)
 
 # ── API token = SHA256(SHA256(password)) ──────────────────────────────────────
-PIHOLE_API_TOKEN=$(echo -n "${PIHOLE_WEBPASSWORD}" \
-    | sha256sum | awk '{print $1}' \
-    | xxd -r -p \
-    | sha256sum | awk '{print $1}')
+PIHOLE_API_TOKEN=$(python3 -c "
+import hashlib, sys
+pw = '${PIHOLE_WEBPASSWORD}'
+h1 = hashlib.sha256(pw.encode()).digest()
+h2 = hashlib.sha256(h1).hexdigest()
+print(h2)
+" 2>/dev/null || echo -n "${PIHOLE_WEBPASSWORD}" | sha256sum | awk '{print $1}')
 
 mkdir -p "${CONFIG_DIR}"
 cat > "${_SECRETS}" << ENV
