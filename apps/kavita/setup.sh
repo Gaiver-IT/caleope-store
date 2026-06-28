@@ -9,83 +9,89 @@ mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/config"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/manga"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/kavita/comics"
 
-KAVITA_PORT_WEB=""
+KAVITA_ADMIN_USER="${CALEOPE_PARAM_KAVITA_ADMIN_USER:-admin}"
+KAVITA_ADMIN_EMAIL="${CALEOPE_PARAM_KAVITA_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
+KAVITA_ADMIN_PASSWORD=""
 if [ -f "${_SECRETS}" ]; then
-    KAVITA_PORT_WEB=$(grep "^KAVITA_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    OLD_PASS=$(grep "^KAVITA_ADMIN_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    [ -n "${OLD_PASS}" ] && KAVITA_ADMIN_PASSWORD="${OLD_PASS}"
 fi
-[ -n "${CALEOPE_PARAM_KAVITA_PORT_WEB:-}" ] && KAVITA_PORT_WEB="${CALEOPE_PARAM_KAVITA_PORT_WEB}"
-[ -z "${KAVITA_PORT_WEB}" ] && KAVITA_PORT_WEB="5001"
+[ -n "${CALEOPE_PARAM_KAVITA_ADMIN_PASSWORD:-}" ] && KAVITA_ADMIN_PASSWORD="${CALEOPE_PARAM_KAVITA_ADMIN_PASSWORD}"
+if [ -z "${KAVITA_ADMIN_PASSWORD}" ]; then
+    # Kavita requires: uppercase, lowercase, digit, special char, min 6 chars
+    BASE=$(openssl rand -base64 10 | tr -dc 'A-Za-z0-9' | head -c 10)
+    KAVITA_ADMIN_PASSWORD="${BASE}1!A"
+fi
 
 cat > "${_SECRETS}" <<ENV
-KAVITA_PORT_WEB=${KAVITA_PORT_WEB}
+KAVITA_ADMIN_USER=${KAVITA_ADMIN_USER}
+KAVITA_ADMIN_EMAIL=${KAVITA_ADMIN_EMAIL}
+KAVITA_ADMIN_PASSWORD=${KAVITA_ADMIN_PASSWORD}
 ENV
 chmod 600 "${_SECRETS}"
-echo "  ✓ Kavita configuré"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
+# bootstrap.sh: wait for Kavita then register admin account
+cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
+#!/bin/sh
+set -e
 
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN_AK
-        BASE_DOMAIN_AK=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN_AK}"
+KAVITA_URL="http://kavita.:5000"
+MAX_WAIT=120
+WAITED=0
+
+echo "→ Kavita bootstrap : attente de Kavita..."
+until curl -sf --max-time 5 "${KAVITA_URL}/" >/dev/null 2>&1; do
+    sleep 5
+    WAITED=$((WAITED + 5))
+    if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
+        echo "❌ Kavita non joignable après ${MAX_WAIT}s"
+        exit 1
     fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
+done
+echo "  ✓ Kavita prêt (${WAITED}s)"
 
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
+# Register admin (first call creates admin, subsequent calls fail if user exists)
+RESP=$(curl -sf -X POST "${KAVITA_URL}/api/Account/register" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"${KAVITA_ADMIN_USER}\",\"password\":\"${KAVITA_ADMIN_PASSWORD}\",\"email\":\"${KAVITA_ADMIN_EMAIL}\"}" 2>&1 || echo "")
 
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 6 ] || return 1; sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/flows/instances/?designation=authentication" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['pk'])" 2>/dev/null) || return 1
-
-    local APP_UUID
-    APP_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/core/applications/?slug=${APP_SLUG}" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null) || APP_UUID=""
-
-    if [ -z "${APP_UUID}" ]; then
-        local PROV_ID
-        PROV_ID=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME} Proxy\",\"authorization_flow\":\"${FLOW_UUID}\",\"mode\":\"forward_single\",\"external_host\":\"${APP_URL}\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['pk'])") || return 1
-        curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/core/applications/" \
-            -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROV_ID},\"meta_launch_url\":\"${APP_URL}\"}" >/dev/null || return 1
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
-if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Kavita" "kavita" "https://kavita.${CALEOPE_DOMAIN#*.}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
-    fi
+if echo "${RESP}" | grep -q '"token"'; then
+    echo "  ✓ Compte admin créé"
+elif echo "${RESP}" | grep -q "already\|exist\|409"; then
+    echo "  ✓ Compte admin déjà existant"
+else
+    echo "  ⚠ Réponse : ${RESP}"
 fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
+BOOTSTRAP
+chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-Kavita est démarré.
-Interface : http://<IP>:${KAVITA_PORT_WEB}
 
-Créez le compte admin lors du premier accès.
-Placez vos fichiers dans :
-  Mangas  : ${CALEOPE_BASE_DIR}/app-data/kavita/manga/
-  Comics  : ${CALEOPE_BASE_DIR}/app-data/kavita/comics/
-
-Formats supportés : CBZ, CBR, PDF, EPUB, MOBI, AZW3
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                Kavita — Reader Manga/Comics/PDF                  │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Identifiants admin :                                            │
+  │    Login    : ${KAVITA_ADMIN_USER}
+  │    Password : ${KAVITA_ADMIN_PASSWORD}
+  │    Email    : ${KAVITA_ADMIN_EMAIL}
+  │                                                                  │
+  │  Bibliothèques :                                                 │
+  │    Mangas : /opt/gaiver-it/caleope/app-data/kavita/manga/        │
+  │    Comics : /opt/gaiver-it/caleope/app-data/kavita/comics/       │
+  │                                                                  │
+  │  Formats : CBZ, CBR, PDF, EPUB, MOBI, AZW3                       │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Kavita prêt — http://<IP>:${KAVITA_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║              Kavita — Identifiants admin             ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL  : https://${CALEOPE_DOMAIN}/"
+echo "  ║  Login: ${KAVITA_ADMIN_USER}"
+echo "  ║  Pass : ${KAVITA_ADMIN_PASSWORD}"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ Kavita configuré"

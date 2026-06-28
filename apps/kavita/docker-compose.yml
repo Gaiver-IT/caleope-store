@@ -11,8 +11,28 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/kavita/config:/kavita/config
       - ${CALEOPE_BASE_DIR}/app-data/kavita/manga:/manga
       - ${CALEOPE_BASE_DIR}/app-data/kavita/comics:/comics
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kavita.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.kavita.entrypoints=websecure"
+      - "traefik.http.routers.kavita.tls=true"
+      - "traefik.http.services.kavita.loadbalancer.server.port=5000"
     networks:
       - caleope-public
+      - caleope-internal
+
+  kavita-bootstrap:
+    image: curlimages/curl:latest
+    container_name: kavita-bootstrap
+    restart: "no"
+    depends_on:
+      - kavita
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/kavita/secrets.env
+    entrypoint: ["/bin/sh", "${CALEOPE_BASE_DIR}/app-config/kavita/bootstrap.sh"]
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-config/kavita:${CALEOPE_BASE_DIR}/app-config/kavita
+    networks:
       - caleope-internal
 
 networks:
