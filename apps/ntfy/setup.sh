@@ -8,19 +8,15 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/ntfy/data"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/ntfy/config"
 
-if [ -f "${_SECRETS}" ]; then
-    NTFY_PORT_WEB=$(grep "^NTFY_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
-fi
-
 cat > "${_SECRETS}" <<ENV
 ENV
 chmod 600 "${_SECRETS}"
 
-# Créer la config ntfy si absente
+# ntfy config
 NTFY_CONF="${CALEOPE_BASE_DIR}/app-data/ntfy/config/server.yml"
 if [ ! -f "${NTFY_CONF}" ]; then
     cat > "${NTFY_CONF}" <<CONF
-base-url: "https://ntfy.${CALEOPE_DOMAIN#*.}"
+base-url: "https://${CALEOPE_DOMAIN}"
 listen-http: ":80"
 cache-file: "/var/lib/ntfy/cache.db"
 auth-file: "/var/lib/ntfy/auth.db"
@@ -30,68 +26,29 @@ CONF
     chmod 644 "${NTFY_CONF}"
 fi
 
-echo "  ✓ ntfy configuré"
-
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN
-        BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 6 ] || return 1; sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/flows/instances/?designation=authentication" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['pk'])" 2>/dev/null) || return 1
-
-    local APP_UUID
-    APP_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/core/applications/?slug=${APP_SLUG}" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null) || APP_UUID=""
-
-    if [ -z "${APP_UUID}" ]; then
-        local PROV_ID
-        PROV_ID=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME} Proxy\",\"authorization_flow\":\"${FLOW_UUID}\",\"mode\":\"forward_single\",\"external_host\":\"${APP_URL}\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['pk'])") || return 1
-        curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/core/applications/" \
-            -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROV_ID},\"meta_launch_url\":\"${APP_URL}\"}" >/dev/null || return 1
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
-if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "ntfy" "ntfy" "https://ntfy.${CALEOPE_DOMAIN#*.}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
-    fi
-fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
+# ntfy ne supporte pas nativement OIDC → ForwardAuth Authentik acceptable
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-ntfy est démarré.
-Interface : http://<IP>:${NTFY_PORT_WEB}
 
-Configurer des topics via l'interface web ou l'API REST.
-Docs : https://docs.ntfy.sh/
+  ┌──────────────────────────────────────────────────────────────────┐
+  │               ntfy — Notifications push                          │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Créer un compte admin via CLI :                                 │
+  │    docker exec ntfy ntfy user add --role=admin <username>        │
+  │                                                                  │
+  │  Envoyer une notification :                                      │
+  │    curl -d "Hello" https://${CALEOPE_DOMAIN}/alerts              │
+  │  Docs : https://docs.ntfy.sh/                                    │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ ntfy prêt — http://<IP>:${NTFY_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║           ntfy — Notifications push                  ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL : https://${CALEOPE_DOMAIN}/"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ ntfy configuré"
