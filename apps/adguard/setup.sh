@@ -101,7 +101,7 @@ dns:
     - 9.9.9.9
     - 149.112.112.112
   fallback_dns: []
-  upstream_mode: ""
+  upstream_mode: load_balance
   fastest_timeout: 1s
   allowed_clients: []
   disallowed_clients: []
