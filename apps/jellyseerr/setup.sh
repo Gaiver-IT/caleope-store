@@ -7,79 +7,95 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/jellyseerr/config"
 
-JELLYSEERR_PORT_WEB=""
-if [ -f "${_SECRETS}" ]; then
-    JELLYSEERR_PORT_WEB=$(grep "^JELLYSEERR_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
-fi
-[ -n "${CALEOPE_PARAM_JELLYSEERR_PORT_WEB:-}" ] && JELLYSEERR_PORT_WEB="${CALEOPE_PARAM_JELLYSEERR_PORT_WEB}"
-[ -z "${JELLYSEERR_PORT_WEB}" ] && JELLYSEERR_PORT_WEB="5099"
-
+# Empty secrets.env
 cat > "${_SECRETS}" <<ENV
-JELLYSEERR_PORT_WEB=${JELLYSEERR_PORT_WEB}
 ENV
 chmod 600 "${_SECRETS}"
-echo "  ✓ Jellyseerr configuré"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN_AK
-        BASE_DOMAIN_AK=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN_AK}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 6 ] || return 1; sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/flows/instances/?designation=authentication" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['pk'])" 2>/dev/null) || return 1
-
-    local APP_UUID
-    APP_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/core/applications/?slug=${APP_SLUG}" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null) || APP_UUID=""
-
-    if [ -z "${APP_UUID}" ]; then
-        local PROV_ID
-        PROV_ID=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME} Proxy\",\"authorization_flow\":\"${FLOW_UUID}\",\"mode\":\"forward_single\",\"external_host\":\"${APP_URL}\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['pk'])") || return 1
-        curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/core/applications/" \
-            -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROV_ID},\"meta_launch_url\":\"${APP_URL}\"}" >/dev/null || return 1
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
+# ── OIDC Authentik (natif Jellyseerr v2) ──────────────────────────────────────
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Jellyseerr" "jellyseerr" "https://jellyseerr.${CALEOPE_DOMAIN#*.}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)"
+        AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
+        AK_BASE="http://localhost:${AK_PORT}/api/v3"
+        AK_HA="Authorization: Bearer ${AK_TOKEN}"
+        AK_HJ="Content-Type: application/json"
+
+        AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+        INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+
+        if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+            REDIRECT_URI="https://${CALEOPE_DOMAIN}/auth/oidc/callback"
+
+            EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/providers/oauth2/?search=Jellyseerr" \
+                | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=d.get('results',[])
+if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+" 2>/dev/null || echo "")
+
+            if [ -n "${EXISTING}" ]; then
+                PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
+                SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
+                SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+            else
+                PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/oauth2/" \
+                    -d "{\"name\":\"Jellyseerr\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                    2>/dev/null || echo "")
+                PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_SECRET=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
+            fi
+
+            if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
+                curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/core/applications/" \
+                    -d "{\"name\":\"Jellyseerr\",\"slug\":\"jellyseerr\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                    >/dev/null 2>&1 || true
+
+                cat >> "${_SECRETS}" <<OIDCENV
+
+# OIDC Authentik (natif Jellyseerr v2+)
+JELLYSEERR_OIDC_CLIENT_ID=${SSO_CLIENT_ID}
+JELLYSEERR_OIDC_CLIENT_SECRET=${SSO_CLIENT_SECRET}
+JELLYSEERR_OIDC_ISSUER=https://${AK_DOMAIN}/application/o/jellyseerr/
+OIDCENV
+                echo "  ✓ Jellyseerr OIDC configuré dans Authentik"
+            fi
+        fi
     fi
 fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-Jellyseerr est démarré.
-Interface : http://<IP>:${JELLYSEERR_PORT_WEB}
 
-Configurez la connexion Jellyfin lors du premier accès (assistant de configuration).
-URL Jellyfin interne : http://jellyfin:8096
+  ┌──────────────────────────────────────────────────────────────────┐
+  │               Jellyseerr — Demandes de médias                    │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Premier accès : assistant de configuration Jellyfin             │
+  │    URL Jellyfin interne : http://jellyfin:8096                   │
+  │                                                                  │
+  │  SSO Authentik (OIDC natif Jellyseerr v2) :                      │
+  │    → Paramètres → Général → SSO → Authentik                      │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Jellyseerr prêt — http://<IP>:${JELLYSEERR_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║           Jellyseerr — Demandes de médias            ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL : https://${CALEOPE_DOMAIN}/"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ Jellyseerr configuré"
