@@ -62,6 +62,8 @@ services:
     image: alpine:3.19
     container_name: azuracast-bootstrap
     restart: "no"
+    env_file:
+      - {{.BaseDir}}/app-config/azuracast/secrets.env
     command:
       - /bin/sh
       - -c
