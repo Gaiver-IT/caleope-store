@@ -10,13 +10,8 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/data"
 
 # ── Params ──────────────────────────────────────────────────────────────────
-WG_HOST="${CALEOPE_PARAM_WG_HOST:-}"
+WG_HOST="${CALEOPE_PARAM_WG_HOST:-${CALEOPE_DOMAIN}}"
 WG_DEFAULT_DNS="${CALEOPE_PARAM_WG_DEFAULT_DNS:-1.1.1.1}"
-
-if [ -z "${WG_HOST}" ]; then
-    echo "❌ WG_HOST (IP ou domaine public) est requis" >&2
-    exit 1
-fi
 
 # ── Mot de passe admin (hashé bcrypt — wg-easy v14+ exige PASSWORD_HASH) ──────
 ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 16)
@@ -24,14 +19,22 @@ ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 16)
 # Docker Compose env_file respecte les valeurs entre guillemets simples ($VAR non interpolé)
 ADMIN_HASH_LINE=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep "^PASSWORD_HASH=" || echo "")
 if [ -z "${ADMIN_HASH_LINE}" ]; then
-    # Fallback: générer le hash avec node + bcryptjs si disponible
-    HASH_VAL=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync('${ADMIN_PASS}', 12));" 2>/dev/null || echo "")
+    # Fallback 1: Python bcrypt
+    HASH_VAL=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt(12)).decode())" 2>/dev/null || echo "")
+    if [ -z "${HASH_VAL}" ]; then
+        python3 -m pip install --quiet bcrypt 2>/dev/null || true
+        HASH_VAL=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt(12)).decode())" 2>/dev/null || echo "")
+    fi
+    if [ -z "${HASH_VAL}" ]; then
+        # Fallback 2: node + bcryptjs
+        HASH_VAL=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync('${ADMIN_PASS}', 12));" 2>/dev/null || echo "")
+    fi
     if [ -n "${HASH_VAL}" ]; then
         ADMIN_HASH_LINE="PASSWORD_HASH='${HASH_VAL}'"
     fi
 fi
 if [ -z "${ADMIN_HASH_LINE}" ]; then
-    echo "❌ Impossible de générer le hash bcrypt du mot de passe" >&2
+    echo "❌ Impossible de générer le hash bcrypt du mot de passe (docker run wgpw, python3 bcrypt, node bcryptjs)" >&2
     exit 1
 fi
 
