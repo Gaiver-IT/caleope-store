@@ -11,7 +11,7 @@ services:
       - TZ=Europe/Paris
       - DOCKER_MODS=linuxserver/mods:universal-calibre
     ports:
-      - "${CALIBREWEB_PORT_WEB:-8083}:8083"
+      - "${CALEOPE_PORT_WEB}:8083"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/calibre-web/config:/config
       - ${CALEOPE_BASE_DIR}/app-data/calibre-web/books:/books

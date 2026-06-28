@@ -12,7 +12,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      - "${PIHOLE_PORT_WEB:-8053}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/pihole/etc-pihole:/etc/pihole
       - ${CALEOPE_BASE_DIR}/app-data/pihole/etc-dnsmasq:/etc/dnsmasq.d

@@ -9,7 +9,7 @@ services:
     environment:
       - TZ=Europe/Paris
     ports:
-      - "${HA_PORT_WEB:-8123}:8123"
+      - "${CALEOPE_PORT_WEB}:8123"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/home-assistant/config:/config
     networks:

@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/mealie/secrets.env
     ports:
-      - "${MEALIE_PORT_WEB:-9000}:9000"
+      - "${CALEOPE_PORT_WEB}:9000"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/mealie/data:/app/data
     networks:

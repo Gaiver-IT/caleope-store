@@ -7,7 +7,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/filebrowser/secrets.env
     ports:
-      - "${FILEBROWSER_PORT_WEB:-8085}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/filebrowser:/srv
       - ${CALEOPE_BASE_DIR}/app-data/filebrowser/db/filebrowser.db:/database/filebrowser.db

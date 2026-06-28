@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/uptime-kuma/secrets.env
     ports:
-      - "${UPTIME_KUMA_PORT_WEB:-3025}:3001"
+      - "${CALEOPE_PORT_WEB}:3001"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/uptime-kuma/data:/app/data
     networks:

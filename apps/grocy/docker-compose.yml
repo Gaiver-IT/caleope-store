@@ -10,7 +10,7 @@ services:
       - PGID=1000
       - TZ=Europe/Paris
     ports:
-      - "${GROCY_PORT_WEB:-9283}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/grocy/data:/config
     networks:

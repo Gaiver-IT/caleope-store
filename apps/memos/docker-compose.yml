@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/memos/secrets.env
     ports:
-      - "${MEMOS_PORT_WEB:-5230}:5230"
+      - "${CALEOPE_PORT_WEB}:5230"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/memos/data:/var/opt/memos
     networks:

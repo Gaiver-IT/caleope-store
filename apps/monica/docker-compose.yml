@@ -22,7 +22,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/monica/secrets.env
     ports:
-      - "${MONICA_PORT_WEB:-8082}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/monica/data:/var/www/html/storage
     networks:

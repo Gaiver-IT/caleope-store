@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/freshrss/secrets.env
     ports:
-      - "${FRESHRSS_PORT_WEB:-8065}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/freshrss/data:/var/www/FreshRSS/data
       - ${CALEOPE_BASE_DIR}/app-data/freshrss/extensions:/var/www/FreshRSS/extensions

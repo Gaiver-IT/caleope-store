@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/linkding/secrets.env
     ports:
-      - "${LINKDING_PORT_WEB:-9090}:9090"
+      - "${CALEOPE_PORT_WEB}:9090"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/linkding/data:/etc/linkding/data
     environment:

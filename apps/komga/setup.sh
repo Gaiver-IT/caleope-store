@@ -10,19 +10,15 @@ mkdir -p "${CALEOPE_BASE_DIR}/app-data/komga/comics"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/komga/mangas"
 chown -R 1000:1000 "${CALEOPE_BASE_DIR}/app-data/komga" 2>/dev/null || true
 
-KOMGA_PORT=""
 KOMGA_ADMIN_EMAIL=""
 KOMGA_ADMIN_PASSWORD=""
 if [ -f "${_SECRETS}" ]; then
-    KOMGA_PORT=$(grep "^KOMGA_PORT=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     KOMGA_ADMIN_EMAIL=$(grep "^KOMGA_ADMIN_EMAIL=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     KOMGA_ADMIN_PASSWORD=$(grep "^KOMGA_ADMIN_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${CALEOPE_PARAM_KOMGA_PORT:-}" ] && KOMGA_PORT="${CALEOPE_PARAM_KOMGA_PORT}"
 [ -n "${CALEOPE_PARAM_KOMGA_ADMIN_EMAIL:-}" ] && KOMGA_ADMIN_EMAIL="${CALEOPE_PARAM_KOMGA_ADMIN_EMAIL}"
 [ -n "${CALEOPE_PARAM_KOMGA_ADMIN_PASSWORD:-}" ] && KOMGA_ADMIN_PASSWORD="${CALEOPE_PARAM_KOMGA_ADMIN_PASSWORD}"
 
-[ -z "${KOMGA_PORT}" ] && KOMGA_PORT="8085"
 [ -z "${KOMGA_ADMIN_EMAIL}" ] && KOMGA_ADMIN_EMAIL="admin@${CALEOPE_DOMAIN:-localhost}"
 if [ -z "${KOMGA_ADMIN_PASSWORD}" ]; then
     KOMGA_ADMIN_PASSWORD=$(openssl rand -hex 16)
@@ -41,7 +37,6 @@ komga:
 YAML
 
 cat > "${_SECRETS}" <<ENV
-KOMGA_PORT=${KOMGA_PORT}
 KOMGA_ADMIN_EMAIL=${KOMGA_ADMIN_EMAIL}
 KOMGA_ADMIN_PASSWORD=${KOMGA_ADMIN_PASSWORD}
 ENV
@@ -49,7 +44,7 @@ chmod 600 "${_SECRETS}"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 Komga est démarré.
-Interface : http://<IP>:${KOMGA_PORT}
+Interface : http://<IP>:<PORT_WEB>
 
 Identifiants admin :
   Email    : ${KOMGA_ADMIN_EMAIL}
@@ -62,4 +57,4 @@ Bibliothèques disponibles :
 Pour ajouter vos bibliothèques, allez dans Paramètres → Bibliothèques.
 INFO
 
-echo "✓ Komga prêt — http://<IP>:${KOMGA_PORT}"
+echo "✓ Komga prêt"

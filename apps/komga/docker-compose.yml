@@ -11,7 +11,7 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/komga/comics:/comics
       - ${CALEOPE_BASE_DIR}/app-data/komga/mangas:/mangas
     ports:
-      - "${KOMGA_PORT:-8085}:25600"
+      - "${CALEOPE_PORT_WEB}:25600"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.komga.rule=Host(`komga.${CALEOPE_DOMAIN}`)"

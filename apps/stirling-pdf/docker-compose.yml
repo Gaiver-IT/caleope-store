@@ -4,7 +4,7 @@ services:
     container_name: stirling-pdf
     restart: unless-stopped
     ports:
-      - "${STIRLING_PDF_PORT_WEB:-8088}:8080"
+      - "${CALEOPE_PORT_WEB}:8080"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/stirling-pdf/configs:/configs
       - ${CALEOPE_BASE_DIR}/app-data/stirling-pdf/logs:/logs

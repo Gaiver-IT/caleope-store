@@ -13,7 +13,7 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/code-server/config:/config
       - ${CALEOPE_BASE_DIR}/app-data/code-server/workspace:/workspace
     ports:
-      - "${CODE_SERVER_PORT:-8443}:8080"
+      - "${CALEOPE_PORT_WEB}:8080"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.code-server.rule=Host(`code.${CALEOPE_DOMAIN}`)"

@@ -9,7 +9,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/photoprism/secrets.env
     ports:
-      - "${PHOTOPRISM_PORT_WEB:-2342}:2342"
+      - "${CALEOPE_PORT_WEB}:2342"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/photoprism/originals:/photoprism/originals
       - ${CALEOPE_BASE_DIR}/app-data/photoprism/storage:/photoprism/storage

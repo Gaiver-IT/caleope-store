@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/changedetection/secrets.env
     ports:
-      - "${CHANGEDETECTION_PORT_WEB:-5055}:5000"
+      - "${CALEOPE_PORT_WEB}:5000"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/changedetection/data:/datastore
     networks:

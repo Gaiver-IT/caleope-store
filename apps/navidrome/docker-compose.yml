@@ -7,7 +7,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/navidrome/secrets.env
     ports:
-      - "${NAVIDROME_PORT_WEB:-4533}:4533"
+      - "${CALEOPE_PORT_WEB}:4533"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/navidrome/data:/data
       - ${CALEOPE_BASE_DIR}/app-data/navidrome/music:/music:ro

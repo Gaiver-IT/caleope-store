@@ -9,7 +9,7 @@ services:
       - LOG_LEVEL=debug
       - TZ=Europe/Paris
     ports:
-      - "${JELLYSEERR_PORT_WEB:-5099}:5055"
+      - "${CALEOPE_PORT_WEB}:5055"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/jellyseerr/config:/app/config
     networks:

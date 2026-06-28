@@ -11,7 +11,7 @@ services:
       - TZ=Europe/Paris
       - VERSION=docker
     ports:
-      - "${PLEX_PORT_WEB:-32400}:32400"
+      - "${CALEOPE_PORT_WEB}:32400"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/plex/config:/config
       - ${CALEOPE_BASE_DIR}/app-data/plex/tv:/tv

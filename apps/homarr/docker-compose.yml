@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/homarr/secrets.env
     ports:
-      - "${HOMARR_PORT_WEB:-7575}:7575"
+      - "${CALEOPE_PORT_WEB}:7575"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${CALEOPE_BASE_DIR}/app-data/homarr/data:/app/data

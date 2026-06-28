@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/gotify/secrets.env
     ports:
-      - "${GOTIFY_PORT_WEB:-8090}:80"
+      - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/gotify/data:/app/data
     networks:

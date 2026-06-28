@@ -8,7 +8,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      - "${ADGUARD_PORT_WEB:-3080}:3000"
+      - "${CALEOPE_PORT_WEB}:3000"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/adguard/work:/opt/adguardhome/work
       - ${CALEOPE_BASE_DIR}/app-data/adguard/conf:/opt/adguardhome/conf
