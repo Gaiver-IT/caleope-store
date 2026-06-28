@@ -13,7 +13,7 @@ services:
     environment:
       - TZ=Europe/Paris
       - CRON_MIN=1,31
-      - FRESHRSS_INSTALL=--db-type sqlite --db-base freshrss
+      - FRESHRSS_INSTALL=--default-user ${FRESHRSS_ADMIN_USER:-admin} --db-type sqlite --db-base freshrss
       - FRESHRSS_USER=--username ${FRESHRSS_ADMIN_USER:-admin} --password ${FRESHRSS_ADMIN_PASS}
     networks:
       - caleope-public
