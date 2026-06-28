@@ -15,6 +15,12 @@ services:
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/calibre-web/config:/config
       - ${CALEOPE_BASE_DIR}/app-data/calibre-web/books:/books
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calibre-web.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.calibre-web.entrypoints=websecure"
+      - "traefik.http.routers.calibre-web.tls=true"
+      - "traefik.http.services.calibre-web.loadbalancer.server.port=8083"
     networks:
       - caleope-public
       - caleope-internal
