@@ -86,55 +86,43 @@ fi
 [ -z "${MEMOS_ADMIN_USER}" ] && MEMOS_ADMIN_USER="admin"
 [ -z "${MEMOS_ADMIN_PASS}" ] && MEMOS_ADMIN_PASS="$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)"
 
-# Attendre que memos soit prêt
-_mm_ready=false
-echo "→ Attente démarrage Memos..."
-for _i in $(seq 1 20); do
-    if curl -sf --max-time 3 "http://localhost:${MEMOS_PORT_WEB}/api/v1/auth/status" >/dev/null 2>&1; then
-        _mm_ready=true; break
-    fi
-    sleep 3
+# setup.sh tourne à l'étape 7 (avant docker compose up étape 9).
+# La création du compte admin se fait via le bootstrap container après démarrage.
+echo "  → Compte admin Memos sera créé au démarrage du container"
+
+# ── bootstrap.sh (crée le compte admin après démarrage) ──────────────────────
+cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
+#!/bin/sh
+set -e
+
+MEMOS_URL="http://memos:5230"
+MAX_WAIT=120
+WAITED=0
+
+echo "→ Memos bootstrap : attente de l'API..."
+until curl -sf --max-time 3 "${MEMOS_URL}/api/v1/auth/status" >/dev/null 2>&1; do
+    sleep 5
+    WAITED=$((WAITED + 5))
+    [ "${WAITED}" -lt "${MAX_WAIT}" ] || { echo "⚠ Memos non joignable — skip bootstrap"; exit 0; }
 done
+echo "  ✓ API Memos prête (${WAITED}s)"
 
-if ${_mm_ready}; then
-    # Créer l'utilisateur admin (idempotent - ignore si déjà existant)
-    curl -sf --max-time 10 -X POST "http://localhost:${MEMOS_PORT_WEB}/api/v1/users" \
-        -H "Content-Type: application/json" \
-        -d "{\"username\":\"${MEMOS_ADMIN_USER}\",\"password\":\"${MEMOS_ADMIN_PASS}\",\"role\":\"HOST\"}" \
-        >/dev/null 2>&1 || true
-    echo "  ✓ Compte admin Memos configuré"
+# Créer le premier utilisateur HOST (sera admin)
+RESP=$(curl -s --max-time 10 -X POST "${MEMOS_URL}/api/v1/users" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"${MEMOS_ADMIN_USER}\",\"password\":\"${MEMOS_ADMIN_PASS}\",\"role\":\"HOST\"}" 2>/dev/null || echo "")
 
-    # Générer un JWT access token en lisant la secretKey depuis la DB memos
-    # (compatible memos v0.29+ — le signin bcrypt ne fonctionne pas depuis un script externe)
-    if [ -z "${MEMOS_API_TOKEN}" ]; then
-        _db="${CALEOPE_BASE_DIR}/app-data/memos/data/memos_prod.db"
-        _token=$(python3 - "${_db}" "${MEMOS_ADMIN_USER}" <<'PYEOF' 2>/dev/null
-import sys, json, base64, hmac, hashlib, time, sqlite3
-db_path, username = sys.argv[1], sys.argv[2]
-try:
-    conn = sqlite3.connect(db_path)
-    row = conn.execute("SELECT value FROM system_setting WHERE name='BASIC'").fetchone()
-    conn.close()
-    if not row: sys.exit(1)
-    secret_key = json.loads(row[0])['secretKey']
-    def b64u(d):
-        if isinstance(d, dict): d = json.dumps(d, separators=(',',':')).encode()
-        return base64.urlsafe_b64encode(d).rstrip(b'=').decode()
-    h = {'alg':'HS256','typ':'JWT'}
-    p = {'name':f'users/{username}','iat':int(time.time()),'exp':int(time.time())+86400*3650}
-    s = f'{b64u(h)}.{b64u(p)}'
-    sig = hmac.new(secret_key.encode(), s.encode(), hashlib.sha256).digest()
-    print(f'{s}.{b64u(sig)}')
-except Exception as e:
-    sys.exit(1)
-PYEOF
-) || _token=""
-        if [ -n "${_token}" ]; then
-            MEMOS_API_TOKEN="${_token}"
-            echo "  ✓ Token JWT Memos généré"
-        fi
-    fi
+if echo "${RESP}" | grep -q '"id"'; then
+    echo "  ✓ Compte admin Memos créé : ${MEMOS_ADMIN_USER}"
+elif echo "${RESP}" | grep -qi "already\|exists\|found"; then
+    echo "  ✓ Admin déjà existant"
+else
+    echo "  ⚠ Création admin : ${RESP}"
 fi
+
+echo "✓ Memos bootstrap terminé"
+BOOTSTRAP
+chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
 # Stocker les credentials
 {

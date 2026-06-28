@@ -45,58 +45,26 @@ _SMTP_USER=${SMTP_USER}
 _SMTP_PASS=${SMTP_PASS}
 _SMTP_FROM=${SMTP_FROM}
 
-# Admin auto-créé au premier démarrage
+# Admin auto-créé par le bootstrap container
 IMMICH_ADMIN_EMAIL=${ADMIN_EMAIL}
 IMMICH_ADMIN_PASS=${ADMIN_PASS}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── Auto-création du compte admin ────────────────────────────────────────────
-# Attendre qu'Immich soit prêt, puis créer l'admin via l'API sign-up.
-# L'endpoint /api/auth/admin-sign-up n'existe que si aucun admin n'existe encore.
-# On détecte le port Traefik ou le port direct de l'app.
-IMMICH_PORT=$(grep "CALEOPE_PORT_IMMICH" "${CALEOPE_BASE_DIR}/app-ports.conf" 2>/dev/null | cut -d= -f2- || echo "")
-if [ -z "${IMMICH_PORT}" ]; then
-    IMMICH_PORT=$(grep -r "immich" "${CALEOPE_APP_DIR}/compose.yml" 2>/dev/null | grep -o '[0-9]*:2283' | cut -d: -f1 | head -1 || echo "2283")
-fi
-IMMICH_URL="http://localhost:${IMMICH_PORT}"
-
-echo "  → Attente du démarrage d'Immich (max 120s)..."
-WAITED=0
-until curl -sf --max-time 5 "${IMMICH_URL}/api/server/about" >/dev/null 2>&1; do
-    sleep 5
-    WAITED=$((WAITED + 5))
-    [ "${WAITED}" -lt 120 ] || break
-done
-
-echo "  → Création du compte admin Immich..."
-SIGNUP_RESP=$(curl -s --max-time 10 -X POST "${IMMICH_URL}/api/auth/admin-sign-up" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\",\"name\":\"${ADMIN_NAME}\"}" 2>/dev/null || echo "")
-
-if echo "${SIGNUP_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('email') else 1)" 2>/dev/null; then
-    echo "  ✓ Admin Immich créé : ${ADMIN_EMAIL}"
-elif echo "${SIGNUP_RESP}" | grep -q "already"; then
-    echo "  ⚠ Admin déjà existant (installation précédente)"
-else
-    echo "  ⚠ Création admin : ${SIGNUP_RESP}"
-fi
-
 # ── SSO OAuth2 via Authentik ─────────────────────────────────────────────────
-# Immich supporte OAuth2 natif. On crée un provider OIDC dans Authentik et on
-# configure Immich via son API. Immich (Node.js) doit joindre Authentik → on
-# injecte NODE_EXTRA_CA_CERTS + extra_hosts dans le compose pour contourner
-# le hairpin NAT et le cert auto-signé Traefik.
+# Immich supporte OAuth2 natif. On crée un provider OIDC dans Authentik ici
+# (Authentik est déjà en cours depuis la machine hôte).
+# La configuration dans Immich se fait via le bootstrap container (après démarrage).
+IMMICH_OIDC_SECRET=""
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${AK_SECRETS}" ]; then
         AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2- || echo "authentik.${BASE_DOMAIN}")
-        [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.${BASE_DOMAIN}"
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2- || echo "")
+        [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.${CALEOPE_DOMAIN#*.}"
 
         if [ -n "${AK_TOKEN}" ]; then
-            AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null)
-            AK_PORT="${AK_PORT:-9000}"
+            AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
             AK_BASE="http://localhost:${AK_PORT}/api/v3"
             AK_HA="Authorization: Bearer ${AK_TOKEN}"
             AK_HJ="Content-Type: application/json"
@@ -136,19 +104,19 @@ print(json.dumps({
                         -d "{\"name\":\"Immich\",\"slug\":\"immich-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
                         >/dev/null 2>&1 || true
 
-                    # Groupes Authentik par app
-                    USERS_GRP=$(curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    # Groupes Authentik
+                    curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
                         "${AK_BASE}/core/groups/" \
                         -d "{\"name\":\"caleope-immich-users\",\"is_superuser\":false}" \
-                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-                    ADMINS_GRP=$(curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        >/dev/null 2>&1 || true
+                    curl -sf --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
                         "${AK_BASE}/core/groups/" \
                         -d "{\"name\":\"caleope-immich-admins\",\"is_superuser\":false}" \
-                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                        >/dev/null 2>&1 || true
 
-                    # extra_hosts + NODE_EXTRA_CA_CERTS pour joindre Authentik depuis Immich
+                    # extra_hosts + cert Traefik pour que Immich joigne Authentik
                     TRAEFIK_IP=$(docker inspect traefik \
-                        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $1}')
+                        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $1}' || echo "")
                     TRAEFIK_CERT="${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
 
                     if [ -n "${TRAEFIK_IP}" ] && [ -f "${TRAEFIK_CERT}" ]; then
@@ -173,76 +141,95 @@ in_svc && /^    volumes:/ && !vol_done {
                         mv /tmp/immich_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
                     fi
 
-                    # Configurer OAuth2 dans Immich via l'API
-                    WAITED_SSO=0
-                    until curl -sf --max-time 5 "${IMMICH_URL}/api/server/about" >/dev/null 2>&1; do
-                        sleep 5; WAITED_SSO=$((WAITED_SSO + 5))
-                        [ "${WAITED_SSO}" -lt 60 ] || break
-                    done
-
-                    IMMICH_TOKEN=$(curl -sf --max-time 10 -X POST "${IMMICH_URL}/api/auth/login" \
-                        -H "Content-Type: application/json" \
-                        -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\"}" \
-                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null || echo "")
-
-                    if [ -n "${IMMICH_TOKEN}" ]; then
-                        CURR_CFG=$(curl -sf "${IMMICH_URL}/api/system-config" -H "Authorization: Bearer ${IMMICH_TOKEN}" 2>/dev/null || echo "{}")
-                        python3 - << PYEOF
-import json
-try:
-    d = json.loads('''${CURR_CFG}''')
-except:
-    d = {}
-d["oauth"] = {
-    "enabled": True,
-    "issuerUrl": "https://${AK_DOMAIN}/application/o/immich-sso/",
-    "clientId": "immich",
-    "clientSecret": "${IMMICH_OIDC_SECRET}",
-    "scope": "openid email profile",
-    "signingAlgorithm": "RS256",
-    "profileSigningAlgorithm": "none",
-    "tokenEndpointAuthMethod": "client_secret_post",
-    "storageLabelClaim": "preferred_username",
-    "storageQuotaClaim": "immich_quota",
-    "roleClaim": "immich_role",
-    "defaultStorageQuota": None,
-    "timeout": 30000,
-    "buttonText": "Se connecter avec Authentik",
-    "autoRegister": True,
-    "autoLaunch": False,
-    "mobileOverrideEnabled": False,
-    "mobileRedirectUri": ""
-}
-import subprocess
-r = subprocess.run(
-    ["curl","-sf","-X","PUT","${IMMICH_URL}/api/system-config",
-     "-H","Content-Type: application/json",
-     "-H","Authorization: Bearer ${IMMICH_TOKEN}",
-     "-d",json.dumps(d)],
-    capture_output=True, text=True)
-out = r.stdout
-try:
-    res = json.loads(out)
-    enabled = res.get("oauth", {}).get("enabled", False)
-    print("  ✓ Immich OAuth2 configuré (enabled=" + str(enabled) + ")")
-except:
-    print("  ⚠ Config OAuth2 : " + out[:100])
-PYEOF
-                    else
-                        echo "  ⚠ Login Immich échoué — OAuth2 à configurer manuellement"
-                    fi
-
+                    # Stocker les credentials OIDC pour le bootstrap container
                     cat >> "${CONFIG_DIR}/secrets.env" << OIDCENV
 IMMICH_OIDC_CLIENT_ID=immich
 IMMICH_OIDC_CLIENT_SECRET=${IMMICH_OIDC_SECRET}
+IMMICH_OIDC_ISSUER_URL=https://${AK_DOMAIN}/application/o/immich-sso/
 OIDCENV
                     echo "  ✓ Immich OAuth2 configuré dans Authentik (PK=${PROV_PK})"
-                    [ -n "${USERS_GRP}" ] && echo "  ✓ Groupes créés: caleope-immich-users / caleope-immich-admins"
                 fi
             fi
         fi
     fi
 fi
+
+# ── bootstrap.sh (admin signup + OAuth2 Immich après démarrage) ──────────────
+# setup.sh tourne à l'étape 7 (avant docker compose up étape 9).
+# Le bootstrap container attend qu'Immich soit prêt, crée l'admin et configure OAuth2.
+cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
+#!/bin/sh
+set -e
+
+IMMICH_URL="http://immich-server:2283"
+MAX_WAIT=180
+WAITED=0
+
+echo "→ Immich bootstrap : attente de l'API..."
+until curl -sf --max-time 5 "${IMMICH_URL}/api/server/about" >/dev/null 2>&1; do
+    sleep 5
+    WAITED=$((WAITED + 5))
+    [ "${WAITED}" -lt "${MAX_WAIT}" ] || { echo "⚠ Immich non joignable après ${MAX_WAIT}s — skip"; exit 0; }
+done
+echo "  ✓ API Immich prête (${WAITED}s)"
+
+# Créer le compte admin (idempotent via /api/auth/admin-sign-up)
+echo "→ Création du compte admin Immich..."
+SIGNUP_RESP=$(curl -s --max-time 10 -X POST "${IMMICH_URL}/api/auth/admin-sign-up" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"${IMMICH_ADMIN_EMAIL}\",\"password\":\"${IMMICH_ADMIN_PASS}\",\"name\":\"Admin\"}" 2>/dev/null || echo "")
+
+if echo "${SIGNUP_RESP}" | grep -q '"email"'; then
+    echo "  ✓ Admin Immich créé : ${IMMICH_ADMIN_EMAIL}"
+elif echo "${SIGNUP_RESP}" | grep -qi "already\|exists"; then
+    echo "  ✓ Admin déjà existant"
+else
+    echo "  ⚠ Signup: ${SIGNUP_RESP}"
+fi
+
+# Configurer OAuth2 si OIDC credentials disponibles
+if [ -n "${IMMICH_OIDC_CLIENT_SECRET:-}" ] && [ -n "${IMMICH_OIDC_ISSUER_URL:-}" ]; then
+    echo "→ Configuration OAuth2 Immich..."
+    TOKEN=$(curl -sf --max-time 10 -X POST "${IMMICH_URL}/api/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"email\":\"${IMMICH_ADMIN_EMAIL}\",\"password\":\"${IMMICH_ADMIN_PASS}\"}" \
+        | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4 || echo "")
+
+    if [ -n "${TOKEN}" ]; then
+        CURR_CFG=$(curl -sf "${IMMICH_URL}/api/system-config" -H "Authorization: Bearer ${TOKEN}" 2>/dev/null || echo "{}")
+        NEW_CFG=$(echo "${CURR_CFG}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+d['oauth'] = {
+    'enabled': True,
+    'issuerUrl': '${IMMICH_OIDC_ISSUER_URL}',
+    'clientId': '${IMMICH_OIDC_CLIENT_ID}',
+    'clientSecret': '${IMMICH_OIDC_CLIENT_SECRET}',
+    'scope': 'openid email profile',
+    'signingAlgorithm': 'RS256',
+    'profileSigningAlgorithm': 'none',
+    'tokenEndpointAuthMethod': 'client_secret_post',
+    'storageLabelClaim': 'preferred_username',
+    'buttonText': 'Se connecter avec Authentik',
+    'autoRegister': True,
+    'autoLaunch': False,
+}
+print(json.dumps(d))
+" 2>/dev/null || echo "")
+        if [ -n "${NEW_CFG}" ]; then
+            curl -sf -X PUT "${IMMICH_URL}/api/system-config" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -d "${NEW_CFG}" >/dev/null 2>&1 && echo "  ✓ OAuth2 Immich configuré" || echo "  ⚠ OAuth2 config échouée"
+        fi
+    else
+        echo "  ⚠ Login Immich échoué — OAuth2 à configurer manuellement"
+    fi
+fi
+
+echo "✓ Immich bootstrap terminé"
+BOOTSTRAP
+chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 
 # ── post-install.txt ─────────────────────────────────────────────────────────
 cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF

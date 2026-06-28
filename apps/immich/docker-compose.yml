@@ -57,6 +57,20 @@ services:
     networks:
       - caleope-internal
 
+  immich-bootstrap:
+    image: alpine:3.19
+    container_name: immich-bootstrap
+    restart: "no"
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache curl python3 >/dev/null 2>&1 && sh /bootstrap.sh"]
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
+    depends_on:
+      - immich-server
+    networks:
+      - caleope-internal
+
 networks:
   caleope-public:
     external: true
