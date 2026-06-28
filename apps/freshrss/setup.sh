@@ -19,9 +19,23 @@ fi
 [ -z "${FRESHRSS_ADMIN_USER}" ] && FRESHRSS_ADMIN_USER="admin"
 [ -z "${FRESHRSS_ADMIN_PASS}" ] && FRESHRSS_ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 
+# OIDC_CLIENT_CRYPTO_KEY et OIDC_REMOTE_USER_CLAIM sont requis par le config Apache
+# même quand OIDC_ENABLED=0 — Apache les évalue au parse et échoue s'ils sont absents.
+OIDC_CRYPTO_KEY=$(openssl rand -hex 32)
+
 cat > "${_SECRETS}" <<ENV
 FRESHRSS_ADMIN_USER=${FRESHRSS_ADMIN_USER}
 FRESHRSS_ADMIN_PASS=${FRESHRSS_ADMIN_PASS}
+
+# Requis par Apache mod_auth_openidc (même sans OIDC actif)
+OIDC_ENABLED=0
+OIDC_CLIENT_ID=
+OIDC_CLIENT_SECRET=
+OIDC_PROVIDER_METADATA_URL=
+OIDC_CLIENT_CRYPTO_KEY=${OIDC_CRYPTO_KEY}
+OIDC_REMOTE_USER_CLAIM=preferred_username
+OIDC_SCOPES=openid email profile
+OIDC_X_FORWARDED_HEADERS=X-Forwarded-Host X-Forwarded-Port X-Forwarded-Proto
 ENV
 chmod 600 "${_SECRETS}"
 echo "  ✓ FreshRSS configuré"
@@ -78,15 +92,20 @@ if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['clien
                     -d "{\"name\":\"FreshRSS\",\"slug\":\"freshrss\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
                     >/dev/null 2>&1 || true
 
-                cat >> "${_SECRETS}" <<OIDCENV
+                # Réécrire secrets.env avec OIDC activé (remplace les placeholders)
+                cat > "${_SECRETS}" <<OIDCENV
+FRESHRSS_ADMIN_USER=${FRESHRSS_ADMIN_USER}
+FRESHRSS_ADMIN_PASS=${FRESHRSS_ADMIN_PASS}
 
-# OIDC Authentik (natif FreshRSS)
+# OIDC Authentik (natif FreshRSS via mod_auth_openidc)
 OIDC_ENABLED=1
 OIDC_CLIENT_ID=${SSO_CLIENT_ID}
 OIDC_CLIENT_SECRET=${SSO_CLIENT_SECRET}
 OIDC_PROVIDER_METADATA_URL=https://${AK_DOMAIN}/application/o/freshrss/.well-known/openid-configuration
+OIDC_CLIENT_CRYPTO_KEY=${OIDC_CRYPTO_KEY}
+OIDC_REMOTE_USER_CLAIM=preferred_username
 OIDC_SCOPES=openid email profile
-OIDC_X_FORWARDED_HEADERS=HTTP_X_FORWARDED_HOST HTTP_X_FORWARDED_PORT HTTP_X_FORWARDED_PROTO
+OIDC_X_FORWARDED_HEADERS=X-Forwarded-Host X-Forwarded-Port X-Forwarded-Proto
 OIDCENV
                 echo "  ✓ FreshRSS OIDC configuré dans Authentik"
             fi
