@@ -95,7 +95,7 @@ cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
 #!/bin/sh
 set -e
 
-MEMOS_URL="http://memos:5230"
+MEMOS_URL="http://memos.:5230"
 MAX_WAIT=120
 WAITED=0
 

@@ -70,7 +70,7 @@ cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
 #!/bin/sh
 set -e
 
-GHOST_URL="http://ghost:2368"
+GHOST_URL="http://ghost.:2368"
 MAX_WAIT=120
 WAITED=0
 

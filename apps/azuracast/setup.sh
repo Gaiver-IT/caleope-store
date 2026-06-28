@@ -170,7 +170,7 @@ cat > "${CONFIG_DIR}/bootstrap.sh" <<'BOOTSTRAP'
 #!/bin/bash
 set -euo pipefail
 
-AZ_URL="http://azuracast:80"
+AZ_URL="http://azuracast.:80"
 ADMIN_EMAIL="${AZURACAST_ADMIN_EMAIL:-admin@azuracast.local}"
 ADMIN_PASSWORD="${AZURACAST_ADMIN_PASSWORD:-changeme}"
 STATION_NAME="${AZURACAST_STATION_NAME:-Ma Radio}"

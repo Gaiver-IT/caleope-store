@@ -161,7 +161,7 @@ cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
 #!/bin/sh
 set -e
 
-IMMICH_URL="http://immich-server:2283"
+IMMICH_URL="http://immich-server.:2283"
 MAX_WAIT=180
 WAITED=0
 
