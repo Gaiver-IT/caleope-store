@@ -22,19 +22,7 @@ fi
 [ -z "${KOMGA_ADMIN_EMAIL}" ] && KOMGA_ADMIN_EMAIL="admin@${CALEOPE_DOMAIN:-localhost}"
 if [ -z "${KOMGA_ADMIN_PASSWORD}" ]; then
     KOMGA_ADMIN_PASSWORD=$(openssl rand -hex 16)
-    echo "  ✓ Mot de passe admin généré"
 fi
-
-# application.yml — définit le compte admin
-mkdir -p "${CALEOPE_BASE_DIR}/app-data/komga/config"
-cat > "${CALEOPE_BASE_DIR}/app-data/komga/config/application.yml" <<YAML
-komga:
-  initial-user:
-    email: ${KOMGA_ADMIN_EMAIL}
-    password: ${KOMGA_ADMIN_PASSWORD}
-  oauth2:
-    create-user-if-not-exists: true
-YAML
 
 cat > "${_SECRETS}" <<ENV
 KOMGA_ADMIN_EMAIL=${KOMGA_ADMIN_EMAIL}
@@ -42,19 +30,72 @@ KOMGA_ADMIN_PASSWORD=${KOMGA_ADMIN_PASSWORD}
 ENV
 chmod 600 "${_SECRETS}"
 
+# bootstrap.sh: wait for Komga then claim via /api/v1/claim
+cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
+#!/bin/sh
+set -e
+
+KOMGA_URL="http://komga.:25600"
+MAX_WAIT=120
+WAITED=0
+
+echo "→ Komga bootstrap : attente de Komga..."
+until curl -sf --max-time 5 "${KOMGA_URL}/api/v1/claim" >/dev/null 2>&1; do
+    sleep 5
+    WAITED=$((WAITED + 5))
+    if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
+        echo "❌ Komga non joignable après ${MAX_WAIT}s"
+        exit 1
+    fi
+done
+echo "  ✓ Komga prêt (${WAITED}s)"
+
+# Check if already claimed
+IS_CLAIMED=$(curl -sf "${KOMGA_URL}/api/v1/claim" 2>/dev/null | grep -c '"isClaimed":true' || true)
+if [ "${IS_CLAIMED}" -gt 0 ]; then
+    echo "  ✓ Komga déjà configuré — bootstrap ignoré"
+    exit 0
+fi
+
+# Claim via X-Komga-Email / X-Komga-Password headers
+RESULT=$(curl -sf -X POST "${KOMGA_URL}/api/v1/claim" \
+    -H "X-Komga-Email: ${KOMGA_ADMIN_EMAIL}" \
+    -H "X-Komga-Password: ${KOMGA_ADMIN_PASSWORD}" \
+    -H "Content-Type: application/json" \
+    -d "{}" 2>&1 || echo "")
+
+if echo "${RESULT}" | grep -q '"email"'; then
+    echo "  ✓ Compte admin créé"
+else
+    echo "  ⚠ Réponse inattendue : ${RESULT}"
+fi
+BOOTSTRAP
+chmod 644 "${CONFIG_DIR}/bootstrap.sh"
+
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-Komga est démarré.
-Interface : http://<IP>:<PORT_WEB>
 
-Identifiants admin :
-  Email    : ${KOMGA_ADMIN_EMAIL}
-  Password : ${KOMGA_ADMIN_PASSWORD}
-
-Bibliothèques disponibles :
-  Comics : ${CALEOPE_BASE_DIR}/app-data/komga/comics/
-  Mangas : ${CALEOPE_BASE_DIR}/app-data/komga/mangas/
-
-Pour ajouter vos bibliothèques, allez dans Paramètres → Bibliothèques.
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                    Komga — Comics & Mangas                       │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://komga.${CALEOPE_DOMAIN}/                    │
+  │                                                                  │
+  │  Identifiants admin :                                            │
+  │    Email    : ${KOMGA_ADMIN_EMAIL}
+  │    Password : ${KOMGA_ADMIN_PASSWORD}
+  │                                                                  │
+  │  Bibliothèques :                                                 │
+  │    Comics : /opt/gaiver-it/caleope/app-data/komga/comics/        │
+  │    Mangas : /opt/gaiver-it/caleope/app-data/komga/mangas/        │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Komga prêt"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║               Komga — Identifiants admin             ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL  : https://komga.${CALEOPE_DOMAIN}/"
+echo "  ║  Email: ${KOMGA_ADMIN_EMAIL}"
+echo "  ║  Pass : ${KOMGA_ADMIN_PASSWORD}"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ Komga configuré"

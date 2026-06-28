@@ -19,3 +19,26 @@ services:
       - "traefik.http.routers.komga.tls=true"
       - "traefik.http.services.komga.loadbalancer.server.port=25600"
     restart: unless-stopped
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  komga-bootstrap:
+    image: curlimages/curl:latest
+    container_name: komga-bootstrap
+    restart: "no"
+    depends_on:
+      - komga
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/komga/secrets.env
+    entrypoint: ["/bin/sh", "${CALEOPE_BASE_DIR}/app-config/komga/bootstrap.sh"]
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-config/komga:${CALEOPE_BASE_DIR}/app-config/komga
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
