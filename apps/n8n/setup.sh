@@ -6,6 +6,8 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/n8n/data"
+# n8n runs as uid 1000 (node) — ensure write access to data dir
+chmod 777 "${CALEOPE_BASE_DIR}/app-data/n8n/data"
 
 N8N_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
