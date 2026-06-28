@@ -16,7 +16,7 @@ services:
       - /dev/sda:/dev/sda
       - /dev/sdb:/dev/sdb
     ports:
-      - "${SCRUTINY_PORT:-8086}:8080"
+      - "${CALEOPE_PORT_WEB}:8080"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.scrutiny.rule=Host(`scrutiny.${CALEOPE_DOMAIN}`)"

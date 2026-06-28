@@ -6,7 +6,7 @@ services:
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/n8n/secrets.env
     ports:
-      - "${N8N_PORT_WEB:-5678}:5678"
+      - "${CALEOPE_PORT_WEB}:5678"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/n8n/data:/home/node/.n8n
     networks:

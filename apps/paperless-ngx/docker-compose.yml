@@ -31,7 +31,7 @@ services:
       - paperless-broker
       - paperless-db
     ports:
-      - "${PAPERLESS_PORT_WEB:-8080}:8000"
+      - "${CALEOPE_PORT_WEB}:8000"
     env_file:
       - ${CALEOPE_BASE_DIR}/app-config/paperless-ngx/secrets.env
     environment:
