@@ -207,60 +207,69 @@ fi
 
 # ── Vérifier si le setup est déjà fait ──────────────────────────────
 sleep 3
-REDIRECT_URL=$(curl -sf -o /dev/null -w "%{redirect_url}" "${AZ_URL}/" 2>/dev/null) || REDIRECT_URL=""
+AZ_COOKIE_JAR="/tmp/az_bootstrap_cookies.txt"
+EFFECTIVE_URL=$(curl -s -c "${AZ_COOKIE_JAR}" -o /dev/null -w "%{url_effective}" -L "${AZ_URL}/" 2>/dev/null) || EFFECTIVE_URL=""
+echo "  URL effective: ${EFFECTIVE_URL}"
 
-if echo "${REDIRECT_URL}" | grep -q "/setup"; then
+if echo "${EFFECTIVE_URL}" | grep -q "/setup"; then
     echo "  → Wizard de setup détecté — création du compte admin..."
 
-    # Étape 1 : créer le compte administrateur via l'API de setup
-    SETUP_RESP=$(curl -sf -X POST "${AZ_URL}/api/frontend/setup/registration" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"username\": \"Admin\",
-            \"email\": \"${ADMIN_EMAIL}\",
-            \"password\": \"${ADMIN_PASSWORD}\",
-            \"password_confirm\": \"${ADMIN_PASSWORD}\"
-        }" 2>/dev/null) || SETUP_RESP=""
+    # AzuraCast setup utilise un formulaire web avec CSRF (pas l'API REST).
+    # Étape 1 : GET /setup/register pour récupérer le token CSRF
+    REGISTER_URL="${AZ_URL}/setup/register"
+    SETUP_HTML=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" "${REGISTER_URL}" 2>/dev/null) || SETUP_HTML=""
+    FORM_CSRF=$(echo "${SETUP_HTML}" | grep -o '"csrf":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "  → CSRF formulaire: ${FORM_CSRF:-<non trouvé>}"
 
-    if [[ -n "${SETUP_RESP}" ]]; then
-        echo "  ✓ Compte admin créé (${ADMIN_EMAIL})"
+    if [[ -n "${FORM_CSRF}" ]]; then
+        # Étape 2 : POST le formulaire avec le CSRF (pas JSON — form-urlencoded)
+        SETUP_CODE=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" \
+            -X POST "${REGISTER_URL}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "username=${ADMIN_EMAIL}" \
+            --data-urlencode "password=${ADMIN_PASSWORD}" \
+            --data-urlencode "csrf=${FORM_CSRF}" \
+            -o /dev/null -w "%{http_code}" 2>/dev/null) || SETUP_CODE="000"
+        if [[ "${SETUP_CODE}" == "302" || "${SETUP_CODE}" == "200" ]]; then
+            echo "  ✓ Compte admin créé (${ADMIN_EMAIL}) — HTTP ${SETUP_CODE}"
+        else
+            echo "  ⚠ Création compte — HTTP ${SETUP_CODE} — vérification manuelle requise"
+        fi
     else
-        echo "  ⚠ L'API de setup n'a pas répondu — le compte devra être créé via le wizard web"
-        echo "    → Utilise les identifiants affichés dans post-install.txt"
+        echo "  ⚠ CSRF introuvable — création admin ignorée"
     fi
 else
-    echo "  ℹ AzuraCast déjà configuré (pas de redirect vers /setup)"
+    echo "  ℹ AzuraCast déjà configuré"
 fi
 
-# ── Obtenir un token API ─────────────────────────────────────────────
-sleep 2
-AZ_TOKEN=$(curl -sf -X POST "${AZ_URL}/api/user/login" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" 2>/dev/null \
-    | jq -r '.api_key // empty' 2>/dev/null) || AZ_TOKEN=""
+# ── Obtenir le CSRF API et créer la station ─────────────────────────
+# AzuraCast n'a pas d'endpoint /api/user/login. L'auth est session-based.
+# Les POST à l'API requièrent le header X-API-CSRF extrait de la page dashboard.
+sleep 3
+DASH_HTML=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" "${AZ_URL}/dashboard" 2>/dev/null) || DASH_HTML=""
+API_CSRF=$(echo "${DASH_HTML}" | grep -o '"apiCsrf":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "  → API CSRF: ${API_CSRF:-<non trouvé>}"
 
-if [[ -z "${AZ_TOKEN}" ]]; then
-    echo "  ⚠ Impossible d'obtenir le token API — configuration de la station ignorée"
-    echo "    (Si le compte admin n'a pas été créé, complète le wizard web puis ajoute ta station)"
+if [[ -z "${API_CSRF}" ]]; then
+    echo "  ⚠ API CSRF introuvable — configuration de la station ignorée"
+    echo "    → Créer la station manuellement dans l'interface AzuraCast"
 else
-    echo "  ✓ Authentification API réussie"
-
     # ── Vérifier si une station existe déjà ─────────────────────────
-    EXISTING_STATIONS=$(curl -sf "${AZ_URL}/api/stations" \
-        -H "X-API-Key: ${AZ_TOKEN}" 2>/dev/null \
+    EXISTING_STATIONS=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" \
+        -H "X-API-CSRF: ${API_CSRF}" \
+        "${AZ_URL}/api/admin/stations" 2>/dev/null \
         | jq 'length' 2>/dev/null) || EXISTING_STATIONS="0"
 
     if [[ "${EXISTING_STATIONS}" -gt 0 ]]; then
         echo "  ℹ Station(s) déjà configurée(s) — aucune création"
     else
-        # ── Créer la station par défaut ──────────────────────────────
         echo "  → Création de la station '${STATION_NAME}'..."
         # frontend_config.port : port Icecast de la station.
-        # Doit correspondre exactement au port exposé dans docker-compose (8500:8500).
-        # Si host port ≠ container port, l'URL annoncée par AzuraCast serait incorrecte.
-        STATION_RESP=$(curl -sf -X POST "${AZ_URL}/api/admin/stations" \
+        # host=container obligatoire (Icecast annonce ce port dans les URLs de flux).
+        STATION_RESP=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" \
+            -X POST "${AZ_URL}/api/admin/stations" \
             -H "Content-Type: application/json" \
-            -H "X-API-Key: ${AZ_TOKEN}" \
+            -H "X-API-CSRF: ${API_CSRF}" \
             -d "{
                 \"name\": \"${STATION_NAME}\",
                 \"short_name\": \"${STATION_SHORT}\",
@@ -273,12 +282,12 @@ else
                 \"request_threshold\": 15
             }" 2>/dev/null) || STATION_RESP=""
 
-        if [[ -n "${STATION_RESP}" ]]; then
-            STATION_ID=$(echo "${STATION_RESP}" | jq -r '.id // empty' 2>/dev/null) || STATION_ID=""
-            echo "  ✓ Station '${STATION_NAME}' créée (ID: ${STATION_ID:-?})"
-            echo "    Port Icecast : ${ICECAST_PORT} (HTTP) — accessible par tes auditeurs"
+        STATION_ID=$(echo "${STATION_RESP}" | jq -r '.id // empty' 2>/dev/null) || STATION_ID=""
+        if [[ -n "${STATION_ID}" ]]; then
+            echo "  ✓ Station '${STATION_NAME}' créée (ID: ${STATION_ID})"
+            echo "    Port Icecast : ${ICECAST_PORT} — accessible aux auditeurs"
         else
-            echo "  ⚠ Création de station échouée — à créer manuellement dans l'interface"
+            echo "  ⚠ Création de station échouée — à créer manuellement"
         fi
     fi
 fi
