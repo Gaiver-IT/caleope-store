@@ -19,7 +19,7 @@ services:
       - "${CALEOPE_PORT_WEB}:8080"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.scrutiny.rule=Host(`scrutiny.${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.scrutiny.rule=Host(`${CALEOPE_DOMAIN}`)"
       - "traefik.http.routers.scrutiny.entrypoints=websecure"
       - "traefik.http.routers.scrutiny.tls=true"
       - "traefik.http.services.scrutiny.loadbalancer.server.port=8080"

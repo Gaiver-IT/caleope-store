@@ -14,7 +14,7 @@ services:
       - "${CALEOPE_PORT_WEB}:25600"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.komga.rule=Host(`komga.${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.komga.rule=Host(`${CALEOPE_DOMAIN}`)"
       - "traefik.http.routers.komga.entrypoints=websecure"
       - "traefik.http.routers.komga.tls=true"
       - "traefik.http.services.komga.loadbalancer.server.port=25600"

@@ -77,7 +77,7 @@ cat > "${CONFIG_DIR}/post-install.txt" <<INFO
   ┌──────────────────────────────────────────────────────────────────┐
   │                    Komga — Comics & Mangas                       │
   ├──────────────────────────────────────────────────────────────────┤
-  │  Interface : https://komga.${CALEOPE_DOMAIN}/                    │
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
   │                                                                  │
   │  Identifiants admin :                                            │
   │    Email    : ${KOMGA_ADMIN_EMAIL}
@@ -93,7 +93,7 @@ echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
 echo "  ║               Komga — Identifiants admin             ║"
 echo "  ╠══════════════════════════════════════════════════════╣"
-echo "  ║  URL  : https://komga.${CALEOPE_DOMAIN}/"
+echo "  ║  URL  : https://${CALEOPE_DOMAIN}/"
 echo "  ║  Email: ${KOMGA_ADMIN_EMAIL}"
 echo "  ║  Pass : ${KOMGA_ADMIN_PASSWORD}"
 echo "  ╚══════════════════════════════════════════════════════╝"
