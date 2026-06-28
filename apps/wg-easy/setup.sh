@@ -19,14 +19,18 @@ if [ -z "${WG_HOST}" ]; then
 fi
 
 # ── Mot de passe admin (hashé bcrypt — wg-easy v14+ exige PASSWORD_HASH) ──────
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
-# Génération du hash bcrypt via docker (wg-easy fournit wgpw)
-ADMIN_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep -o '\$2[ab]\$[^ ]*' || echo "")
-if [ -z "${ADMIN_HASH}" ]; then
-    # Fallback: utiliser node si disponible
-    ADMIN_HASH=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync('${ADMIN_PASS}', 12));" 2>/dev/null || echo "")
+ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 16)
+# wgpw sort : PASSWORD_HASH='$2a$12$...' — les guillemets simples évitent l'interpolation
+# Docker Compose env_file respecte les valeurs entre guillemets simples ($VAR non interpolé)
+ADMIN_HASH_LINE=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep "^PASSWORD_HASH=" || echo "")
+if [ -z "${ADMIN_HASH_LINE}" ]; then
+    # Fallback: générer le hash avec node + bcryptjs si disponible
+    HASH_VAL=$(node -e "const bcrypt=require('bcryptjs'); console.log(bcrypt.hashSync('${ADMIN_PASS}', 12));" 2>/dev/null || echo "")
+    if [ -n "${HASH_VAL}" ]; then
+        ADMIN_HASH_LINE="PASSWORD_HASH='${HASH_VAL}'"
+    fi
 fi
-if [ -z "${ADMIN_HASH}" ]; then
+if [ -z "${ADMIN_HASH_LINE}" ]; then
     echo "❌ Impossible de générer le hash bcrypt du mot de passe" >&2
     exit 1
 fi
@@ -34,7 +38,8 @@ fi
 cat > "${CONFIG_DIR}/secrets.env" << EOF
 # WG-Easy
 WG_HOST=${WG_HOST}
-PASSWORD_HASH=${ADMIN_HASH}
+${ADMIN_HASH_LINE}
+WG_ADMIN_PASSWORD=${ADMIN_PASS}
 WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
 WG_DEFAULT_ADDRESS=10.8.0.x
 WG_ALLOWED_IPS=0.0.0.0/0

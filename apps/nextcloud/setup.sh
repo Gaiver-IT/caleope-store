@@ -194,6 +194,11 @@ echo "✓ OnlyOffice connecté à Nextcloud"
 # pour les serveurs internes — nécessaire pour joindre authentik-server:9000)
 occ "config:system:set allow_local_remote_servers --value=true --type=boolean"
 
+# Trusted proxies — Caleope proxy accède Nextcloud depuis le réseau caleope-internal
+occ "config:system:set trusted_proxies 0 --value=172.18.0.0/16"
+occ "config:system:set trusted_proxies 1 --value=172.19.0.0/16"
+occ "config:system:set overwriteprotocol --value=https"
+
 # user_oidc utilise Guzzle (HTTP client interne Nextcloud) avec son propre bundle CA,
 # différent de /etc/ssl/certs. Sans cette option, le JWKS fetch échoue silencieusement
 # quand Traefik présente un certificat auto-signé → "Invalid JWKS: missing 'keys' array"

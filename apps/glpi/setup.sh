@@ -443,10 +443,14 @@ php -r "
 \$s = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api',1)
     ON DUPLICATE KEY UPDATE value=1\");
 \$s->execute();
-// Désactiver l'obligation d'app token (utilisation par credentials seuls)
-\$s2 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api_login',1)
+// Activer la connexion par credentials
+\$s2 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api_login_credentials',1)
     ON DUPLICATE KEY UPDATE value=1\");
 \$s2->execute();
+// Activer le High-Level API (nécessaire pour initSession)
+\$sh = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_hlapi',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$sh->execute();
 \$s3 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','api_url_base',?)
     ON DUPLICATE KEY UPDATE value=?\");
 \$base = (getenv('GLPI_URL_BASE') ?: '') . '/apirest.php';
