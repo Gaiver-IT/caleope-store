@@ -7,23 +7,31 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/stirling-pdf"/{configs,logs}
 
-STIRLING_PDF_PORT_WEB=""
-if [ -f "${_SECRETS}" ]; then
-    STIRLING_PDF_PORT_WEB=$(grep "^STIRLING_PDF_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
-fi
-[ -n "${CALEOPE_PARAM_STIRLING_PDF_PORT_WEB:-}" ] && STIRLING_PDF_PORT_WEB="${CALEOPE_PARAM_STIRLING_PDF_PORT_WEB}"
-[ -z "${STIRLING_PDF_PORT_WEB}" ] && STIRLING_PDF_PORT_WEB="8088"
+# Remove stale settings.yml so Stirling PDF recreates it fresh
+# SECURITY_ENABLELOGIN=false is set via env var in docker-compose
+rm -f "${CALEOPE_BASE_DIR}/app-data/stirling-pdf/configs/settings.yml"
 
 cat > "${_SECRETS}" <<ENV
-STIRLING_PDF_PORT_WEB=${STIRLING_PDF_PORT_WEB}
 ENV
 chmod 600 "${_SECRETS}"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-Stirling PDF est démarré.
-Interface : http://<IP>:${STIRLING_PDF_PORT_WEB}
 
-Pas d'authentification par défaut — protéger avec Authentik ForwardAuth si exposé.
+  ┌──────────────────────────────────────────────────────────────────┐
+  │              Stirling PDF — Traitement de documents PDF          │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Accès libre (pas d'authentification par défaut).                │
+  │  Protéger avec Authentik si exposé publiquement.                 │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Stirling PDF prêt — http://<IP>:${STIRLING_PDF_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║          Stirling PDF — Outil PDF sans auth          ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL : https://${CALEOPE_DOMAIN}/"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ Stirling PDF configuré"
