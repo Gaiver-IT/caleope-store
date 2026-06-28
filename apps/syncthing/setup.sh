@@ -7,15 +7,11 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/syncthing/config"
 
-SYNCTHING_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     SYNCTHING_PORT_WEB=$(grep "^SYNCTHING_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${CALEOPE_PARAM_SYNCTHING_PORT_WEB:-}" ] && SYNCTHING_PORT_WEB="${CALEOPE_PARAM_SYNCTHING_PORT_WEB}"
-[ -z "${SYNCTHING_PORT_WEB}" ] && SYNCTHING_PORT_WEB="8384"
 
 cat > "${_SECRETS}" <<ENV
-SYNCTHING_PORT_WEB=${SYNCTHING_PORT_WEB}
 ENV
 chmod 600 "${_SECRETS}"
 echo "  ✓ Syncthing configuré"

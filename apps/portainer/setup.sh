@@ -7,18 +7,15 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/portainer/data"
 
-PORTAINER_PORT_WEB=""
 PORTAINER_ADMIN_PASS=""
 if [ -f "${_SECRETS}" ]; then
     PORTAINER_PORT_WEB=$(grep  "^PORTAINER_PORT_WEB="   "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     PORTAINER_ADMIN_PASS=$(grep "^PORTAINER_ADMIN_PASS=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${CALEOPE_PARAM_PORTAINER_PORT_WEB:-}" ] && PORTAINER_PORT_WEB="${CALEOPE_PARAM_PORTAINER_PORT_WEB}"
 [ -z "${PORTAINER_PORT_WEB}"   ] && PORTAINER_PORT_WEB="9000"
 [ -z "${PORTAINER_ADMIN_PASS}" ] && PORTAINER_ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 
 cat > "${_SECRETS}" <<ENV
-PORTAINER_PORT_WEB=${PORTAINER_PORT_WEB}
 PORTAINER_ADMIN_PASS=${PORTAINER_ADMIN_PASS}
 ENV
 chmod 600 "${_SECRETS}"

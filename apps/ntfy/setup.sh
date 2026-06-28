@@ -8,15 +8,11 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/ntfy/data"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/ntfy/config"
 
-NTFY_PORT_WEB=""
 if [ -f "${_SECRETS}" ]; then
     NTFY_PORT_WEB=$(grep "^NTFY_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${CALEOPE_PARAM_NTFY_PORT_WEB:-}" ] && NTFY_PORT_WEB="${CALEOPE_PARAM_NTFY_PORT_WEB}"
-[ -z "${NTFY_PORT_WEB}" ] && NTFY_PORT_WEB="8070"
 
 cat > "${_SECRETS}" <<ENV
-NTFY_PORT_WEB=${NTFY_PORT_WEB}
 ENV
 chmod 600 "${_SECRETS}"
 
