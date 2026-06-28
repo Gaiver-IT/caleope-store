@@ -8,25 +8,18 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/photoprism/originals"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/photoprism/storage"
 
-PHOTOPRISM_PORT_WEB=""
+# Preserve admin password on reinstall
 PHOTOPRISM_ADMIN_PASSWORD=""
 if [ -f "${_SECRETS}" ]; then
-    PHOTOPRISM_PORT_WEB=$(grep "^PHOTOPRISM_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
     PHOTOPRISM_ADMIN_PASSWORD=$(grep "^PHOTOPRISM_ADMIN_PASSWORD=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
 fi
-[ -n "${CALEOPE_PARAM_PHOTOPRISM_PORT_WEB:-}" ] && PHOTOPRISM_PORT_WEB="${CALEOPE_PARAM_PHOTOPRISM_PORT_WEB}"
-[ -n "${CALEOPE_PARAM_PHOTOPRISM_ADMIN_PASSWORD:-}" ] && PHOTOPRISM_ADMIN_PASSWORD="${CALEOPE_PARAM_PHOTOPRISM_ADMIN_PASSWORD}"
-[ -z "${PHOTOPRISM_PORT_WEB}" ] && PHOTOPRISM_PORT_WEB="2342"
-[ -z "${PHOTOPRISM_ADMIN_PASSWORD}" ] && PHOTOPRISM_ADMIN_PASSWORD="$(openssl rand -base64 12)"
-
-SITE_URL="http://${CALEOPE_DOMAIN:-localhost}:${PHOTOPRISM_PORT_WEB}/"
+[ -z "${PHOTOPRISM_ADMIN_PASSWORD}" ] && PHOTOPRISM_ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9' | head -c 16)"
 
 cat > "${_SECRETS}" <<ENV
-PHOTOPRISM_PORT_WEB=${PHOTOPRISM_PORT_WEB}
 PHOTOPRISM_ADMIN_USER=admin
 PHOTOPRISM_ADMIN_PASSWORD=${PHOTOPRISM_ADMIN_PASSWORD}
 PHOTOPRISM_AUTH_MODE=password
-PHOTOPRISM_SITE_URL=${SITE_URL}
+PHOTOPRISM_SITE_URL=https://${CALEOPE_DOMAIN}/
 PHOTOPRISM_ORIGINALS_LIMIT=5000
 PHOTOPRISM_HTTP_COMPRESSION=gzip
 PHOTOPRISM_LOG_LEVEL=info
@@ -42,73 +35,103 @@ PHOTOPRISM_FFMPEG_ENCODER=software
 PHOTOPRISM_DATABASE_DRIVER=sqlite
 ENV
 chmod 600 "${_SECRETS}"
-echo "  ✓ PhotoPrism configuré"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN_AK
-        BASE_DOMAIN_AK=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN_AK}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 6 ] || return 1; sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/flows/instances/?designation=authentication" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['pk'])" 2>/dev/null) || return 1
-
-    local APP_UUID
-    APP_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/core/applications/?slug=${APP_SLUG}" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null) || APP_UUID=""
-
-    if [ -z "${APP_UUID}" ]; then
-        local PROV_ID
-        PROV_ID=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME} Proxy\",\"authorization_flow\":\"${FLOW_UUID}\",\"mode\":\"forward_single\",\"external_host\":\"${APP_URL}\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['pk'])") || return 1
-        curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/core/applications/" \
-            -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROV_ID},\"meta_launch_url\":\"${APP_URL}\"}" >/dev/null || return 1
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
+# ── OIDC Authentik (natif PhotoPrism) ─────────────────────────────────────────
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "PhotoPrism" "photoprism" "https://photos.${CALEOPE_DOMAIN#*.}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)"
+        AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
+        AK_BASE="http://localhost:${AK_PORT}/api/v3"
+        AK_HA="Authorization: Bearer ${AK_TOKEN}"
+        AK_HJ="Content-Type: application/json"
+
+        AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+        INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+
+        if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+            REDIRECT_URI="https://${CALEOPE_DOMAIN}/api/v1/oidc/redirect"
+
+            EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/providers/oauth2/?search=PhotoPrism" \
+                | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=d.get('results',[])
+if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+" 2>/dev/null || echo "")
+
+            if [ -n "${EXISTING}" ]; then
+                PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
+                SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
+                SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+            else
+                PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/oauth2/" \
+                    -d "{\"name\":\"PhotoPrism\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                    2>/dev/null || echo "")
+                PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_SECRET=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
+            fi
+
+            if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
+                curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/core/applications/" \
+                    -d "{\"name\":\"PhotoPrism\",\"slug\":\"photoprism\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                    >/dev/null 2>&1 || true
+
+                cat >> "${_SECRETS}" <<OIDCENV
+
+# OIDC Authentik (natif PhotoPrism)
+PHOTOPRISM_OIDC_CLIENT_ID=${SSO_CLIENT_ID}
+PHOTOPRISM_OIDC_CLIENT_SECRET=${SSO_CLIENT_SECRET}
+PHOTOPRISM_OIDC_ISSUER_URL=https://${AK_DOMAIN}/application/o/photoprism/
+PHOTOPRISM_OIDC_REGISTER=true
+PHOTOPRISM_OIDC_USERNAME=preferred_username
+PHOTOPRISM_OIDC_WEBDAV=false
+OIDCENV
+                echo "  ✓ PhotoPrism OIDC configuré dans Authentik"
+            fi
+        fi
     fi
 fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-PhotoPrism est démarré.
-Interface : http://<IP>:${PHOTOPRISM_PORT_WEB}
 
-Identifiants : admin / ${PHOTOPRISM_ADMIN_PASSWORD}
-Changez le mot de passe immédiatement.
-
-Vos photos doivent être placées dans :
-${CALEOPE_BASE_DIR}/app-data/photoprism/originals/
-
-Lancez une indexation depuis l'interface : Library > Index
+  ┌──────────────────────────────────────────────────────────────────┐
+  │               PhotoPrism — Gestionnaire de photos                │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Login : admin                                                   │
+  │  Pass  : ${PHOTOPRISM_ADMIN_PASSWORD}                            │
+  │    → Changer dans Settings → Account                             │
+  │                                                                  │
+  │  Photos à placer dans :                                          │
+  │    ${CALEOPE_BASE_DIR}/app-data/photoprism/originals/            │
+  │                                                                  │
+  │  Indexation : Library → Index                                    │
+  │                                                                  │
+  │  SSO Authentik (OIDC natif) :                                    │
+  │    → Bouton "Sign in with OpenID Connect" sur la page de         │
+  │      connexion                                                   │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ PhotoPrism prêt — http://<IP>:${PHOTOPRISM_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║           PhotoPrism — Gestionnaire de photos        ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL   : https://${CALEOPE_DOMAIN}/"
+echo "  ║  Login : admin"
+echo "  ║  Pass  : ${PHOTOPRISM_ADMIN_PASSWORD}"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ PhotoPrism configuré"
