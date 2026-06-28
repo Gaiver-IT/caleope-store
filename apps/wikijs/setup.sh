@@ -61,6 +61,16 @@ if ${_wk_ready}; then
     _existing_jwt=$(grep "^WIKIJS_API_TOKEN=" "${CONFIG_DIR}/secrets.env" 2>/dev/null | cut -d= -f2-) || _existing_jwt=""
 
     if [ "${_needs_setup}" = "200" ] && [ -z "${_existing_jwt}" ]; then
+        # Wiki.js v2 + PostgreSQL : les séquences doivent avoir MINVALUE=0 et START=1
+        # pour que adminGroup.id==1 et guestGroup.id==2 lors de la finalisation.
+        echo "  → Correction séquences PostgreSQL (MINVALUE=0)..."
+        docker exec wikijs-db psql -U wiki -d wiki -tAc \
+            "SELECT sequence_name FROM information_schema.sequences;" 2>/dev/null \
+            | while read _SEQ; do
+                docker exec wikijs-db psql -U wiki -d wiki -c \
+                    "ALTER SEQUENCE \"${_SEQ}\" MINVALUE 0 START 1 RESTART WITH 1;" >/dev/null 2>&1 || true
+              done
+
         echo "  → Finalisation Wiki.js (création compte admin)..."
         _finalize_result=$(curl -sf --max-time 15 -X POST "${_WK_URL}/finalize" \
             -H "Content-Type: application/json" \
