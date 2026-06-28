@@ -11,12 +11,7 @@ mkdir -p "${DATA_DIR}/"{data,db}
 
 # ── Params ──────────────────────────────────────────────────────────────────
 ADMIN_USER="${CALEOPE_PARAM_ADMIN_USER:-git-admin}"
-ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-}"
-
-if [ -z "${ADMIN_EMAIL}" ]; then
-    echo "❌ ADMIN_EMAIL est requis" >&2
-    exit 1
-fi
+ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
 DB_PASS=$(openssl rand -hex 24)
