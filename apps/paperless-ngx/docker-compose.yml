@@ -52,6 +52,12 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/media:/usr/src/paperless/media
       - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/export:/usr/src/paperless/export
       - ${CALEOPE_BASE_DIR}/app-data/paperless-ngx/consume:/usr/src/paperless/consume
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.paperless-ngx.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.paperless-ngx.entrypoints=websecure"
+      - "traefik.http.routers.paperless-ngx.tls=true"
+      - "traefik.http.services.paperless-ngx.loadbalancer.server.port=8000"
     networks:
       - caleope-public
       - caleope-internal

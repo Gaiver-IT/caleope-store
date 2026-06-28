@@ -15,6 +15,12 @@ services:
       - CRON_MIN=1,31
       - FRESHRSS_INSTALL=--default-user ${FRESHRSS_ADMIN_USER:-admin} --db-type sqlite --db-base freshrss
       - FRESHRSS_USER=--user ${FRESHRSS_ADMIN_USER:-admin} --password ${FRESHRSS_ADMIN_PASS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freshrss.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.freshrss.entrypoints=websecure"
+      - "traefik.http.routers.freshrss.tls=true"
+      - "traefik.http.services.freshrss.loadbalancer.server.port=80"
     networks:
       - caleope-public
       - caleope-internal

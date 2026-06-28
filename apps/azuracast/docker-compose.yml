@@ -41,7 +41,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.azuracast.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.azuracast.entrypoints=web"
+      - "traefik.http.routers.azuracast.entrypoints=websecure"
+      - "traefik.http.routers.azuracast.tls=true"
       - "traefik.http.services.azuracast.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
     ulimits:

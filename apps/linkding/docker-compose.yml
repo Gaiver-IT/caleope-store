@@ -13,6 +13,12 @@ services:
       - LD_SUPERUSER_NAME=${LINKDING_ADMIN_USER:-admin}
       - LD_SUPERUSER_PASSWORD=${LINKDING_ADMIN_PASS}
       - LD_CONTEXT_PATH=${LINKDING_CONTEXT_PATH:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.linkding.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.linkding.entrypoints=websecure"
+      - "traefik.http.routers.linkding.tls=true"
+      - "traefik.http.services.linkding.loadbalancer.server.port=9090"
     networks:
       - caleope-public
       - caleope-internal

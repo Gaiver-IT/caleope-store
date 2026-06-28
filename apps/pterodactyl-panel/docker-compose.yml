@@ -38,7 +38,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.pterodactyl.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.pterodactyl.entrypoints=web"
+      - "traefik.http.routers.pterodactyl.entrypoints=websecure"
+      - "traefik.http.routers.pterodactyl.tls=true"
       - "traefik.http.services.pterodactyl.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
     networks:
@@ -62,4 +63,4 @@ networks:
   caleope-public:
     external: true
   caleope-internal:
-    driver: bridge
+    external: true

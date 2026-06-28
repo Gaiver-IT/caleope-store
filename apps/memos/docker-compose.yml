@@ -9,6 +9,12 @@ services:
       - "${CALEOPE_PORT_WEB}:5230"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/memos/data:/var/opt/memos
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.memos.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.memos.entrypoints=websecure"
+      - "traefik.http.routers.memos.tls=true"
+      - "traefik.http.services.memos.loadbalancer.server.port=5230"
     networks:
       - caleope-public
       - caleope-internal

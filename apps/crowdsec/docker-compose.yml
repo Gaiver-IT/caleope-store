@@ -44,4 +44,4 @@ networks:
   caleope-public:
     external: true
   caleope-internal:
-    driver: bridge
+    external: true

@@ -11,6 +11,12 @@ services:
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/navidrome/data:/data
       - ${CALEOPE_BASE_DIR}/app-data/navidrome/music:/music:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.navidrome.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.navidrome.entrypoints=websecure"
+      - "traefik.http.routers.navidrome.tls=true"
+      - "traefik.http.services.navidrome.loadbalancer.server.port=4533"
     networks:
       - caleope-public
       - caleope-internal

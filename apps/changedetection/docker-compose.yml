@@ -9,6 +9,12 @@ services:
       - "${CALEOPE_PORT_WEB}:5000"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/changedetection/data:/datastore
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.changedetection.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.changedetection.entrypoints=websecure"
+      - "traefik.http.routers.changedetection.tls=true"
+      - "traefik.http.services.changedetection.loadbalancer.server.port=5000"
     networks:
       - caleope-public
       - caleope-internal

@@ -25,13 +25,12 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
-      {{- range .Ports}}
-      - "{{.Host}}:{{.Container}}"
-      {{- end}}
+      - "${CALEOPE_PORT_WEB}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.gitea.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.gitea.entrypoints=web"
+      - "traefik.http.routers.gitea.entrypoints=websecure"
+      - "traefik.http.routers.gitea.tls=true"
       - "traefik.http.services.gitea.loadbalancer.server.port=3000"
       - "traefik.docker.network=caleope-public"
     networks:
@@ -39,7 +38,7 @@ services:
       - caleope-internal
 
   gitea-bootstrap:
-    image: gitea/gitea:latest
+    image: curlimages/curl:latest
     container_name: gitea-bootstrap
     restart: "no"
     depends_on:
@@ -48,7 +47,6 @@ services:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     entrypoint: ["/bin/sh", "/bootstrap.sh"]
     volumes:
-      - {{.BaseDir}}/app-data/gitea/data:/data
       - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
     networks:
       - caleope-internal
@@ -57,4 +55,4 @@ networks:
   caleope-public:
     external: true
   caleope-internal:
-    driver: bridge
+    external: true

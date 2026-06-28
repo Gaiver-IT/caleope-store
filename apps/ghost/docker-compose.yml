@@ -33,7 +33,8 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.ghost.rule=Host(`{{.Domain}}`)"
       - "traefik.http.middlewares.ghost-https.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.routers.ghost.entrypoints=web"
+      - "traefik.http.routers.ghost.entrypoints=websecure"
+      - "traefik.http.routers.ghost.tls=true"
       - "traefik.http.routers.ghost.middlewares=ghost-https"
       - "traefik.http.services.ghost.loadbalancer.server.port=2368"
       - "traefik.docker.network=caleope-public"
@@ -57,4 +58,4 @@ networks:
   caleope-public:
     external: true
   caleope-internal:
-    driver: bridge
+    external: true

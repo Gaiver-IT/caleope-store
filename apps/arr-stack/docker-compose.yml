@@ -46,7 +46,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.{{.Domain}}`)"
-      - "traefik.http.routers.jellyseerr.entrypoints=web"
+      - "traefik.http.routers.jellyseerr.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr.tls=true"
       - "traefik.http.routers.jellyseerr.priority=10"
       - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
       - "traefik.http.routers.jellyseerr.middlewares=${ARR_AK_MW:-}"
@@ -80,7 +81,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin-srv.rule=Host(`jellyfin.{{.Domain}}`)"
-      - "traefik.http.routers.jellyfin-srv.entrypoints=web"
+      - "traefik.http.routers.jellyfin-srv.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin-srv.tls=true"
       - "traefik.http.routers.jellyfin-srv.priority=10"
       - "traefik.http.services.jellyfin-srv.loadbalancer.server.port=8096"
       - "traefik.docker.network=caleope-public"
@@ -103,7 +105,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.{{.Domain}}`)"
-      - "traefik.http.routers.prowlarr.entrypoints=web"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls=true"
       - "traefik.http.routers.prowlarr.priority=10"
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
       - "traefik.docker.network=caleope-public"
@@ -127,7 +130,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.radarr.rule=Host(`radarr.{{.Domain}}`)"
-      - "traefik.http.routers.radarr.entrypoints=web"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls=true"
       - "traefik.http.routers.radarr.priority=10"
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
       - "traefik.docker.network=caleope-public"
@@ -151,7 +155,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sonarr.rule=Host(`sonarr.{{.Domain}}`)"
-      - "traefik.http.routers.sonarr.entrypoints=web"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls=true"
       - "traefik.http.routers.sonarr.priority=10"
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
       - "traefik.docker.network=caleope-public"
@@ -175,7 +180,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lidarr.rule=Host(`lidarr.{{.Domain}}`)"
-      - "traefik.http.routers.lidarr.entrypoints=web"
+      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.tls=true"
       - "traefik.http.routers.lidarr.priority=10"
       - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
       - "traefik.docker.network=caleope-public"
@@ -204,7 +210,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bazarr.rule=Host(`bazarr.{{.Domain}}`)"
-      - "traefik.http.routers.bazarr.entrypoints=web"
+      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.tls=true"
       - "traefik.http.routers.bazarr.priority=10"
       - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
       - "traefik.docker.network=caleope-public"
@@ -230,7 +237,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.qbt.rule=Host(`qbt.{{.Domain}}`)"
-      - "traefik.http.routers.qbt.entrypoints=web"
+      - "traefik.http.routers.qbt.entrypoints=websecure"
+      - "traefik.http.routers.qbt.tls=true"
       - "traefik.http.routers.qbt.priority=10"
       - "traefik.http.services.qbt.loadbalancer.server.port=8080"
       - "traefik.docker.network=caleope-public"
@@ -262,7 +270,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.qbt.rule=Host(`qbt.{{.Domain}}`)"
-      - "traefik.http.routers.qbt.entrypoints=web"
+      - "traefik.http.routers.qbt.entrypoints=websecure"
+      - "traefik.http.routers.qbt.tls=true"
       - "traefik.http.routers.qbt.priority=10"
       - "traefik.http.services.qbt.loadbalancer.server.port=8080"
       - "traefik.docker.network=caleope-public"
@@ -305,7 +314,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.{{.Domain}}`)"
-      - "traefik.http.routers.sabnzbd.entrypoints=web"
+      - "traefik.http.routers.sabnzbd.entrypoints=websecure"
+      - "traefik.http.routers.sabnzbd.tls=true"
       - "traefik.http.routers.sabnzbd.priority=10"
       - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
       - "traefik.docker.network=caleope-public"
@@ -362,7 +372,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin-vue.rule=Host(`vue.{{.Domain}}`)"
-      - "traefik.http.routers.jellyfin-vue.entrypoints=web"
+      - "traefik.http.routers.jellyfin-vue.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin-vue.tls=true"
       - "traefik.http.routers.jellyfin-vue.priority=10"
       - "traefik.http.services.jellyfin-vue.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"

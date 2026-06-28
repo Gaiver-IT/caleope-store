@@ -13,6 +13,12 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/syncthing/config:/var/syncthing
     environment:
       - PCAP=
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.syncthing.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.syncthing.entrypoints=websecure"
+      - "traefik.http.routers.syncthing.tls=true"
+      - "traefik.http.services.syncthing.loadbalancer.server.port=8384"
     networks:
       - caleope-public
 

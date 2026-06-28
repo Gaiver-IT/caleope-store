@@ -25,6 +25,12 @@ services:
       - "${CALEOPE_PORT_WEB}:80"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/monica/data:/var/www/html/storage
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.monica.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.monica.entrypoints=websecure"
+      - "traefik.http.routers.monica.tls=true"
+      - "traefik.http.services.monica.loadbalancer.server.port=80"
     networks:
       - caleope-public
       - caleope-internal

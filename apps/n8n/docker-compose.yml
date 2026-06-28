@@ -9,6 +9,12 @@ services:
       - "${CALEOPE_PORT_WEB}:5678"
     volumes:
       - ${CALEOPE_BASE_DIR}/app-data/n8n/data:/home/node/.n8n
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
     networks:
       - caleope-public
       - caleope-internal
