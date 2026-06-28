@@ -3,95 +3,115 @@ set -euo pipefail
 
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/navidrome"
 _SECRETS="${CONFIG_DIR}/secrets.env"
+_MUSIC_DIR="${CALEOPE_BASE_DIR}/app-data/navidrome/music"
 
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/navidrome/data"
-mkdir -p "${CALEOPE_BASE_DIR}/app-data/navidrome/music"
+mkdir -p "${_MUSIC_DIR}"
 chown -R 1000:1000 "${CALEOPE_BASE_DIR}/app-data/navidrome" 2>/dev/null || true
 
-NAVIDROME_PORT_WEB=""
-ND_LOGLEVEL=""
-if [ -f "${_SECRETS}" ]; then
-    NAVIDROME_PORT_WEB=$(grep "^NAVIDROME_PORT_WEB=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
-    ND_LOGLEVEL=$(grep "^ND_LOGLEVEL=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
-fi
-[ -n "${CALEOPE_PARAM_NAVIDROME_PORT_WEB:-}" ] && NAVIDROME_PORT_WEB="${CALEOPE_PARAM_NAVIDROME_PORT_WEB}"
-[ -n "${CALEOPE_PARAM_ND_LOGLEVEL:-}" ] && ND_LOGLEVEL="${CALEOPE_PARAM_ND_LOGLEVEL}"
-[ -z "${NAVIDROME_PORT_WEB}" ] && NAVIDROME_PORT_WEB="4533"
-[ -z "${ND_LOGLEVEL}" ] && ND_LOGLEVEL="info"
-
 cat > "${_SECRETS}" <<ENV
-NAVIDROME_PORT_WEB=${NAVIDROME_PORT_WEB}
 ND_MUSICFOLDER=/music
 ND_DATAFOLDER=/data
-ND_LOGLEVEL=${ND_LOGLEVEL}
+ND_LOGLEVEL=info
 ND_SESSIONTIMEOUT=24h
 ND_BASEURL=
 ENV
 chmod 600 "${_SECRETS}"
-echo "  ✓ Navidrome configuré"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN_AK
-        BASE_DOMAIN_AK=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN_AK}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 6 ] || return 1; sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/flows/instances/?designation=authentication" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['pk'])" 2>/dev/null) || return 1
-
-    local APP_UUID
-    APP_UUID=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/core/applications/?slug=${APP_SLUG}" \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['pk'] if r else '')" 2>/dev/null) || APP_UUID=""
-
-    if [ -z "${APP_UUID}" ]; then
-        local PROV_ID
-        PROV_ID=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME} Proxy\",\"authorization_flow\":\"${FLOW_UUID}\",\"mode\":\"forward_single\",\"external_host\":\"${APP_URL}\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['pk'])") || return 1
-        curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" "${BASE}/core/applications/" \
-            -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROV_ID},\"meta_launch_url\":\"${APP_URL}\"}" >/dev/null || return 1
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
+# ── OIDC Authentik (natif Navidrome >= 0.52) ──────────────────────────────────
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Navidrome" "navidrome" "https://navidrome.${CALEOPE_DOMAIN#*.}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
+    AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+    if [ -f "${AK_SECRETS}" ]; then
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)"
+        AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
+        AK_BASE="http://localhost:${AK_PORT}/api/v3"
+        AK_HA="Authorization: Bearer ${AK_TOKEN}"
+        AK_HJ="Content-Type: application/json"
+
+        AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+        INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+            "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+
+        if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+            REDIRECT_URI="https://${CALEOPE_DOMAIN}/auth/callback"
+
+            EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/providers/oauth2/?search=Navidrome" \
+                | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=d.get('results',[])
+if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+" 2>/dev/null || echo "")
+
+            if [ -n "${EXISTING}" ]; then
+                PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
+                SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
+                SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+            else
+                PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/providers/oauth2/" \
+                    -d "{\"name\":\"Navidrome\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                    2>/dev/null || echo "")
+                PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
+                SSO_CLIENT_SECRET=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
+            fi
+
+            if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
+                curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                    "${AK_BASE}/core/applications/" \
+                    -d "{\"name\":\"Navidrome\",\"slug\":\"navidrome\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                    >/dev/null 2>&1 || true
+
+                cat >> "${_SECRETS}" <<OIDCENV
+
+# OIDC Authentik (natif Navidrome)
+ND_OIDCENABLED=true
+ND_OIDCISSUER=https://${AK_DOMAIN}/application/o/navidrome/
+ND_OIDCCLIENTID=${SSO_CLIENT_ID}
+ND_OIDCCLIENTSECRET=${SSO_CLIENT_SECRET}
+ND_OIDCSCOPES=openid profile email
+ND_OIDCREDIRECTURL=https://${CALEOPE_DOMAIN}/auth/callback
+OIDCENV
+                echo "  ✓ Navidrome OIDC configuré dans Authentik"
+            fi
+        fi
     fi
 fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${_SECRETS}"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
-Navidrome est démarré.
-Interface : http://<IP>:${NAVIDROME_PORT_WEB}
 
-Créez le compte admin lors du premier accès.
-Placez votre musique dans : ${CALEOPE_BASE_DIR}/app-data/navidrome/music/
-Compatible avec les clients Subsonic (DSub, Symfonium, Ultrasonic, etc.)
+  ┌──────────────────────────────────────────────────────────────────┐
+  │               Navidrome — Serveur de musique                     │
+  ├──────────────────────────────────────────────────────────────────┤
+  │  Interface : https://${CALEOPE_DOMAIN}/                          │
+  │                                                                  │
+  │  Premier accès : créer un compte admin via le wizard             │
+  │                                                                  │
+  │  Musique à placer dans :                                         │
+  │    ${_MUSIC_DIR}/                                                │
+  │                                                                  │
+  │  Compatible clients Subsonic (DSub, Symfonium, Ultrasonic…)      │
+  │    URL serveur : https://${CALEOPE_DOMAIN}/                      │
+  │                                                                  │
+  │  SSO Authentik (OIDC natif) :                                    │
+  │    → Bouton "Login with Authentik" sur la page de connexion      │
+  └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Navidrome prêt — http://<IP>:${NAVIDROME_PORT_WEB}"
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║           Navidrome — Serveur de musique             ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL    : https://${CALEOPE_DOMAIN}/"
+echo "  ║  Musique: ${_MUSIC_DIR}/"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "✓ Navidrome configuré"
