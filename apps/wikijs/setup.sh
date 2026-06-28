@@ -22,7 +22,6 @@ fi
 [ -z "${ADMIN_PASSWORD}" ] && ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
 [ -z "${ADMIN_EMAIL}"    ] && ADMIN_EMAIL="admin@${CALEOPE_DOMAIN}"
 
-# Écrire secrets.env (fusionné dans app.env par Caleope)
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
 # PostgreSQL
 POSTGRES_DB=wiki
@@ -43,98 +42,8 @@ WIKIJS_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── Auto-enregistrement dans Authentik ──────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 1
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    if [ -z "${AK_DOMAIN}" ]; then
-        local BASE_DOMAIN
-        BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
-        AK_DOMAIN="authentik.${BASE_DOMAIN}"
-    fi
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 1
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    echo "  → Connexion à l'API Authentik (max 60s)..."
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || { echo "  ⚠ Authentik non joignable"; return 1; }
-        sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || { echo "  ⚠ Flow Authentik introuvable"; return 1; }
-
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -H "${HA}" "${BASE}/providers/proxy/" \
-        | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-m = [p for p in d.get('results',[]) if p['name']==\"${APP_NAME}\"]
-print(m[0]['pk'] if m else '')
-" 2>/dev/null || echo "")
-
-    if [ -z "${PROVIDER_PK}" ]; then
-        PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-            "${BASE}/providers/proxy/" \
-            -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    fi
-    [ -n "${PROVIDER_PK}" ] || { echo "  ⚠ Erreur création Provider"; return 1; }
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-
-    local OUTPOST_UUID CURRENT_PROVIDERS NEW_PROVIDERS
-    OUTPOST_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/outposts/instances/?managed=goauthentik.io%2Foutposts%2Fembedded" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-
-    if [ -n "${OUTPOST_UUID}" ]; then
-        CURRENT_PROVIDERS=$(curl -sf --max-time 10 -H "${HA}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('providers',[])))" 2>/dev/null || echo "[]")
-        NEW_PROVIDERS=$(echo "${CURRENT_PROVIDERS}" | python3 -c "
-import sys, json
-l = json.load(sys.stdin)
-if ${PROVIDER_PK} not in l: l.append(${PROVIDER_PK})
-print(json.dumps(l))
-" 2>/dev/null || echo "[${PROVIDER_PK}]")
-        curl -sf --max-time 10 -X PATCH -H "${HA}" -H "${HJ}" \
-            "${BASE}/outposts/instances/${OUTPOST_UUID}/" \
-            -d "{\"providers\":${NEW_PROVIDERS}}" >/dev/null 2>&1 || true
-    fi
-
-    echo "  → ${APP_NAME} enregistré dans Authentik ✓"
-    return 0
-}
-
-CALEOPE_AUTH_MIDDLEWARE=""
-if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
-    if authentik_register_app "Wiki.js" "wikijs" "https://${CALEOPE_DOMAIN}"; then
-        CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
-    else
-        echo "  ⚠ ForwardAuth désactivé (enregistrement Authentik échoué)"
-    fi
-fi
-echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${CONFIG_DIR}/secrets.env"
-
 # ── Auto-setup Wiki.js (finalize + API key) ───────────────────────────────────
-_WK_PORT="3000"
-_WK_URL="http://localhost:8000"
+_WK_URL="http://localhost:${CALEOPE_PORT_WEB}"
 
 echo ""
 echo "→ Attente démarrage Wiki.js (max 90s)..."
@@ -148,7 +57,6 @@ for _i in $(seq 1 30); do
 done
 
 if ${_wk_ready}; then
-    # Vérifier si le wizard de finalisation est encore nécessaire
     _needs_setup=$(curl -sf --max-time 5 "${_WK_URL}/finalize" -o /dev/null -w "%{http_code}") || _needs_setup="000"
     _existing_jwt=$(grep "^WIKIJS_API_TOKEN=" "${CONFIG_DIR}/secrets.env" 2>/dev/null | cut -d= -f2-) || _existing_jwt=""
 
@@ -166,7 +74,7 @@ if ${_wk_ready}; then
 
         if echo "${_finalize_result}" | grep -q '"ok":true'; then
             echo "  ✓ Compte admin créé (${ADMIN_EMAIL})"
-            sleep 2
+            sleep 3
         else
             echo "  ⚠ Finalisation échouée ou déjà effectuée : ${_finalize_result}" | head -c 200
         fi
@@ -182,7 +90,6 @@ if ${_wk_ready}; then
         _wk_jwt=$(echo "${_login_resp}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['authentication']['login']['jwt'])" 2>/dev/null) || _wk_jwt=""
 
         if [ -n "${_wk_jwt}" ]; then
-            # Activer l'API (désactivée par défaut)
             curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer ${_wk_jwt}" \
@@ -200,18 +107,151 @@ if ${_wk_ready}; then
                 echo "WIKIJS_API_TOKEN=${_api_key}" >> "${CONFIG_DIR}/secrets.env"
                 echo "  ✓ Clé API Wiki.js générée et sauvegardée"
             else
-                echo "  ⚠ Création clé API échouée — ajouter manuellement WIKIJS_API_TOKEN"
+                echo "  ⚠ Création clé API échouée — ajouter manuellement"
             fi
         else
-            echo "  ⚠ Login Wiki.js échoué — clé API à créer manuellement"
+            echo "  ⚠ Login Wiki.js échoué — compte admin à créer manuellement"
         fi
     else
         echo "  ℹ Clé API Wiki.js déjà présente"
     fi
+
+    # ── OIDC Authentik (natif Wiki.js) ────────────────────────────────────────
+    # Wiki.js v2 supporte nativement OIDC via stratégie "oidc"
+    # → pas de ForwardAuth, pas de proxy, SSO direct
+    _wk_jwt_for_oidc="${_wk_jwt:-}"
+    if [ -z "${_wk_jwt_for_oidc}" ]; then
+        _login_resp2=$(curl -sf --max-time 10 -X POST "${_WK_URL}/graphql" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation { authentication { login(username: \\\"${ADMIN_EMAIL}\\\", password: \\\"${ADMIN_PASSWORD}\\\", strategy: \\\"local\\\") { jwt } } }\"}" 2>/dev/null) || _login_resp2=""
+        _wk_jwt_for_oidc=$(echo "${_login_resp2}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data']['authentication']['login']['jwt'])" 2>/dev/null) || _wk_jwt_for_oidc=""
+    fi
+
+    if [ -n "${_wk_jwt_for_oidc}" ] && [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+        AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
+        if [ -f "${AK_SECRETS}" ]; then
+            AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
+            AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+            [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)"
+            AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
+            AK_BASE="http://localhost:${AK_PORT}/api/v3"
+            AK_HA="Authorization: Bearer ${AK_TOKEN}"
+            AK_HJ="Content-Type: application/json"
+
+            AUTH_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+            INVAL_FLOW=$(curl -s --max-time 10 -H "${AK_HA}" \
+                "${AK_BASE}/flows/instances/?slug=default-provider-invalidation-flow" \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
+
+            if [ -n "${AUTH_FLOW}" ] && [ -n "${INVAL_FLOW}" ]; then
+                REDIRECT_URI="https://${CALEOPE_DOMAIN}/login/oidc/callback"
+
+                EXISTING=$(curl -s --max-time 10 -H "${AK_HA}" \
+                    "${AK_BASE}/providers/oauth2/?search=Wikijs" \
+                    | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=d.get('results',[])
+if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['client_secret']}))
+" 2>/dev/null || echo "")
+
+                if [ -n "${EXISTING}" ]; then
+                    PROV_PK=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['pk'])")
+                    SSO_CLIENT_ID=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cid'])")
+                    SSO_CLIENT_SECRET=$(echo "${EXISTING}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cs'])")
+                else
+                    PROV_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/providers/oauth2/" \
+                        -d "{\"name\":\"Wikijs\",\"authorization_flow\":\"${AUTH_FLOW}\",\"invalidation_flow\":\"${INVAL_FLOW}\",\"client_type\":\"confidential\",\"redirect_uris\":[{\"matching_mode\":\"strict\",\"url\":\"${REDIRECT_URI}\"}],\"sub_mode\":\"hashed_user_id\",\"include_claims_in_id_token\":true}" \
+                        2>/dev/null || echo "")
+                    PROV_PK=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                    SSO_CLIENT_ID=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_id',''))" 2>/dev/null || echo "")
+                    SSO_CLIENT_SECRET=$(echo "${PROV_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('client_secret',''))" 2>/dev/null || echo "")
+                fi
+
+                if [ -n "${PROV_PK}" ] && [ -n "${SSO_CLIENT_ID}" ]; then
+                    APP_SLUG=$(curl -s --max-time 10 -H "${AK_HA}" \
+                        "${AK_BASE}/core/applications/" \
+                        | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+pk=int('${PROV_PK}')
+r=[a for a in d.get('results',[]) if a.get('provider')==pk]
+print(r[0]['slug'] if r else '')
+" 2>/dev/null || echo "")
+
+                    if [ -z "${APP_SLUG}" ]; then
+                        APP_RESP=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                            "${AK_BASE}/core/applications/" \
+                            -d "{\"name\":\"Wiki.js\",\"slug\":\"wikijs\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                            2>/dev/null || echo "")
+                        APP_SLUG=$(echo "${APP_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('slug','wikijs'))" 2>/dev/null || echo "wikijs")
+                    fi
+
+                    # Configurer la stratégie OIDC dans Wiki.js via GraphQL
+                    ISSUER="https://${AK_DOMAIN}/application/o/${APP_SLUG}/"
+                    _OIDC_PAYLOAD=$(python3 -c "
+import json
+config = [
+    {'key': 'issuer',        'value': json.dumps({'v': '${ISSUER}'})},
+    {'key': 'clientId',      'value': json.dumps({'v': '${SSO_CLIENT_ID}'})},
+    {'key': 'clientSecret',  'value': json.dumps({'v': '${SSO_CLIENT_SECRET}'})},
+    {'key': 'callbackURL',   'value': json.dumps({'v': 'https://${CALEOPE_DOMAIN}/login/oidc/callback'})},
+    {'key': 'emailClaim',    'value': json.dumps({'v': 'email'})},
+    {'key': 'usernameClaim', 'value': json.dumps({'v': 'preferred_username'})},
+    {'key': 'scope',         'value': json.dumps({'v': 'openid profile email'})},
+    {'key': 'authorizationURL', 'value': json.dumps({'v': ''})},
+    {'key': 'tokenURL',         'value': json.dumps({'v': ''})},
+    {'key': 'userInfoURL',      'value': json.dumps({'v': ''})},
+    {'key': 'jwksURL',          'value': json.dumps({'v': ''})},
+    {'key': 'logoutRedirectURL','value': json.dumps({'v': ''})},
+    {'key': 'enableUserProfile','value': json.dumps({'v': True})},
+    {'key': 'enableGroups',     'value': json.dumps({'v': False})},
+    {'key': 'groupsClaim',      'value': json.dumps({'v': 'groups'})},
+    {'key': 'mapGroups',        'value': json.dumps({'v': False})},
+    {'key': 'adminGroup',       'value': json.dumps({'v': ''})},
+]
+q = '''mutation {
+  authentication {
+    updateStrategies(strategies: [
+      {
+        key: \"oidc\",
+        strategyKey: \"oidc\",
+        displayName: \"Authentik\",
+        enabled: true,
+        selfRegistration: true,
+        config: ''' + json.dumps(config) + '''
+      }
+    ]) {
+      responseResult { succeeded errorCode message }
+    }
+  }
+}'''
+print(json.dumps({'query': q}))
+" 2>/dev/null || echo "")
+
+                    if [ -n "${_OIDC_PAYLOAD}" ]; then
+                        _oidc_resp=$(curl -sf --max-time 15 -X POST "${_WK_URL}/graphql" \
+                            -H "Content-Type: application/json" \
+                            -H "Authorization: Bearer ${_wk_jwt_for_oidc}" \
+                            -d "${_OIDC_PAYLOAD}" 2>/dev/null) || _oidc_resp=""
+                        if echo "${_oidc_resp}" | grep -q '"succeeded":true'; then
+                            echo "  ✓ OIDC Authentik configuré dans Wiki.js (issuer=${ISSUER})"
+                        else
+                            echo "  ⚠ Configuration OIDC Wiki.js: ${_oidc_resp}" | head -c 300
+                        fi
+                    fi
+                    echo "  ✓ Authentik OIDC (slug=${APP_SLUG}, client_id=${SSO_CLIENT_ID})"
+                fi
+            fi
+        fi
+    fi
 else
-    echo "  ⚠ Wiki.js non joignable — clé API à créer manuellement"
-    echo "    1. Aller sur http://<IP>:8000 → Admin → Developer Tools → API Access"
-    echo "    2. Créer une clé et l'ajouter dans secrets.env : WIKIJS_API_TOKEN=<clé>"
+    echo "  ⚠ Wiki.js non joignable — configuration manuelle requise"
+    echo "    1. Aller sur https://${CALEOPE_DOMAIN}/ → finaliser le wizard"
+    echo "    2. Admin → Authentication → OIDC → configurer avec Authentik"
 fi
 
 # post-install.txt
@@ -223,11 +263,9 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ║  Admin email  : ${ADMIN_EMAIL}                               ║
 ║  Admin pass   : ${ADMIN_PASSWORD}                            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  L'admin est créé automatiquement — pas de wizard.           ║
-║                                                              ║
-║  Activer lecture publique (optionnel) :                      ║
-║    Administration → Groups → Guests                          ║
-║    → cocher "read:pages" et "read:assets"                    ║
+║  SSO Authentik (OIDC natif) :                                ║
+║    → Bouton "Login with Authentik" sur la page de connexion  ║
+║    → Configurable dans Admin → Authentication → OIDC         ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  SYNCHRONISATION GITHUB (optionnel) :                        ║
 ║    Administration → Storage → Git → Enable                   ║
@@ -239,4 +277,13 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 Secrets sauvegardés dans : ${CONFIG_DIR}/secrets.env
 EOF
 
+echo ""
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║              Wiki.js — Accès                         ║"
+echo "  ╠══════════════════════════════════════════════════════╣"
+echo "  ║  URL   : https://${CALEOPE_DOMAIN}/"
+echo "  ║  Email : ${ADMIN_EMAIL}"
+echo "  ║  Pass  : ${ADMIN_PASSWORD}"
+echo "  ╚══════════════════════════════════════════════════════╝"
+echo ""
 echo "✓ Wiki.js préparé"

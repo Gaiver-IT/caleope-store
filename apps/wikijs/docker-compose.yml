@@ -21,16 +21,14 @@ services:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     ports:
-      {{- range .Ports}}
-      - "{{.Host}}:{{.Container}}"
-      {{- end}}
+      - "${CALEOPE_PORT_WEB}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.wikijs.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.wikijs.entrypoints=web"
+      - "traefik.http.routers.wikijs.entrypoints=websecure"
+      - "traefik.http.routers.wikijs.tls=true"
       - "traefik.http.services.wikijs.loadbalancer.server.port=3000"
       - "traefik.docker.network=caleope-public"
-      - "traefik.http.routers.wikijs.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
     networks:
       - caleope-public
       - caleope-internal
@@ -39,4 +37,4 @@ networks:
   caleope-public:
     external: true
   caleope-internal:
-    driver: bridge
+    external: true
