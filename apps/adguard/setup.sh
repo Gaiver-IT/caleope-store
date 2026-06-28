@@ -47,7 +47,7 @@ _AG_URL="http://localhost:${_AG_PORT}"
 echo ""
 echo "→ Attente démarrage AdGuard Home..."
 _ag_started=false
-for _i in $(seq 1 20); do
+for _i in $(seq 1 40); do
     if curl -sf "${_AG_URL}" >/dev/null 2>&1; then
         _ag_started=true
         break
@@ -67,13 +67,22 @@ if ${_ag_started}; then
         echo "  → Configuration initiale AdGuard Home..."
         # Hash bcrypt du mot de passe
         _PASS_HASH=$(python3 -c "
-import subprocess, sys
+import sys
 try:
     import bcrypt
+except ImportError:
+    import subprocess
+    subprocess.run([sys.executable,'-m','pip','install','bcrypt','-q'],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        import bcrypt
+    except ImportError:
+        sys.exit(0)
+try:
     h = bcrypt.hashpw('${ADGUARD_PASSWORD}'.encode(), bcrypt.gensalt()).decode()
     print(h)
-except:
-    sys.exit(1)
+except Exception:
+    sys.exit(0)
 " 2>/dev/null) || _PASS_HASH=""
 
         if [ -n "${_PASS_HASH}" ]; then
