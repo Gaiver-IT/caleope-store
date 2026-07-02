@@ -77,6 +77,17 @@ else
 fi
 chmod 644 "${CONFIG_DIR}/ca-bundle.pem"
 
+# ── Proxy stub (doit exister AVANT docker up pour éviter que Docker crée un répertoire) ──
+# Si SSO n'est pas configuré, ce stub remplace le proxy et sort proprement.
+cat > "${CONFIG_DIR}/authentik-proxy.py" << 'STUB'
+import http.server, threading, time
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_error(503,"SSO not configured")
+    def log_message(self, *a): pass
+http.server.HTTPServer(("0.0.0.0", 9001), H).serve_forever()
+STUB
+
 # ── Authentik SSO (OIDC natif) ────────────────────────────────────────────────
 # Vaultwarden supporte nativement l'OIDC depuis v1.30 → bouton "Se connecter
 # avec SSO" dans l'UI + support des clients Bitwarden (mobile, extension).

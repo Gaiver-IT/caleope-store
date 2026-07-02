@@ -34,6 +34,7 @@ MARIADB_PASSWORD=${DB_PASS}
 AUTHENTIK_DOMAIN=${AUTHENTIK_DOMAIN}
 
 # Compte admin local GLPI (conservé même avec SSO activé)
+GLPI_ADMIN_USER=glpi
 GLPI_ADMIN_PASSWORD=${ADMIN_PASS}
 
 # URL publique de GLPI (utilisée pour url_base dans glpi_configs)
@@ -433,7 +434,35 @@ else
     echo "[glpi-init] Pas de config OIDC — SSO non activé"
 fi
 
+echo "[glpi-init] Activation de l'API REST GLPI..."
+php -r "
+\$pdo = new PDO('mysql:host='.getenv('MARIADB_HOST').';dbname='.getenv('MARIADB_DATABASE'),
+               getenv('MARIADB_USER'), getenv('MARIADB_PASSWORD'),
+               [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+// Activer l'API REST
+\$s = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$s->execute();
+// Activer la connexion par credentials
+\$s2 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_api_login_credentials',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$s2->execute();
+// Activer le High-Level API (nécessaire pour initSession)
+\$sh = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','enable_hlapi',1)
+    ON DUPLICATE KEY UPDATE value=1\");
+\$sh->execute();
+\$s3 = \$pdo->prepare(\"INSERT INTO glpi_configs (context, name, value) VALUES ('core','api_url_base',?)
+    ON DUPLICATE KEY UPDATE value=?\");
+\$base = (getenv('GLPI_URL_BASE') ?: '') . '/apirest.php';
+\$s3->execute([\$base, \$base]);
+echo '[glpi-init] API REST activée' . PHP_EOL;
+" 2>/dev/null || echo "[glpi-init] ⚠ Activation API REST échouée"
+
 echo "[glpi-init] Initialisation terminée ✓"
+
+# Fix permissions — les commandes php bin/console tournent en root,
+# ce qui crée files/_cache/ en root:root ; Apache (www-data) ne peut pas les lire.
+chown -R www-data:www-data "${GLPI_DIR}/files/" 2>/dev/null || true
 
 # Reste en vie tant qu'Apache tourne
 wait $MAIN_PID
