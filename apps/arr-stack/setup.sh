@@ -679,6 +679,7 @@ complete_dir = /data/downloads/complete
 download_dir = /data/downloads/incomplete
 host_whitelist = sabnzbd,localhost,sabnzbd.${CALEOPE_DOMAIN}
 inet_exposure = 4
+download_free = 5120
 SABCFG
 else
     # Sur réinstall : forcer les chemins de téléchargement vers le NAS
@@ -692,8 +693,13 @@ try:
     c = re.sub(r'download_dir\s*=.*', 'download_dir = /data/downloads/incomplete', c)
     if 'complete_dir' not in c:
         c += '\ncomplete_dir = /data/downloads/complete\ndownload_dir = /data/downloads/incomplete\n'
+    # download_free : entier en MB (SABnzbd rejette les suffixes "500M").
+    # 5120 MB = 5 GB — seuil raisonnable pour un déploiement NAS.
+    c = re.sub(r'download_free\s*=.*', 'download_free = 5120', c)
+    if 'download_free' not in c:
+        c += '\ndownload_free = 5120\n'
     open(path, 'w').write(c)
-    print('  ✓ SABnzbd : complete→NAS, temp→NAS (/data/downloads/incomplete)')
+    print('  ✓ SABnzbd : complete→NAS, temp→NAS, download_free=5120 MB')
 except Exception as e:
     print(f'  ⚠ patch sabnzbd.ini: {e}', file=sys.stderr)
 PYEOF
