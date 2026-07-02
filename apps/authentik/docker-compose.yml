@@ -51,6 +51,7 @@ services:
     volumes:
       - {{$.BaseDir}}/app-data/authentik/media:/media
       - {{$.BaseDir}}/app-data/authentik/custom-templates:/templates
+      - {{$.BaseDir}}/app-data/authentik/blueprints:/blueprints/custom
     ports:
       {{- range .Ports}}
       - "{{.Host}}:{{.Container}}"
@@ -101,6 +102,7 @@ services:
     volumes:
       - {{$.BaseDir}}/app-data/authentik/media:/media
       - {{$.BaseDir}}/app-data/authentik/custom-templates:/templates
+      - {{$.BaseDir}}/app-data/authentik/blueprints:/blueprints/custom
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       authentik-db:

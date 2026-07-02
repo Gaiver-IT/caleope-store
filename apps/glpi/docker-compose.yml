@@ -1,0 +1,57 @@
+services:
+  glpi-db:
+    image: mariadb:11
+    container_name: glpi-db
+    restart: unless-stopped
+    env_file:
+      - {{$.BaseDir}}/app-config/glpi/secrets.env
+    environment:
+      - MYSQL_DATABASE=glpi
+      - MYSQL_USER=glpi
+    volumes:
+      - {{$.BaseDir}}/app-data/glpi/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  glpi:
+    image: diouxx/glpi:latest
+    container_name: glpi
+    restart: unless-stopped
+    depends_on:
+      - glpi-db
+    env_file:
+      - {{$.BaseDir}}/app-config/glpi/secrets.env
+    environment:
+      - MARIADB_HOST=glpi-db
+      - MARIADB_DATABASE=glpi
+      - MARIADB_USER=glpi
+      - TIMEZONE=Europe/Paris
+    extra_hosts:
+      - "${AUTHENTIK_DOMAIN}:host-gateway"
+    entrypoint: ["/bin/bash", "/opt/glpi-init.sh"]
+    ports:
+      {{- range .Ports}}
+      - "{{.Host}}:{{.Container}}"
+      {{- end}}
+    volumes:
+      - {{$.BaseDir}}/app-data/glpi/files:/var/www/html/glpi/files
+      - {{$.BaseDir}}/app-data/glpi/plugins:/var/www/html/glpi/plugins
+      - {{$.BaseDir}}/app-data/glpi/config:/var/www/html/glpi/config
+      - {{$.BaseDir}}/app-data/glpi/marketplace:/var/www/html/glpi/marketplace
+      - {{$.BaseDir}}/data/traefik/certs/authentik.crt:/usr/local/share/ca-certificates/authentik.crt:ro
+      - {{$.BaseDir}}/app-config/glpi/glpi-init.sh:/opt/glpi-init.sh:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glpi.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.glpi.entrypoints=web"
+      - "traefik.http.services.glpi.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    driver: bridge
