@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "PORTAINER_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Portainer",
+    "type":        "port",
+    "required":    false,
+    "default":     "9000"
+  }
+]

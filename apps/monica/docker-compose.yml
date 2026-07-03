@@ -1,0 +1,42 @@
+services:
+  monica-db:
+    image: mysql:8.0
+    container_name: monica-db
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/monica/secrets.env
+    environment:
+      - MYSQL_DATABASE=monica
+      - MYSQL_USER=monica
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/monica/db:/var/lib/mysql
+    networks:
+      - caleope-internal
+
+  monica:
+    image: monica:latest
+    container_name: monica
+    restart: unless-stopped
+    depends_on:
+      - monica-db
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/monica/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/monica/data:/var/www/html/storage
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.monica.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.monica.entrypoints=websecure"
+      - "traefik.http.routers.monica.tls=true"
+      - "traefik.http.services.monica.loadbalancer.server.port=80"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

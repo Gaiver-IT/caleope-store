@@ -1,0 +1,24 @@
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/portainer/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CALEOPE_BASE_DIR}/app-data/portainer/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+    networks:
+      - caleope-public
+
+networks:
+  caleope-public:
+    external: true

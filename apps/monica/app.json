@@ -1,0 +1,20 @@
+{
+  "id": "monica",
+  "name": "Monica",
+  "description": "CRM personnel — gérez vos relations, contacts, anniversaires et interactions sociales.",
+  "category": "lifestyle",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/monica/data", "target": "/var/www/html/storage" }
+  ],
+  "backup": { "enabled": true }
+}
