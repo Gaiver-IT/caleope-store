@@ -92,22 +92,36 @@ if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['clien
                     -d "{\"name\":\"FreshRSS\",\"slug\":\"freshrss\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
                     >/dev/null 2>&1 || true
 
-                # Réécrire secrets.env avec OIDC activé (remplace les placeholders)
+                # mod_auth_openidc (Apache) récupère la discovery OIDC côté serveur
+                # à CHAQUE requête. Si l'endpoint n'est pas joignable en HTTPS depuis
+                # ce serveur (réseau sans NAT reflection / hairpin KO), Apache renvoie
+                # 500 sur TOUTE la page. On teste donc la joignabilité depuis l'hôte :
+                # joignable → SSO activé ; sinon → login local (OIDC_ENABLED=0) au lieu
+                # de casser l'app. Réactivable dans secrets.env une fois le réseau OK.
+                METADATA_URL="https://${AK_DOMAIN}/application/o/freshrss/.well-known/openid-configuration"
+                if curl -skf --max-time 8 "${METADATA_URL}" >/dev/null 2>&1; then
+                    _OIDC_ENABLED=1
+                    _OIDC_MSG="  ✓ FreshRSS OIDC (SSO Authentik) activé"
+                else
+                    _OIDC_ENABLED=0
+                    _OIDC_MSG="  ⚠ Authentik injoignable en HTTPS depuis ce serveur (NAT reflection ?) — SSO désactivé, login local. Provider créé côté Authentik ; passez OIDC_ENABLED=1 dans app-config/freshrss/secrets.env quand le réseau le permet."
+                fi
+                # Réécrire secrets.env (OIDC activé seulement si joignable)
                 cat > "${_SECRETS}" <<OIDCENV
 FRESHRSS_ADMIN_USER=${FRESHRSS_ADMIN_USER}
 FRESHRSS_ADMIN_PASS=${FRESHRSS_ADMIN_PASS}
 
 # OIDC Authentik (natif FreshRSS via mod_auth_openidc)
-OIDC_ENABLED=1
+OIDC_ENABLED=${_OIDC_ENABLED}
 OIDC_CLIENT_ID=${SSO_CLIENT_ID}
 OIDC_CLIENT_SECRET=${SSO_CLIENT_SECRET}
-OIDC_PROVIDER_METADATA_URL=https://${AK_DOMAIN}/application/o/freshrss/.well-known/openid-configuration
+OIDC_PROVIDER_METADATA_URL=${METADATA_URL}
 OIDC_CLIENT_CRYPTO_KEY=${OIDC_CRYPTO_KEY}
 OIDC_REMOTE_USER_CLAIM=preferred_username
 OIDC_SCOPES=openid email profile
 OIDC_X_FORWARDED_HEADERS=X-Forwarded-Host X-Forwarded-Port X-Forwarded-Proto
 OIDCENV
-                echo "  ✓ FreshRSS OIDC configuré dans Authentik"
+                echo "${_OIDC_MSG}"
             fi
         fi
     fi
