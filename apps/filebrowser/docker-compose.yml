@@ -1,0 +1,29 @@
+services:
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    restart: unless-stopped
+    user: "0:0"
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/filebrowser/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser:/srv
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser/db:/database
+      - ${CALEOPE_BASE_DIR}/app-data/filebrowser/conf/.filebrowser.json:/.filebrowser.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.filebrowser.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.filebrowser.entrypoints=websecure"
+      - "traefik.http.routers.filebrowser.tls=true"
+      - "traefik.http.services.filebrowser.loadbalancer.server.port=80"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
