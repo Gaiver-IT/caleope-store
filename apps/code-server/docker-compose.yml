@@ -1,0 +1,30 @@
+services:
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Europe/Paris}
+      - PASSWORD=${CODE_SERVER_PASSWORD}
+      - SUDO_PASSWORD=${CODE_SERVER_SUDO_PASSWORD}
+      - DEFAULT_WORKSPACE=/workspace
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/code-server/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/code-server/workspace:/workspace
+    ports:
+      - "${CALEOPE_PORT_WEB}:8443"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.code-server.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.code-server.entrypoints=websecure"
+      - "traefik.http.routers.code-server.tls=true"
+      - "traefik.http.services.code-server.loadbalancer.server.port=8443"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+    restart: unless-stopped
+
+networks:
+  caleope-public:
+    external: true

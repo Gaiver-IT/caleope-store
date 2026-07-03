@@ -1,0 +1,26 @@
+[
+  {
+    "key":         "CODE_SERVER_PORT",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Code Server",
+    "type":        "port",
+    "required":    false,
+    "default":     "8443"
+  },
+  {
+    "key":         "CODE_SERVER_PASSWORD",
+    "label":       "Mot de passe",
+    "description": "Mot de passe pour accéder à Code Server",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "CODE_SERVER_SUDO_PASSWORD",
+    "label":       "Mot de passe sudo",
+    "description": "Mot de passe sudo dans le terminal intégré (optionnel)",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]
