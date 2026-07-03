@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "UPTIME_KUMA_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Uptime Kuma",
+    "type":        "port",
+    "required":    false,
+    "default":     "3025"
+  }
+]
