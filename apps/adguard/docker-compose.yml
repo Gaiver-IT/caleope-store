@@ -1,0 +1,31 @@
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/adguard/secrets.env
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "${CALEOPE_PORT_WEB}:3000"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/adguard/work:/opt/adguardhome/work
+      - ${CALEOPE_BASE_DIR}/app-data/adguard/conf:/opt/adguardhome/conf
+    cap_add:
+      - NET_ADMIN
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adguard.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.adguard.entrypoints=websecure"
+      - "traefik.http.routers.adguard.tls=true"
+      - "traefik.http.services.adguard.loadbalancer.server.port=3000"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

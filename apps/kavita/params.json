@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "KAVITA_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Kavita",
+    "type":        "port",
+    "required":    false,
+    "default":     "5001"
+  }
+]

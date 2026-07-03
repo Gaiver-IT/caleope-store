@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "JELLYSEERR_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Jellyseerr",
+    "type":        "port",
+    "required":    false,
+    "default":     "5099"
+  }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "key":         "ADGUARD_USERNAME",
+    "label":       "Nom d'utilisateur admin",
+    "description": "Identifiant de connexion à AdGuard Home",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin"
+  },
+  {
+    "key":         "ADGUARD_PASSWORD",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe de l'interface AdGuard (laisser vide pour en générer un)",
+    "type":        "password",
+    "required":    false
+  },
+  {
+    "key":         "ADGUARD_DNS1",
+    "label":       "DNS upstream 1",
+    "description": "Serveur DNS upstream principal (ex: 1.1.1.1 ou 9.9.9.9)",
+    "type":        "string",
+    "required":    false,
+    "default":     "1.1.1.1"
+  },
+  {
+    "key":         "ADGUARD_DNS2",
+    "label":       "DNS upstream 2",
+    "description": "Serveur DNS upstream secondaire",
+    "type":        "string",
+    "required":    false,
+    "default":     "1.0.0.1"
+  }
+]

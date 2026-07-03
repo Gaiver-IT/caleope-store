@@ -1,0 +1,24 @@
+[
+  {
+    "key":         "NAVIDROME_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Navidrome",
+    "type":        "port",
+    "required":    false,
+    "default":     "4533"
+  },
+  {
+    "key":         "ND_LOGLEVEL",
+    "label":       "Niveau de log",
+    "description": "Niveau de verbosité des logs",
+    "type":        "select",
+    "required":    false,
+    "default":     "info",
+    "options":     [
+      { "value": "trace", "label": "TRACE" },
+      { "value": "debug", "label": "DEBUG" },
+      { "value": "info",  "label": "INFO" },
+      { "value": "warn",  "label": "WARN" }
+    ]
+  }
+]

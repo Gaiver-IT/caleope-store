@@ -1,0 +1,25 @@
+{
+  "id": "adguard",
+  "name": "AdGuard Home",
+  "category": "network",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false,
+    "cap_net_admin": true
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web",     "container": 3000, "dynamic": true  },
+    { "name": "dns-tcp", "container": 53,   "dynamic": false },
+    { "name": "dns-udp", "container": 53,   "dynamic": false, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-data/adguard/work", "target": "/opt/adguardhome/work" },
+    { "source": "app-data/adguard/conf", "target": "/opt/adguardhome/conf" }
+  ],
+  "backup": { "enabled": true }
+}

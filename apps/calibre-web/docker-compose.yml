@@ -1,0 +1,32 @@
+services:
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/calibre-web/secrets.env
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+    ports:
+      - "${CALEOPE_PORT_WEB}:8083"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/calibre-web/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/calibre-web/books:/books
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calibre-web.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.calibre-web.entrypoints=websecure"
+      - "traefik.http.routers.calibre-web.tls=true"
+      - "traefik.http.services.calibre-web.loadbalancer.server.port=8083"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

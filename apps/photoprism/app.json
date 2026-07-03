@@ -1,0 +1,21 @@
+{
+  "id": "photoprism",
+  "name": "PhotoPrism",
+  "description": "Gestionnaire de photos AI-powered — alternative auto-hébergée à Google Photos avec reconnaissance faciale.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 2342, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/photoprism/originals", "target": "/photoprism/originals" },
+    { "source": "app-data/photoprism/storage",   "target": "/photoprism/storage" }
+  ],
+  "backup": { "enabled": true }
+}

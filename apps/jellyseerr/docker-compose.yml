@@ -1,0 +1,29 @@
+services:
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/jellyseerr/secrets.env
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=Europe/Paris
+    ports:
+      - "${CALEOPE_PORT_WEB}:5055"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/jellyseerr/config:/app/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyseerr.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.jellyseerr.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr.tls=true"
+      - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

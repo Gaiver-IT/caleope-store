@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "N8N_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface n8n",
+    "type":        "port",
+    "required":    false,
+    "default":     "5678"
+  }
+]

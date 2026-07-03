@@ -1,0 +1,31 @@
+services:
+  stirling-pdf:
+    image: frooodle/s-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    ports:
+      - "${CALEOPE_PORT_WEB}:8080"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/stirling-pdf/configs:/configs
+      - ${CALEOPE_BASE_DIR}/app-data/stirling-pdf/logs:/logs
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/stirling-pdf/secrets.env
+    environment:
+      - DOCKER_ENABLE_SECURITY=false
+      - SECURITY_ENABLELOGIN=false
+      - LANGS=fr_FR
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stirling-pdf.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.stirling-pdf.entrypoints=websecure"
+      - "traefik.http.routers.stirling-pdf.tls=true"
+      - "traefik.http.services.stirling-pdf.loadbalancer.server.port=8080"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

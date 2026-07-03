@@ -1,0 +1,21 @@
+{
+  "id": "calibre-web",
+  "name": "Calibre-Web",
+  "description": "Interface web pour votre bibliothèque Calibre — parcourez, lisez et téléchargez vos ebooks.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8083, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/calibre-web/config", "target": "/config" },
+    { "source": "app-data/calibre-web/books", "target": "/books" }
+  ],
+  "backup": { "enabled": true }
+}

@@ -1,0 +1,44 @@
+services:
+  komga:
+    image: gotson/komga:latest
+    container_name: komga
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/komga/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/komga/comics:/comics
+      - ${CALEOPE_BASE_DIR}/app-data/komga/mangas:/mangas
+    ports:
+      - "${CALEOPE_PORT_WEB}:25600"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.komga.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.komga.entrypoints=websecure"
+      - "traefik.http.routers.komga.tls=true"
+      - "traefik.http.services.komga.loadbalancer.server.port=25600"
+    restart: unless-stopped
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  komga-bootstrap:
+    image: curlimages/curl:latest
+    container_name: komga-bootstrap
+    restart: "no"
+    depends_on:
+      - komga
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/komga/secrets.env
+    entrypoint: ["/bin/sh", "${CALEOPE_BASE_DIR}/app-config/komga/bootstrap.sh"]
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-config/komga:${CALEOPE_BASE_DIR}/app-config/komga
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

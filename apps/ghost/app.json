@@ -1,0 +1,20 @@
+{
+  "id": "ghost",
+  "name": "Ghost",
+  "category": "cms",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 2368, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/ghost/content", "target": "/var/lib/ghost/content" }
+  ],
+  "backup": { "enabled": true },
+  "secure_headers": true
+}

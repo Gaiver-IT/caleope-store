@@ -1,0 +1,20 @@
+{
+  "id": "jellyseerr",
+  "name": "Jellyseerr",
+  "description": "Gestionnaire de demandes de médias pour Jellyfin — permettez à vos utilisateurs de demander films et séries.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 5055, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/jellyseerr/config", "target": "/app/config" }
+  ],
+  "backup": { "enabled": true }
+}

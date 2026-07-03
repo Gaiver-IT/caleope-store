@@ -1,0 +1,30 @@
+services:
+  linkding:
+    image: sissbruecker/linkding:latest
+    container_name: linkding
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/linkding/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:9090"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/linkding/data:/etc/linkding/data
+    environment:
+      - LD_SUPERUSER_NAME=${LINKDING_ADMIN_USER:-admin}
+      - LD_SUPERUSER_PASSWORD=${LINKDING_ADMIN_PASS}
+      - LD_CONTEXT_PATH=${LINKDING_CONTEXT_PATH:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.linkding.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.linkding.entrypoints=websecure"
+      - "traefik.http.routers.linkding.tls=true"
+      - "traefik.http.services.linkding.loadbalancer.server.port=9090"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

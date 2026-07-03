@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "MEALIE_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Mealie",
+    "type":        "port",
+    "required":    false,
+    "default":     "9000"
+  }
+]

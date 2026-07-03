@@ -1,0 +1,40 @@
+services:
+  memos:
+    image: neosmemo/memos:stable
+    container_name: memos
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/memos/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:5230"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/memos/data:/var/opt/memos
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.memos.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.memos.entrypoints=websecure"
+      - "traefik.http.routers.memos.tls=true"
+      - "traefik.http.services.memos.loadbalancer.server.port=5230"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  memos-bootstrap:
+    image: alpine:3.19
+    container_name: memos-bootstrap
+    restart: "no"
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/memos/secrets.env
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache curl >/dev/null 2>&1 && sh /bootstrap.sh"]
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-config/memos/bootstrap.sh:/bootstrap.sh:ro
+    depends_on:
+      - memos
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

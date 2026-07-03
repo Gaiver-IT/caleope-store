@@ -1,0 +1,19 @@
+{
+  "id": "memos",
+  "name": "Memos",
+  "category": "productivity",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 5230, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/memos/data", "target": "/var/opt/memos" }
+  ],
+  "backup": { "enabled": true }
+}

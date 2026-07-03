@@ -1,0 +1,22 @@
+{
+  "id": "paperless-ngx",
+  "name": "Paperless-NGX",
+  "category": "productivity",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/paperless-ngx/data",    "target": "/usr/src/paperless/data" },
+    { "source": "app-data/paperless-ngx/media",   "target": "/usr/src/paperless/media" },
+    { "source": "app-data/paperless-ngx/export",  "target": "/usr/src/paperless/export" },
+    { "source": "app-data/paperless-ngx/consume", "target": "/usr/src/paperless/consume" }
+  ],
+  "backup": { "enabled": true }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "komga",
+  "name": "Komga",
+  "description": "Serveur de bibliothèque pour comics, mangas et livres numériques — interface web et REST API.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 25600, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/komga/config",  "target": "/config" },
+    { "source": "app-data/komga/comics",  "target": "/comics" },
+    { "source": "app-data/komga/mangas",  "target": "/mangas" }
+  ],
+  "backup": { "enabled": true }
+}

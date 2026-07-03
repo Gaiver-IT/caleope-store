@@ -1,0 +1,25 @@
+[
+  {
+    "key":         "LINKDING_ADMIN_USER",
+    "label":       "Utilisateur admin",
+    "description": "Nom du compte administrateur Linkding",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin"
+  },
+  {
+    "key":         "LINKDING_ADMIN_PASS",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe du compte admin (laisser vide pour en générer un)",
+    "type":        "password",
+    "required":    false
+  },
+  {
+    "key":         "LINKDING_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Linkding",
+    "type":        "port",
+    "required":    false,
+    "default":     "9090"
+  }
+]

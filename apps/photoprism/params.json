@@ -1,0 +1,18 @@
+[
+  {
+    "key":         "PHOTOPRISM_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface PhotoPrism",
+    "type":        "port",
+    "required":    false,
+    "default":     "2342"
+  },
+  {
+    "key":         "PHOTOPRISM_ADMIN_PASSWORD",
+    "label":       "Mot de passe admin",
+    "description": "Mot de passe du compte admin (8 caractères minimum)",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]

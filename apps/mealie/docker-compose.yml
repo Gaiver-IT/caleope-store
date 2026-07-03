@@ -1,0 +1,26 @@
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:latest
+    container_name: mealie
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/mealie/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:9000"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/mealie/data:/app/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mealie.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.mealie.entrypoints=websecure"
+      - "traefik.http.routers.mealie.tls=true"
+      - "traefik.http.services.mealie.loadbalancer.server.port=9000"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -1,0 +1,29 @@
+services:
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: home-assistant
+    restart: unless-stopped
+    privileged: false
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/home-assistant/secrets.env
+    environment:
+      - TZ=Europe/Paris
+    ports:
+      - "${CALEOPE_PORT_WEB}:8123"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/home-assistant/config:/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.home-assistant.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.home-assistant.entrypoints=websecure"
+      - "traefik.http.routers.home-assistant.tls=true"
+      - "traefik.http.services.home-assistant.loadbalancer.server.port=8123"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

@@ -1,0 +1,20 @@
+{
+  "id": "home-assistant",
+  "name": "Home Assistant",
+  "description": "Plateforme domotique open-source pour centraliser et automatiser vos objets connectés.",
+  "category": "smart-home",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8123, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/home-assistant/config", "target": "/config" }
+  ],
+  "backup": { "enabled": true }
+}
