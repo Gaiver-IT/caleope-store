@@ -7,7 +7,6 @@ services:
       - ${CALEOPE_BASE_DIR}/app-config/portainer/secrets.env
     ports:
       - "${CALEOPE_PORT_WEB}:9000"
-      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CALEOPE_BASE_DIR}/app-data/portainer/data:/data

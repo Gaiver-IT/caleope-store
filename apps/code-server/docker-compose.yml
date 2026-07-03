@@ -20,4 +20,11 @@ services:
       - "traefik.http.routers.code-server.entrypoints=websecure"
       - "traefik.http.routers.code-server.tls=true"
       - "traefik.http.services.code-server.loadbalancer.server.port=8080"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
     restart: unless-stopped
+
+networks:
+  caleope-public:
+    external: true
