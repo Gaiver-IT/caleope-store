@@ -1,0 +1,32 @@
+services:
+  freshrss:
+    image: freshrss/freshrss:latest
+    container_name: freshrss
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/freshrss/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/freshrss/data:/var/www/FreshRSS/data
+      - ${CALEOPE_BASE_DIR}/app-data/freshrss/extensions:/var/www/FreshRSS/extensions
+    environment:
+      - TZ=Europe/Paris
+      - CRON_MIN=1,31
+      - FRESHRSS_INSTALL=--default-user ${FRESHRSS_ADMIN_USER:-admin} --db-type sqlite --db-base freshrss
+      - FRESHRSS_USER=--user ${FRESHRSS_ADMIN_USER:-admin} --password ${FRESHRSS_ADMIN_PASS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freshrss.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.freshrss.entrypoints=websecure"
+      - "traefik.http.routers.freshrss.tls=true"
+      - "traefik.http.services.freshrss.loadbalancer.server.port=80"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

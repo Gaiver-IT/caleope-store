@@ -1,0 +1,18 @@
+services:
+  watchtower:
+    # Fork maintenu : containrrr/watchtower est abandonné et son client Docker
+    # (API 1.25) est refusé par les daemons récents (« client version too old »).
+    # nickfedor/watchtower auto-négocie l'API (supporte v1.43+).
+    image: nickfedor/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/watchtower/secrets.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true
