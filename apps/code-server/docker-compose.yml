@@ -13,13 +13,13 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/code-server/config:/config
       - ${CALEOPE_BASE_DIR}/app-data/code-server/workspace:/workspace
     ports:
-      - "${CALEOPE_PORT_WEB}:8080"
+      - "${CALEOPE_PORT_WEB}:8443"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.code-server.rule=Host(`${CALEOPE_DOMAIN}`)"
       - "traefik.http.routers.code-server.entrypoints=websecure"
       - "traefik.http.routers.code-server.tls=true"
-      - "traefik.http.services.code-server.loadbalancer.server.port=8080"
+      - "traefik.http.services.code-server.loadbalancer.server.port=8443"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
