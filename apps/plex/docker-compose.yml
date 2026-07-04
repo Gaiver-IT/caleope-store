@@ -1,0 +1,35 @@
+services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/plex/secrets.env
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - VERSION=docker
+    ports:
+      - "${CALEOPE_PORT_WEB}:32400"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/plex/config:/config
+      - ${CALEOPE_BASE_DIR}/app-data/plex/tv:/tv
+      - ${CALEOPE_BASE_DIR}/app-data/plex/movies:/movies
+      - ${CALEOPE_BASE_DIR}/app-data/plex/music:/music
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plex.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.plex.entrypoints=websecure"
+      - "traefik.http.routers.plex.tls=true"
+      - "traefik.http.services.plex.loadbalancer.server.port=32400"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

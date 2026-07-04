@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "HOMARR_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à l'interface Homarr",
+    "type":        "port",
+    "required":    false,
+    "default":     "7575"
+  }
+]
