@@ -5,8 +5,11 @@ CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/homarr"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/data"
-mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/configs"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/appdata"
+
+# Homarr v1 exige une clé de chiffrement (64 hex). Générée une fois, conservée.
+HOMARR_KEY=$(grep "^SECRET_ENCRYPTION_KEY=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-)
+[ -n "${HOMARR_KEY}" ] || HOMARR_KEY=$(openssl rand -hex 32)
 
 # ── OIDC Authentik (natif Homarr v1) ──────────────────────────────────────────
 AUTH_BLOCK=""
@@ -74,6 +77,7 @@ AUTH_OIDC_ADMIN_GROUP=authentik Admins"
 fi
 
 cat > "${_SECRETS}" <<ENV
+SECRET_ENCRYPTION_KEY=${HOMARR_KEY}
 ${AUTH_BLOCK}
 ENV
 chmod 600 "${_SECRETS}"

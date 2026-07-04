@@ -1,6 +1,8 @@
 services:
   homarr:
-    image: ghcr.io/ajnart/homarr:latest
+    # Homarr v1 (homarr-labs) — l'ancien dépôt ajnart est abandonné. v1 exige
+    # SECRET_ENCRYPTION_KEY (dans secrets.env) et un volume unique /appdata.
+    image: ghcr.io/homarr-labs/homarr:latest
     container_name: homarr
     restart: unless-stopped
     env_file:
@@ -9,8 +11,7 @@ services:
       - "${CALEOPE_PORT_WEB}:7575"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${CALEOPE_BASE_DIR}/app-data/homarr/data:/app/data
-      - ${CALEOPE_BASE_DIR}/app-data/homarr/configs:/app/public/custom-icons
+      - ${CALEOPE_BASE_DIR}/app-data/homarr/appdata:/appdata
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.homarr.rule=Host(`${CALEOPE_DOMAIN}`)"

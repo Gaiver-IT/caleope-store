@@ -17,6 +17,13 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/plex/tv:/tv
       - ${CALEOPE_BASE_DIR}/app-data/plex/movies:/movies
       - ${CALEOPE_BASE_DIR}/app-data/plex/music:/music
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plex.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.plex.entrypoints=websecure"
+      - "traefik.http.routers.plex.tls=true"
+      - "traefik.http.services.plex.loadbalancer.server.port=32400"
+      - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
       - caleope-internal
