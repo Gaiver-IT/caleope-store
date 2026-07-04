@@ -67,7 +67,7 @@ if r: print(json.dumps({'pk':r[0]['pk'],'cid':r[0]['client_id'],'cs':r[0]['clien
 
                 AUTH_BLOCK="# OIDC Authentik (natif Homarr v1)
 AUTH_PROVIDERS=credentials,oidc
-AUTH_OIDC_URI=https://${AK_DOMAIN}/application/o/homarr/
+AUTH_OIDC_ISSUER=https://${AK_DOMAIN}/application/o/homarr/
 AUTH_OIDC_CLIENT_ID=${SSO_CLIENT_ID}
 AUTH_OIDC_CLIENT_SECRET=${SSO_CLIENT_SECRET}
 AUTH_OIDC_CLIENT_NAME=Authentik
