@@ -8,7 +8,9 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/homarr/appdata"
 
 # Homarr v1 exige une clé de chiffrement (64 hex). Générée une fois, conservée.
-HOMARR_KEY=$(grep "^SECRET_ENCRYPTION_KEY=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-)
+# (grep sur un secrets.env absent renverrait 2 → abort avec set -e/pipefail.)
+HOMARR_KEY=""
+[ -f "${_SECRETS}" ] && HOMARR_KEY=$(grep "^SECRET_ENCRYPTION_KEY=" "${_SECRETS}" | cut -d= -f2- || true)
 [ -n "${HOMARR_KEY}" ] || HOMARR_KEY=$(openssl rand -hex 32)
 
 # ── OIDC Authentik (natif Homarr v1) ──────────────────────────────────────────
