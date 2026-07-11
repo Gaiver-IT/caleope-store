@@ -20,6 +20,15 @@ SECURE_AUTH_KEY=$(openssl rand -hex 32)
 LOGGED_IN_KEY=$(openssl rand -hex 32)
 NONCE_KEY=$(openssl rand -hex 32)
 
+# WORDPRESS_CONFIG_EXTRA — deux contraintes (voir la ligne dans le heredoc) :
+#  1. TOUT sur UNE ligne : un env file ne supporte pas le multi-lignes (docker
+#     compose plante sinon sur « unexpected character "(" »).
+#  2. UNIQUEMENT des define() : l'image WordPress fait un eval() de cette valeur ;
+#     la moindre structure de contrôle (if/isset) casse le parse de TOUT l'eval
+#     -> Fatal PHP -> 500. Le forçage HTTPS derrière proxy est déjà fait
+#     nativement par l'image, donc inutile ici.
+# NB : ne PAS mettre ce genre de commentaire DANS le heredoc <<EOF (non quoté) —
+# un $ y serait interprété (bug déjà attrapé : "$CONFIG_EXTRA" unbound).
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
 # MariaDB
 MARIADB_ROOT_PASSWORD=${DB_ROOT}
@@ -33,14 +42,7 @@ WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_USER=wordpress
 WORDPRESS_DB_PASSWORD=${DB_PASS}
 
-# WordPress — URL publique (critique pour wp-admin derrière un reverse proxy).
-# ⚠️ DEUX contraintes :
-#  1. TOUT sur UNE ligne : un fichier env ne supporte pas le multi-lignes
-#     (docker compose plante sur « unexpected character "(" »).
-#  2. UNIQUEMENT des define() : l'image WordPress fait eval($CONFIG_EXTRA) — la
-#     moindre structure de contrôle (if/isset) casse le parse de TOUT l'eval →
-#     fatal PHP → 500, aucun define appliqué. Le forçage HTTPS derrière proxy
-#     (HTTP_X_FORWARDED_PROTO) est DÉJÀ fait nativement par l'image → inutile ici.
+# WordPress — URL publique + clés (une ligne, define() seuls — voir note ci-dessus)
 WORDPRESS_CONFIG_EXTRA=define('WP_HOME','https://${CALEOPE_DOMAIN}'); define('WP_SITEURL','https://${CALEOPE_DOMAIN}'); define('AUTH_KEY','${AUTH_KEY}'); define('SECURE_AUTH_KEY','${SECURE_AUTH_KEY}'); define('LOGGED_IN_KEY','${LOGGED_IN_KEY}'); define('NONCE_KEY','${NONCE_KEY}');
 
 # Compte admin (utilisé par le bootstrap WP-CLI)
