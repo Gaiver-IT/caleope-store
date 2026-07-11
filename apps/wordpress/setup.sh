@@ -33,11 +33,15 @@ WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_USER=wordpress
 WORDPRESS_DB_PASSWORD=${DB_PASS}
 
-# WordPress — URL publique (critique pour wp-admin derrière un reverse proxy)
-# ⚠️ TOUT sur UNE ligne : un fichier env ne supporte pas les valeurs multi-lignes
-# (docker compose plante sur « unexpected character "(" »). PHP se moque des
-# retours à la ligne — on concatène les instructions.
-WORDPRESS_CONFIG_EXTRA=define('WP_HOME','https://${CALEOPE_DOMAIN}'); define('WP_SITEURL','https://${CALEOPE_DOMAIN}'); define('AUTH_KEY','${AUTH_KEY}'); define('SECURE_AUTH_KEY','${SECURE_AUTH_KEY}'); define('LOGGED_IN_KEY','${LOGGED_IN_KEY}'); define('NONCE_KEY','${NONCE_KEY}'); if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') { \$_SERVER['HTTPS'] = 'on'; }
+# WordPress — URL publique (critique pour wp-admin derrière un reverse proxy).
+# ⚠️ DEUX contraintes :
+#  1. TOUT sur UNE ligne : un fichier env ne supporte pas le multi-lignes
+#     (docker compose plante sur « unexpected character "(" »).
+#  2. UNIQUEMENT des define() : l'image WordPress fait eval($CONFIG_EXTRA) — la
+#     moindre structure de contrôle (if/isset) casse le parse de TOUT l'eval →
+#     fatal PHP → 500, aucun define appliqué. Le forçage HTTPS derrière proxy
+#     (HTTP_X_FORWARDED_PROTO) est DÉJÀ fait nativement par l'image → inutile ici.
+WORDPRESS_CONFIG_EXTRA=define('WP_HOME','https://${CALEOPE_DOMAIN}'); define('WP_SITEURL','https://${CALEOPE_DOMAIN}'); define('AUTH_KEY','${AUTH_KEY}'); define('SECURE_AUTH_KEY','${SECURE_AUTH_KEY}'); define('LOGGED_IN_KEY','${LOGGED_IN_KEY}'); define('NONCE_KEY','${NONCE_KEY}');
 
 # Compte admin (utilisé par le bootstrap WP-CLI)
 WP_ADMIN_USER=${ADMIN_USER}
