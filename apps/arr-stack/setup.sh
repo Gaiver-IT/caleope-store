@@ -17,11 +17,14 @@ mkdir -p "${STORAGE_PATH}/downloads/complete/movies" \
          "${STORAGE_PATH}/downloads/complete/tv" \
          "${STORAGE_PATH}/downloads/complete/music" \
          "${STORAGE_PATH}/downloads/complete/books" \
+         "${STORAGE_PATH}/downloads/complete/comics" \
          "${STORAGE_PATH}/downloads/incomplete" \
          "${STORAGE_PATH}/media/movies" \
          "${STORAGE_PATH}/media/tv" \
          "${STORAGE_PATH}/media/music" \
-         "${STORAGE_PATH}/media/books"
+         "${STORAGE_PATH}/media/books" \
+         "${STORAGE_PATH}/media/comics" \
+         "${STORAGE_PATH}/media/manga"
 chmod -R 777 "${STORAGE_PATH}"
 
 
@@ -416,6 +419,11 @@ fi
 if [[ "${JELLYFIN_EMBEDDED}" == "true" ]]; then
     COMPOSE_PROFILES="${COMPOSE_PROFILES},jellyfin"
 fi
+
+# Ajouter les profils lecture : comics (Mylar3) / books (LazyLibrarian) / kavita (liseuse)
+[[ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" ]] && COMPOSE_PROFILES="${COMPOSE_PROFILES},comics"
+[[ "${CALEOPE_PARAM_BOOKS_ENABLED:-false}"  == "true" ]] && COMPOSE_PROFILES="${COMPOSE_PROFILES},books"
+[[ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ]] && COMPOSE_PROFILES="${COMPOSE_PROFILES},kavita"
 
 # ── Token Authentik (pour SSO Jellyfin dans le bootstrap) ────────────
 ARR_AK_TOKEN=""
@@ -1769,6 +1777,9 @@ ${JF_LINE}
 ║  Bazarr       : https://bazarr.${CALEOPE_DOMAIN}                     ║
 ║  qBittorrent  : https://qbt.${CALEOPE_DOMAIN}                        ║
 ║  SABnzbd      : https://sabnzbd.${CALEOPE_DOMAIN}                    ║
+$([ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" ] && echo "║  Mylar3       : https://mylar.${CALEOPE_DOMAIN}    (comics/manga)    ║")
+$([ "${CALEOPE_PARAM_BOOKS_ENABLED:-false}" == "true" ]  && echo "║  LazyLibrarian: https://books.${CALEOPE_DOMAIN}    (livres/ebooks)   ║")
+$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ] && echo "║  Kavita       : https://kavita.${CALEOPE_DOMAIN}   (liseuse)         ║")
 ╠════════════════════════════════════════════════════════════════════════╣
 ║  🤖 CONFIGURÉ AUTOMATIQUEMENT                                         ║
 ║  • Prowlarr → Radarr, Sonarr, Lidarr (fullSync) + FlareSolverr       ║
@@ -1778,6 +1789,8 @@ ${JF_LINE}
 ║  • Langue française partout                                           ║
 ║  • Bazarr → profil sous-titres Français + Anglais                    ║
 $([ "${JELLYFIN_EMBEDDED}" == "true" ] && echo "║  • Jellyfin → bibliothèques + compte admin + Jellyseerr             ║")
+$([ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" -o "${CALEOPE_PARAM_BOOKS_ENABLED:-false}" == "true" ] && echo "║  • Dossiers comics/manga/books prêts (média sur le NAS)             ║")
+$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" -a -n "${ARR_AK_TOKEN}" ] && echo "║  • SSO Authentik → Kavita (liseuse protégée)                        ║")
 $([ -n "${ARR_AK_TOKEN}" ] && echo "║  • SSO Authentik → Jellyfin (bouton login) + Jellyseerr protégé     ║")
 ${VPN_LINE}
 ╠════════════════════════════════════════════════════════════════════════╣
@@ -1786,6 +1799,9 @@ ${VPN_LINE}
 ║  2. Prowlarr → ajouter tes indexeurs perso (YGGTorrent, etc.)        ║
 ║  3. Bazarr → Providers → activer tes sources de sous-titres          ║
 ║     (tous nécessitent un compte externe — OpenSubtitles, etc.)        ║
+$([ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • Mylar3 → Config : download client qBittorrent (host qbittorrent, ║" "║    port 8080) + indexeurs Prowlarr (torznab) ; dossier /data/media/ ║" "║    comics ou /data/media/manga                                      ║")
+$([ "${CALEOPE_PARAM_BOOKS_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • LazyLibrarian → Config : download clients + indexeurs Prowlarr ; ║" "║    dossier destination /data/media/books                            ║")
+$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • Kavita → 1er lancement : créer le compte admin, puis Bibliothèques║" "║    → ajouter Manga=/data/manga, Comics=/data/comics, Livres=/data/  ║" "║    books (média monté en lecture seule sur /data)                   ║")
 ${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
