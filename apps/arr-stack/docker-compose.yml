@@ -421,8 +421,11 @@ services:
 
   # ── KAVITA — liseuse manga / comics / ebooks (profil: kavita) ───────
   # Le « Jellyfin des manga/livres » : lit /data/media/{comics,manga,books}.
-  # Bibliothèques auto-configurées par le bootstrap. Protégé par SSO Authentik
-  # (middleware ${ARR_AK_MW}, comme Jellyseerr). Média monté en lecture seule.
+  # Auth : Kavita a ses PROPRES comptes (progression de lecture par utilisateur).
+  # SSO recommandé = OIDC natif (Kavita → Réglages → OIDC → Authentik), qui donne
+  # un vrai single-sign-on avec auto-provisioning. On n'utilise PAS le forward-auth
+  # Authentik ici (double login + nécessiterait une app proxy dédiée dans Authentik).
+  # Média monté en lecture seule.
   kavita:
     profiles: [kavita]
     image: lscr.io/linuxserver/kavita:latest
@@ -442,7 +445,6 @@ services:
       - "traefik.http.routers.kavita.entrypoints=web"
       - "traefik.http.routers.kavita.priority=10"
       - "traefik.http.services.kavita.loadbalancer.server.port=5000"
-      - "traefik.http.routers.kavita.middlewares=${ARR_AK_MW:-}"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public

@@ -1790,7 +1790,6 @@ $([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ] && echo "║  Kavita   
 ║  • Bazarr → profil sous-titres Français + Anglais                    ║
 $([ "${JELLYFIN_EMBEDDED}" == "true" ] && echo "║  • Jellyfin → bibliothèques + compte admin + Jellyseerr             ║")
 $([ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" -o "${CALEOPE_PARAM_BOOKS_ENABLED:-false}" == "true" ] && echo "║  • Dossiers comics/manga/books prêts (média sur le NAS)             ║")
-$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" -a -n "${ARR_AK_TOKEN}" ] && echo "║  • SSO Authentik → Kavita (liseuse protégée)                        ║")
 $([ -n "${ARR_AK_TOKEN}" ] && echo "║  • SSO Authentik → Jellyfin (bouton login) + Jellyseerr protégé     ║")
 ${VPN_LINE}
 ╠════════════════════════════════════════════════════════════════════════╣
@@ -1801,7 +1800,7 @@ ${VPN_LINE}
 ║     (tous nécessitent un compte externe — OpenSubtitles, etc.)        ║
 $([ "${CALEOPE_PARAM_COMICS_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • Mylar3 → Config : download client qBittorrent (host qbittorrent, ║" "║    port 8080) + indexeurs Prowlarr (torznab) ; dossier /data/media/ ║" "║    comics ou /data/media/manga                                      ║")
 $([ "${CALEOPE_PARAM_BOOKS_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • LazyLibrarian → Config : download clients + indexeurs Prowlarr ; ║" "║    dossier destination /data/media/books                            ║")
-$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • Kavita → 1er lancement : créer le compte admin, puis Bibliothèques║" "║    → ajouter Manga=/data/manga, Comics=/data/comics, Livres=/data/  ║" "║    books (média monté en lecture seule sur /data)                   ║")
+$([ "${CALEOPE_PARAM_KAVITA_ENABLED:-false}" == "true" ] && printf '%s\n' "║  • Kavita → 1er lancement : créer le compte admin, puis Bibliothèques║" "║    → ajouter Manga=/data/manga, Comics=/data/comics, Livres=/data/  ║" "║    books (média monté en lecture seule sur /data)                   ║" "║    SSO optionnel : Réglages → OIDC → pointer vers Authentik         ║")
 ${JS_TODO}
 ╠════════════════════════════════════════════════════════════════════════╣
 ${JF_CRED}
