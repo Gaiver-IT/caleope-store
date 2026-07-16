@@ -1,0 +1,19 @@
+services:
+  caleope-samba:
+    image: dperson/samba:latest
+    container_name: caleope-samba
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - CAP_NET_BIND_SERVICE
+    # On bypasse l'entrypoint de l'image (qui régénère smb.conf) :
+    # Caleope gère smb.conf lui-même (généré par le daemon depuis les Partages).
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["nmbd -D 2>/dev/null || true; exec smbd --foreground --no-process-group --debuglevel=1"]
+    volumes:
+      # smb.conf généré par le daemon (lecture seule côté conteneur)
+      - {{.BaseDir}}/app-config/caleope-samba/smb.conf:/etc/samba/smb.conf:ro
+      # racine des dossiers partagés (chemins conteneur = /shares/<partage>)
+      - {{.BaseDir}}/app-data/_shares:/shares
+      # base tdbsam persistante (utilisateurs + mots de passe réseau)
+      - {{.BaseDir}}/app-data/caleope-samba/private:/var/lib/samba/private
