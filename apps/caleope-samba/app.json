@@ -1,0 +1,23 @@
+{
+  "id": "caleope-samba",
+  "name": "Partages réseau (SMB)",
+  "category": "network",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": false },
+  "ports": [
+    { "name": "smb", "container": 445, "host": 445, "protocol": "tcp", "firewall": true },
+    { "name": "netbios", "container": 139, "host": 139, "protocol": "tcp", "firewall": true }
+  ],
+  "volumes": [
+    { "source": "app-data/_shares", "target": "/shares" },
+    { "source": "app-data/caleope-samba/private", "target": "/var/lib/samba/private" }
+  ],
+  "backup": { "enabled": false }
+}
