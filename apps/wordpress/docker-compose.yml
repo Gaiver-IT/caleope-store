@@ -12,7 +12,7 @@ services:
       - caleope-internal
 
   wordpress:
-    image: wordpress:6-php8.3-apache
+    image: wordpress:latest
     container_name: wordpress
     restart: unless-stopped
     depends_on:
@@ -21,40 +21,23 @@ services:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
-      - {{.BaseDir}}/app-data/wordpress/wp-content:/var/www/html/wp-content
-    {{- range .Ports}}
+      - {{.BaseDir}}/app-data/wordpress/html:/var/www/html
     ports:
+      {{- range .Ports}}
       - "{{.Host}}:{{.Container}}"
-    {{- end}}
+      {{- end}}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.wordpress.rule=Host(`{{.Domain}}`)"
-      - "traefik.http.routers.wordpress.entrypoints=websecure"
-      - "traefik.http.routers.wordpress.tls=true"
+      - "traefik.http.routers.wordpress.entrypoints=web"
       - "traefik.http.services.wordpress.loadbalancer.server.port=80"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
       - caleope-internal
 
-  wordpress-bootstrap:
-    image: wordpress:cli-php8.3
-    container_name: wordpress-bootstrap
-    restart: "no"
-    depends_on:
-      - wordpress
-    env_file:
-      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
-    entrypoint: ["/bin/bash", "/bootstrap.sh"]
-    volumes_from:
-      - wordpress
-    volumes:
-      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
-    networks:
-      - caleope-internal
-
 networks:
   caleope-public:
     external: true
   caleope-internal:
-    external: true
+    driver: bridge

@@ -1,182 +1,110 @@
 #!/bin/bash
-# setup.sh — WordPress
 set -euo pipefail
-echo "→ Préparation de WordPress..."
 
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
-DATA_DIR="${CALEOPE_BASE_DIR}/app-data/wordpress"
-
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${DATA_DIR}/"{wp-content,db}
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/wordpress/html"
+mkdir -p "${CALEOPE_BASE_DIR}/app-data/wordpress/db"
 
-# ── Params ──────────────────────────────────────────────────────────────────
-BLOG_TITLE="${CALEOPE_PARAM_BLOG_TITLE:-Mon Site}"
-ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
+# Paramètres
+SITE_TITLE="${CALEOPE_PARAM_SITE_TITLE:-Mon Site}"
 ADMIN_USER="${CALEOPE_PARAM_ADMIN_USER:-admin}"
+ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 
-# ── Secrets ─────────────────────────────────────────────────────────────────
-DB_ROOT_PASS=$(openssl rand -hex 24)
-DB_PASS=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+# Génération des secrets
+DB_PASS=$(openssl rand -hex 20)
+DB_ROOT=$(openssl rand -hex 24)
+ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 AUTH_KEY=$(openssl rand -hex 32)
 SECURE_AUTH_KEY=$(openssl rand -hex 32)
 LOGGED_IN_KEY=$(openssl rand -hex 32)
 NONCE_KEY=$(openssl rand -hex 32)
 
-# ── SMTP (global Caleope) ────────────────────────────────────────────────────
-SMTP_HOST="${CALEOPE_SMTP_HOST:-}"
-SMTP_PORT="${CALEOPE_SMTP_PORT:-587}"
-SMTP_USER="${CALEOPE_SMTP_USER:-}"
-SMTP_PASS="${CALEOPE_SMTP_PASS:-}"
-SMTP_FROM="${CALEOPE_SMTP_FROM:-noreply@${CALEOPE_DOMAIN}}"
-
-cat > "${CONFIG_DIR}/secrets.env" << EOF
+# WORDPRESS_CONFIG_EXTRA — deux contraintes (voir la ligne dans le heredoc) :
+#  1. TOUT sur UNE ligne : un env file ne supporte pas le multi-lignes (docker
+#     compose plante sinon sur « unexpected character "(" »).
+#  2. UNIQUEMENT des define() : l'image WordPress fait un eval() de cette valeur ;
+#     la moindre structure de contrôle (if/isset) casse le parse de TOUT l'eval
+#     -> Fatal PHP -> 500. Le forçage HTTPS derrière proxy est déjà fait
+#     nativement par l'image, donc inutile ici.
+# NB : ne PAS mettre ce genre de commentaire DANS le heredoc <<EOF (non quoté) —
+# un $ y serait interprété (bug déjà attrapé : "$CONFIG_EXTRA" unbound).
+cat > "${CONFIG_DIR}/secrets.env" <<EOF
 # MariaDB
-MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
-MYSQL_DATABASE=wordpress
-MYSQL_USER=wordpress
-MYSQL_PASSWORD=${DB_PASS}
+MARIADB_ROOT_PASSWORD=${DB_ROOT}
+MARIADB_DATABASE=wordpress
+MARIADB_USER=wordpress
+MARIADB_PASSWORD=${DB_PASS}
 
-# WordPress
-WORDPRESS_DB_HOST=wordpress-db
+# WordPress — connexion BDD
+WORDPRESS_DB_HOST=wordpress-db:3306
+WORDPRESS_DB_NAME=wordpress
 WORDPRESS_DB_USER=wordpress
 WORDPRESS_DB_PASSWORD=${DB_PASS}
-WORDPRESS_DB_NAME=wordpress
-WORDPRESS_TABLE_PREFIX=wp_
-WORDPRESS_AUTH_KEY=${AUTH_KEY}
-WORDPRESS_SECURE_AUTH_KEY=${SECURE_AUTH_KEY}
-WORDPRESS_LOGGED_IN_KEY=${LOGGED_IN_KEY}
-WORDPRESS_NONCE_KEY=${NONCE_KEY}
 
-# Bootstrap WP-CLI
-WP_SITE_URL=https://${CALEOPE_DOMAIN}
-WP_SITE_TITLE=${BLOG_TITLE}
+# WordPress — URL publique + clés (une ligne, define() seuls — voir note ci-dessus)
+WORDPRESS_CONFIG_EXTRA=define('WP_HOME','https://${CALEOPE_DOMAIN}'); define('WP_SITEURL','https://${CALEOPE_DOMAIN}'); define('AUTH_KEY','${AUTH_KEY}'); define('SECURE_AUTH_KEY','${SECURE_AUTH_KEY}'); define('LOGGED_IN_KEY','${LOGGED_IN_KEY}'); define('NONCE_KEY','${NONCE_KEY}');
+
+# Compte admin (utilisé par le bootstrap WP-CLI)
 WP_ADMIN_USER=${ADMIN_USER}
+WP_ADMIN_PASSWORD=${ADMIN_PASS}
 WP_ADMIN_EMAIL=${ADMIN_EMAIL}
-WP_ADMIN_PASS=${ADMIN_PASS}
-
-# SMTP (pour le plugin WP Mail SMTP si installé)
-CALEOPE_SMTP_HOST=${SMTP_HOST}
-CALEOPE_SMTP_PORT=${SMTP_PORT}
-CALEOPE_SMTP_USER=${SMTP_USER}
-CALEOPE_SMTP_PASS=${SMTP_PASS}
-CALEOPE_SMTP_FROM=${SMTP_FROM}
+WP_SITE_TITLE=${SITE_TITLE}
+WP_SITE_URL=https://${CALEOPE_DOMAIN}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
-# ── bootstrap.sh (WP-CLI) ────────────────────────────────────────────────────
-cat > "${CONFIG_DIR}/bootstrap.sh" << 'BOOTSTRAP'
+# Script de bootstrap WP-CLI (exécuté après le démarrage de WordPress)
+cat > "${CONFIG_DIR}/bootstrap.sh" <<'BOOTSTRAP'
 #!/bin/bash
-set -e
+set -euo pipefail
 
-WP="/usr/local/bin/wp --allow-root --path=/var/www/html"
-MAX_WAIT=120
-WAITED=0
+WP_URL="${WP_SITE_URL:-https://localhost}"
+ADMIN_USER="${WP_ADMIN_USER:-admin}"
+ADMIN_PASS="${WP_ADMIN_PASSWORD:-changeme}"
+ADMIN_EMAIL="${WP_ADMIN_EMAIL:-admin@localhost}"
+SITE_TITLE="${WP_SITE_TITLE:-Mon Site}"
 
-echo "→ WordPress bootstrap : attente de la base de données..."
-until $WP db check >/dev/null 2>&1; do
-    sleep 5
-    WAITED=$((WAITED + 5))
-    if [ "${WAITED}" -ge "${MAX_WAIT}" ]; then
-        echo "❌ Base de données non joignable après ${MAX_WAIT}s"
-        exit 1
+echo "  ⏳ Attente du démarrage de WordPress..."
+for i in $(seq 1 30); do
+    if docker exec wordpress php -r "require '/var/www/html/wp-load.php'; echo 'ok';" 2>/dev/null | grep -q "ok"; then
+        echo "  ✓ WordPress prêt"
+        break
     fi
+    sleep 5
 done
-echo "  ✓ DB prête (${WAITED}s)"
 
-# Déjà installé ?
-if $WP core is-installed 2>/dev/null; then
-    echo "  ✓ WordPress déjà installé — bootstrap ignoré"
-    exit 0
+# Installer WordPress via WP-CLI si pas encore installé
+if ! docker exec wordpress wp core is-installed --allow-root 2>/dev/null; then
+    echo "  → Installation de WordPress..."
+    docker exec wordpress wp core install \
+        --allow-root \
+        --url="${WP_URL}" \
+        --title="${SITE_TITLE}" \
+        --admin_user="${ADMIN_USER}" \
+        --admin_password="${ADMIN_PASS}" \
+        --admin_email="${ADMIN_EMAIL}" \
+        --skip-email 2>/dev/null && echo "  ✓ WordPress installé" || echo "  ⚠ WP-CLI non disponible — installe via le wizard"
 fi
-
-echo "  → Installation WordPress..."
-$WP core install \
-    --url="${WP_SITE_URL}" \
-    --title="${WP_SITE_TITLE}" \
-    --admin_user="${WP_ADMIN_USER}" \
-    --admin_password="${WP_ADMIN_PASS}" \
-    --admin_email="${WP_ADMIN_EMAIL}" \
-    --skip-email
-
-$WP language core install fr_FR --activate 2>/dev/null || true
-$WP option update blogdescription "" 2>/dev/null || true
-
-echo "  ✓ WordPress installé"
 BOOTSTRAP
-chmod 644 "${CONFIG_DIR}/bootstrap.sh"
+chmod +x "${CONFIG_DIR}/bootstrap.sh"
 
-# ── Authentik (proxy forward auth) ──────────────────────────────────────────
-authentik_register_app() {
-    local APP_NAME="$1" APP_SLUG="$2" APP_URL="$3"
-    local AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
-    [ -f "${AK_SECRETS}" ] || return 0
-
-    local TOKEN AK_DOMAIN
-    TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-    AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
-    [ -n "${TOKEN}" ] && [ -n "${AK_DOMAIN}" ] || return 0
-
-    local BASE="https://${AK_DOMAIN}/api/v3"
-    local HA="Authorization: Bearer ${TOKEN}"
-    local HJ="Content-Type: application/json"
-
-    local i=0
-    until curl -sf --max-time 5 -H "${HA}" "${BASE}/core/applications/" >/dev/null 2>&1; do
-        i=$((i+1)); [ $i -lt 12 ] || return 0
-        sleep 5
-    done
-
-    local FLOW_UUID
-    FLOW_UUID=$(curl -sf --max-time 10 -H "${HA}" \
-        "${BASE}/flows/instances/?slug=default-provider-authorization-implicit-consent" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['results'][0]['pk'] if d['results'] else '')" 2>/dev/null || echo "")
-    [ -n "${FLOW_UUID}" ] || return 0
-
-    local PROVIDER_PK
-    PROVIDER_PK=$(curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/providers/proxy/" \
-        -d "{\"name\":\"${APP_NAME}\",\"authorization_flow\":\"${FLOW_UUID}\",\"external_host\":\"${APP_URL}\",\"mode\":\"forward_single\"}" \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
-    [ -n "${PROVIDER_PK}" ] || return 0
-
-    curl -sf --max-time 10 -X POST -H "${HA}" -H "${HJ}" \
-        "${BASE}/core/applications/" \
-        -d "{\"name\":\"${APP_NAME}\",\"slug\":\"${APP_SLUG}\",\"provider\":${PROVIDER_PK}}" \
-        >/dev/null 2>&1 || true
-    echo "  ✓ WordPress enregistré dans Authentik"
-}
-
-if [ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]; then
-    echo "  → Enregistrement dans Authentik..."
-    authentik_register_app "WordPress" "wordpress" "https://${CALEOPE_DOMAIN}" || true
-fi
-
-# ── post-install.txt ─────────────────────────────────────────────────────────
-cat > "${CALEOPE_APP_DIR}/post-install.txt" << EOF
-
-  ┌──────────────────────────────────────────────────────────────────┐
-  │                     WordPress — CMS classique                    │
-  ├──────────────────────────────────────────────────────────────────┤
-  │  Interface d'administration :                                    │
-  │    URL      : https://${CALEOPE_DOMAIN}/wp-admin/               │
-  │    Login    : ${ADMIN_USER}
-  │    Password : ${ADMIN_PASS}
-  │    Email    : ${ADMIN_EMAIL}
-  │                                                                  │
-  │  Site public : https://${CALEOPE_DOMAIN}/                        │
-  │                                                                  │
-  │  Secrets dans : app-config/${CALEOPE_APP_ID}/secrets.env         │
-  └──────────────────────────────────────────────────────────────────┘
+cat > "${CONFIG_DIR}/post-install.txt" <<EOF
+╔══════════════════════════════════════════════════════════════╗
+║              WordPress — Premiers accès                      ║
+╠══════════════════════════════════════════════════════════════╣
+║  URL publique  : https://${CALEOPE_DOMAIN}                   ║
+║  Administration: https://${CALEOPE_DOMAIN}/wp-admin          ║
+║                                                              ║
+║  Identifiant   : ${ADMIN_USER}                               ║
+║  Mot de passe  : ${ADMIN_PASS}                               ║
+║  Email         : ${ADMIN_EMAIL}                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  ⚠️  PREMIER DÉMARRAGE                                        ║
+║  WordPress initialise la base (30-60s).                      ║
+║  Si le wizard s'affiche, entre les infos ci-dessus.          ║
+║  Si wp-admin redirige en boucle : vider les cookies.         ║
+╚══════════════════════════════════════════════════════════════╝
 EOF
 
-echo ""
-echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║            WordPress — Identifiants admin            ║"
-echo "  ╠══════════════════════════════════════════════════════╣"
-echo "  ║  URL  : https://${CALEOPE_DOMAIN}/wp-admin/"
-echo "  ║  Login: ${ADMIN_USER}"
-echo "  ║  Pass : ${ADMIN_PASS}"
-echo "  ╚══════════════════════════════════════════════════════╝"
-echo ""
-echo "✓ WordPress configuré"
+echo "✓ WordPress préparé"

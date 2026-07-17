@@ -1,26 +1,26 @@
 [
   {
-    "id": "BLOG_TITLE",
-    "label": "Titre du site",
-    "description": "Nom affiché dans l'interface WordPress et les meta-tags SEO.",
-    "type": "string",
-    "required": false,
-    "default": "Mon Site"
+    "id":          "site_title",
+    "label":       "Titre du site",
+    "description": "Affiché dans l'onglet et l'en-tête du site",
+    "type":        "string",
+    "required":    false,
+    "default":     "Mon Site"
   },
   {
-    "id": "ADMIN_EMAIL",
-    "label": "Email de l'administrateur",
-    "description": "Adresse email du compte admin WordPress.",
-    "type": "string",
-    "required": true,
-    "default": ""
+    "id":          "admin_user",
+    "label":       "Identifiant administrateur",
+    "description": "Login pour wp-admin",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin"
   },
   {
-    "id": "ADMIN_USER",
-    "label": "Nom d'utilisateur admin",
-    "description": "Identifiant de connexion WordPress (pas l'email).",
-    "type": "string",
-    "required": false,
-    "default": "admin"
+    "id":          "admin_email",
+    "label":       "Email administrateur",
+    "description": "Utilisé pour les notifications et la récupération de mot de passe",
+    "type":        "string",
+    "required":    false,
+    "default":     ""
   }
 ]

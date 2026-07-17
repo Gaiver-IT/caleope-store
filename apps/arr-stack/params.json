@@ -45,6 +45,30 @@
     "when": "JELLYFIN_MODE=external"
   },
   {
+    "id": "COMICS_ENABLED",
+    "label": "Comics / Manga (Mylar3)",
+    "description": "Ajoute Mylar3 — télécharge et range automatiquement comics et manga (via Prowlarr + qBittorrent/SABnzbd). Rangés dans /media/comics.",
+    "type": "bool",
+    "required": false,
+    "default": "false"
+  },
+  {
+    "id": "BOOKS_ENABLED",
+    "label": "Livres / ebooks (LazyLibrarian)",
+    "description": "Ajoute LazyLibrarian — télécharge et range automatiquement livres et ebooks. Rangés dans /media/books.",
+    "type": "bool",
+    "required": false,
+    "default": "false"
+  },
+  {
+    "id": "KAVITA_ENABLED",
+    "label": "Liseuse Kavita (manga / comics / livres)",
+    "description": "Liseuse web pour lire manga, comics et ebooks — le « Jellyfin de la lecture ». Protégée par le SSO Authentik. Recommandé si Comics ou Livres est activé.",
+    "type": "bool",
+    "required": false,
+    "default": "false"
+  },
+  {
     "id": "VPN_ENABLED",
     "label": "Activer le VPN pour qBittorrent",
     "description": "Isole le trafic torrent derrière Gluetun (ProtonVPN, Mullvad, NordVPN…)",

@@ -1,7 +1,7 @@
 {
   "id": "wordpress",
   "name": "WordPress",
-  "category": "cms",
+  "category": "web",
   "channel": "stable",
   "repository": "official",
   "capabilities": {
@@ -11,10 +11,12 @@
     "privileged": false
   },
   "network": { "public": true, "internal": true },
-  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
-  "volumes": [
-    { "source": "app-data/wordpress/wp-content", "target": "/var/www/html/wp-content" }
+  "ports": [
+    { "name": "web", "container": 80, "dynamic": true }
   ],
-  "backup": { "enabled": true },
-  "secure_headers": true
+  "volumes": [
+    { "source": "app-data/wordpress/html",  "target": "/var/www/html" },
+    { "source": "app-data/wordpress/db",    "target": "/var/lib/mysql" }
+  ],
+  "backup": { "enabled": true }
 }

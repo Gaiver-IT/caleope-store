@@ -61,6 +61,14 @@ if [ -z "${_PASS_HASH}" ] && command -v htpasswd >/dev/null 2>&1; then
     _PASS_HASH=$(htpasswd -bnBC 10 "" "${ADGUARD_PASSWORD}" 2>/dev/null | tr -d ':\n') || _PASS_HASH=""
 fi
 
+# Fallback docker : sur une install Caleope fraîche (ISO), NI python3-bcrypt NI
+# htpasswd ne sont présents → sans ce fallback AdGuard démarrait SANS AUTH alors
+# que l'UI affichait un mot de passe « généré » (jamais appliqué). Docker, lui,
+# est toujours là. httpd:2.4-alpine (~60 Mo) embarque htpasswd.
+if [ -z "${_PASS_HASH}" ] && command -v docker >/dev/null 2>&1; then
+    _PASS_HASH=$(docker run --rm httpd:2.4-alpine htpasswd -nbBC 10 "" "${ADGUARD_PASSWORD}" 2>/dev/null | tr -d ':\n') || _PASS_HASH=""
+fi
+
 # ── Pré-configuration AdGuardHome.yaml (avant démarrage container) ────────────
 # setup.sh tourne à l'étape 7, docker compose up à l'étape 9.
 # On écrit la config directement dans le dossier de données persistent.
@@ -74,9 +82,12 @@ if [ ! -f "${_YAML}" ]; then
   - name: ${ADGUARD_USERNAME}
     password: '${_PASS_HASH}'"
     else
-        # Sans bcrypt, la config sera sans auth → l'utilisateur configure au 1er accès
+        # Sans hash, la config est SANS AUTH → l'utilisateur configure au 1er accès.
+        # On retire le mot de passe des secrets pour ne PAS afficher à l'utilisateur
+        # un mot de passe qui n'est appliqué nulle part (UX mensongère).
         _USER_BLOCK="users: []"
-        echo "  ⚠ bcrypt indisponible — configurer le compte admin à la 1ère connexion"
+        sed -i 's/^ADGUARD_PASSWORD=.*/ADGUARD_PASSWORD=(non appliqué — compte à créer au 1er accès)/' "${_SECRETS}" 2>/dev/null || true
+        echo "  ⚠ hachage bcrypt impossible — AdGuard démarre SANS compte : crée l'admin à la 1ère connexion"
     fi
 
     cat > "${_YAML}" << YAML

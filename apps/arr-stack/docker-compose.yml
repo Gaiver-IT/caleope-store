@@ -189,10 +189,62 @@ services:
       - caleope-public
       - arr-internal
 
-  # ── READARR — livres (désactivé : image sans support amd64 fiable) ──
-  # Pour l'activer manuellement, ajouter :
-  #   image: lscr.io/linuxserver/readarr:develop
-  #   + configurer manuellement via l'interface Prowlarr
+  # ── READARR — livres (désactivé : projet archivé upstream) ─────────
+  #   Remplacé par LazyLibrarian ci-dessous (maintenu).
+
+  # ── MYLAR3 — comics / manga (profil: comics) ────────────────────────
+  # Le « Sonarr des comics/manga ». Utilise Prowlarr (torznab) + qBittorrent/SABnzbd.
+  # Range les comics/manga dans /data/media/comics (lu par Kavita).
+  mylar3:
+    profiles: [comics]
+    image: lscr.io/linuxserver/mylar3:latest
+    container_name: mylar3
+    restart: unless-stopped
+    dns_search: []
+    environment:
+      - PUID=${ARR_PUID}
+      - PGID=${ARR_PGID}
+      - TZ=${ARR_TZ}
+    volumes:
+      - {{.BaseDir}}/app-data/arr-stack/config/mylar3:/config
+      - {{.BaseDir}}/app-data/arr-stack/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mylar3.rule=Host(`mylar.{{.Domain}}`)"
+      - "traefik.http.routers.mylar3.entrypoints=web"
+      - "traefik.http.routers.mylar3.priority=10"
+      - "traefik.http.services.mylar3.loadbalancer.server.port=8090"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - arr-internal
+
+  # ── LAZYLIBRARIAN — livres / ebooks / audiobooks (profil: books) ────
+  # Alternative maintenue à Readarr. Prowlarr (torznab) + qBittorrent/SABnzbd.
+  # Range les ebooks dans /data/media/books (lu par Kavita).
+  lazylibrarian:
+    profiles: [books]
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    restart: unless-stopped
+    dns_search: []
+    environment:
+      - PUID=${ARR_PUID}
+      - PGID=${ARR_PGID}
+      - TZ=${ARR_TZ}
+    volumes:
+      - {{.BaseDir}}/app-data/arr-stack/config/lazylibrarian:/config
+      - {{.BaseDir}}/app-data/arr-stack/data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lazylibrarian.rule=Host(`books.{{.Domain}}`)"
+      - "traefik.http.routers.lazylibrarian.entrypoints=web"
+      - "traefik.http.routers.lazylibrarian.priority=10"
+      - "traefik.http.services.lazylibrarian.loadbalancer.server.port=5299"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - arr-internal
 
   # ── BAZARR — sous-titres ────────────────────────────────────────────
   bazarr:
@@ -379,6 +431,37 @@ services:
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
+
+  # ── KAVITA — liseuse manga / comics / ebooks (profil: kavita) ───────
+  # Le « Jellyfin des manga/livres » : lit /data/media/{comics,manga,books}.
+  # Auth : Kavita a ses PROPRES comptes (progression de lecture par utilisateur).
+  # SSO recommandé = OIDC natif (Kavita → Réglages → OIDC → Authentik), qui donne
+  # un vrai single-sign-on avec auto-provisioning. On n'utilise PAS le forward-auth
+  # Authentik ici (double login + nécessiterait une app proxy dédiée dans Authentik).
+  # Média monté en lecture seule.
+  kavita:
+    profiles: [kavita]
+    image: lscr.io/linuxserver/kavita:latest
+    container_name: kavita
+    restart: unless-stopped
+    dns_search: []
+    environment:
+      - PUID=${ARR_PUID}
+      - PGID=${ARR_PGID}
+      - TZ=${ARR_TZ}
+    volumes:
+      - {{.BaseDir}}/app-data/arr-stack/config/kavita:/config
+      - {{.BaseDir}}/app-data/arr-stack/data/media:/data:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kavita.rule=Host(`kavita.{{.Domain}}`)"
+      - "traefik.http.routers.kavita.entrypoints=web"
+      - "traefik.http.routers.kavita.priority=10"
+      - "traefik.http.services.kavita.loadbalancer.server.port=5000"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - arr-internal
 
 networks:
   caleope-public:
