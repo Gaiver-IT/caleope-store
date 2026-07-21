@@ -19,7 +19,24 @@ fi
 # Woodpecker s'authentifie via l'OAuth de la forge. On crée une application
 # OAuth2 dans la forge (API, basic auth admin) et on récupère client/secret.
 FORGE=""; FORGE_URL=""; OA_CLIENT=""; OA_SECRET=""; ADMIN_USER=""
-for f in gitea forgejo; do
+
+# Idempotence : si une app OAuth a déjà été créée (réinstall), on la réutilise
+# plutôt que d'en créer une orpheline de plus dans la forge.
+if [ -f "${_SECRETS}" ]; then
+    for g in GITEA FORGEJO; do
+        c=$(grep "^WOODPECKER_${g}_CLIENT=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+        s=$(grep "^WOODPECKER_${g}_SECRET=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+        if [ -n "${c}" ] && [ -n "${s}" ]; then
+            OA_CLIENT="${c}"; OA_SECRET="${s}"
+            FORGE=$(echo "${g}" | tr A-Z a-z)
+            FORGE_URL=$(grep "^WOODPECKER_${g}_URL=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+            ADMIN_USER=$(grep "^WOODPECKER_ADMIN=" "${_SECRETS}" 2>/dev/null | cut -d= -f2-) || true
+            echo "  ✓ App OAuth ${FORGE} déjà configurée — réutilisée"
+        fi
+    done
+fi
+
+[ -n "${FORGE}" ] || for f in gitea forgejo; do
     FDIR="${CALEOPE_BASE_DIR}/apps-installed/${f}"
     FSECRETS="${CALEOPE_BASE_DIR}/app-config/${f}/secrets.env"
     [ -d "${FDIR}" ] && [ -f "${FSECRETS}" ] || continue
@@ -71,14 +88,19 @@ FORGE_FLAG=""
 } > "${_SECRETS}"
 chmod 600 "${_SECRETS}"
 
+# Libellés précalculés (pas de ${x:-...} avec parenthèses/apostrophe dans le
+# heredoc : bash le prend pour une substitution mal fermée → échec).
+FORGE_LABEL="${FORGE}"
+[ -z "${FORGE_LABEL}" ] && FORGE_LABEL="aucune - installe Gitea/Forgejo d abord"
+
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 
   ┌──────────────────────────────────────────────────────────────────┐
   │                 Woodpecker CI — Intégration continue            │
   ├──────────────────────────────────────────────────────────────────┤
   │  Interface : https://${CALEOPE_DOMAIN}/                          │
-  │  Forge     : ${FORGE:-AUCUNE (installe Gitea/Forgejo d'abord)}
-  │  Connexion : via ${FORGE:-la forge} (OAuth) — 1er compte = admin.│
+  │  Forge     : ${FORGE_LABEL}
+  │  Connexion : via la forge (OAuth) — 1er compte connecté = admin. │
   │  L'agent exécute les pipelines (accès au socket Docker).        │
   └──────────────────────────────────────────────────────────────────┘
 INFO
