@@ -26,7 +26,6 @@ password=${ADMIN_PASS}
 aliasgroup1=https://.*\\.${BASE_DOMAIN}:443
 domain=.*\\.${BASE_DOMAIN}
 extra_params=--o:ssl.enable=false --o:ssl.termination=true
-DONT_GEN_SSL_CERT=1
 ENV
 chmod 600 "${_SECRETS}"
 
