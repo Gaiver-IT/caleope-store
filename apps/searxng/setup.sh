@@ -30,7 +30,7 @@ cat > "${SX_DIR}/settings.yml" <<YML
 use_default_settings: true
 server:
   secret_key: "${SEARXNG_SECRET}"
-  limiter: true
+  limiter: false
   image_proxy: true
 redis:
   url: redis://searxng-redis:6379/0
