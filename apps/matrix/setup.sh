@@ -62,6 +62,7 @@ def set_key(txt, key, line):
 s = set_key(s, "registration_shared_secret", f'registration_shared_secret: "{reg}"')
 s = set_key(s, "enable_registration", "enable_registration: false")
 s = set_key(s, "suppress_key_server_warning", "suppress_key_server_warning: true")
+s = set_key(s, "report_stats", "report_stats: false")
 open(path, "w").write(s)
 print("  ✓ homeserver.yaml patché (postgres + serveur fermé)")
 PY
