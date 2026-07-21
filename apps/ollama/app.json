@@ -1,0 +1,15 @@
+{
+  "id": "ollama",
+  "name": "Ollama",
+  "description": "Moteur d'exécution de grands modèles de langage (LLM) en local. Backend interne — la façade recommandée est Open WebUI.",
+  "category": "ai",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": false, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": false, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/ollama/models", "target": "/root/.ollama" }
+  ],
+  "backup": { "enabled": true }
+}

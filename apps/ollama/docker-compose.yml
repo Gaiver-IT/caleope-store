@@ -1,0 +1,13 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/models:/root/.ollama
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true

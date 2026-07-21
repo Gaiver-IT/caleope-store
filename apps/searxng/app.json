@@ -1,0 +1,15 @@
+{
+  "id": "searxng",
+  "name": "SearXNG",
+  "description": "Métamoteur de recherche respectueux de la vie privée : agrège de nombreux moteurs sans profilage ni publicité.",
+  "category": "privacy",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8080, "dynamic": true }],
+  "volumes": [
+    { "source": "app-config/searxng/searxng", "target": "/etc/searxng" }
+  ],
+  "backup": { "enabled": true }
+}

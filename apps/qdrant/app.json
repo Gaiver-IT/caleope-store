@@ -1,0 +1,15 @@
+{
+  "id": "qdrant",
+  "name": "Qdrant",
+  "description": "Base de données vectorielle pour l'IA (recherche sémantique, RAG, embeddings). API REST et gRPC.",
+  "category": "ai",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 6333, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/qdrant/storage", "target": "/qdrant/storage" }
+  ],
+  "backup": { "enabled": true }
+}

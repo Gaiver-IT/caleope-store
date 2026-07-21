@@ -1,0 +1,15 @@
+{
+  "id": "open-webui",
+  "name": "Open WebUI",
+  "description": "Interface web type ChatGPT pour vos LLM locaux (Ollama). Chat, gestion de modèles, RAG. Nécessite Ollama.",
+  "category": "ai",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8080, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/open-webui/data", "target": "/app/backend/data" }
+  ],
+  "backup": { "enabled": true }
+}
