@@ -12,7 +12,7 @@ services:
       - caleope-internal
 
   forgejo:
-    image: codeberg.org/forgejo/forgejo:latest
+    image: codeberg.org/forgejo/forgejo:12
     container_name: forgejo
     restart: unless-stopped
     depends_on:
@@ -39,7 +39,7 @@ services:
       - caleope-internal
 
   forgejo-bootstrap:
-    image: codeberg.org/forgejo/forgejo:latest
+    image: codeberg.org/forgejo/forgejo:12
     container_name: forgejo-bootstrap
     user: "git"
     restart: "no"
