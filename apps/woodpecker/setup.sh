@@ -7,6 +7,7 @@ CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}/server"
+chmod 0777 "${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}/server"  # le server tourne en user non-root
 
 # ── Secret partagé server↔agent (idempotent) ────────────────────────────────
 AGENT_SECRET=""
