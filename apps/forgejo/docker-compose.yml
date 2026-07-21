@@ -26,6 +26,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "${CALEOPE_PORT_WEB}:3000"
+      - "2223:2223"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.forgejo.rule=Host(`{{.Domain}}`)"

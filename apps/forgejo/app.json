@@ -22,7 +22,7 @@
     },
     {
       "name": "ssh",
-      "container": 22,
+      "container": 2223,
       "host": 2223,
       "dynamic": false,
       "firewall": true,
