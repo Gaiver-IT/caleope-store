@@ -1,0 +1,60 @@
+services:
+  forgejo-db:
+    image: postgres:16-alpine
+    container_name: forgejo-db
+    restart: unless-stopped
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/forgejo/db:/var/lib/postgresql/data
+    networks:
+      - caleope-internal
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:latest
+    container_name: forgejo
+    restart: unless-stopped
+    depends_on:
+      - forgejo-db
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/forgejo/data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "${CALEOPE_PORT_WEB}:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forgejo.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.forgejo.entrypoints=websecure"
+      - "traefik.http.routers.forgejo.tls=true"
+      - "traefik.http.services.forgejo.loadbalancer.server.port=3000"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  forgejo-bootstrap:
+    image: codeberg.org/forgejo/forgejo:latest
+    container_name: forgejo-bootstrap
+    user: "git"
+    restart: "no"
+    depends_on:
+      - forgejo
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    entrypoint: ["/bin/sh", "/bootstrap.sh"]
+    volumes:
+      - {{.BaseDir}}/app-data/forgejo/data:/data
+      - {{.BaseDir}}/app-config/{{.AppID}}/bootstrap.sh:/bootstrap.sh:ro
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

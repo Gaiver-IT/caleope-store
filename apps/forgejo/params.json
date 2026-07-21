@@ -1,0 +1,18 @@
+[
+  {
+    "id": "ADMIN_USER",
+    "label": "Nom d'utilisateur admin",
+    "description": "Identifiant du compte administrateur Gitea (ne peut pas être 'admin').",
+    "type": "string",
+    "required": false,
+    "default": "git-admin"
+  },
+  {
+    "id": "ADMIN_EMAIL",
+    "label": "Email de l'administrateur",
+    "description": "Adresse email associée au compte admin.",
+    "type": "string",
+    "required": true,
+    "default": ""
+  }
+]
