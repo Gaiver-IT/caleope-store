@@ -1,0 +1,15 @@
+{
+  "id": "woodpecker",
+  "name": "Woodpecker CI",
+  "description": "Intégration continue légère (pipelines) branchée sur votre forge Gitea/Forgejo. Nécessite Gitea ou Forgejo installé.",
+  "category": "dev",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": true, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/woodpecker/server", "target": "/var/lib/woodpecker" }
+  ],
+  "backup": { "enabled": true }
+}

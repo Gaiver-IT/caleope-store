@@ -1,0 +1,43 @@
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:v3
+    container_name: woodpecker-server
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/server:/var/lib/woodpecker
+    ports:
+      - "${CALEOPE_PORT_WEB}:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.woodpecker.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.woodpecker.entrypoints=websecure"
+      - "traefik.http.routers.woodpecker.tls=true"
+      - "traefik.http.services.woodpecker.loadbalancer.server.port=8000"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:v3
+    container_name: woodpecker-agent
+    restart: unless-stopped
+    command: agent
+    depends_on:
+      - woodpecker-server
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      - WOODPECKER_SERVER=woodpecker-server:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
