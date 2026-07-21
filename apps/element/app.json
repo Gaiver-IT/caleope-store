@@ -1,0 +1,13 @@
+{
+  "id": "element",
+  "name": "Element",
+  "description": "Client web Matrix (chat chiffré). Se connecte à votre serveur Matrix (Synapse). Installez Matrix d'abord.",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [],
+  "backup": { "enabled": false }
+}

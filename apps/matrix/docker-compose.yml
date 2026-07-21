@@ -1,0 +1,42 @@
+services:
+  matrix-db:
+    image: postgres:16-alpine
+    container_name: matrix-db
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/db:/var/lib/postgresql/data
+    networks:
+      - caleope-internal
+
+  synapse:
+    image: matrixdotorg/synapse:latest
+    container_name: synapse
+    restart: unless-stopped
+    depends_on:
+      - matrix-db
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/data:/data
+    ports:
+      - "${CALEOPE_PORT_WEB}:8008"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.matrix.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.matrix.entrypoints=websecure"
+      - "traefik.http.routers.matrix.tls=true"
+      - "traefik.http.services.matrix.loadbalancer.server.port=8008"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

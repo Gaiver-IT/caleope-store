@@ -1,0 +1,16 @@
+{
+  "id": "matrix",
+  "name": "Matrix (Synapse)",
+  "description": "Serveur de messagerie Matrix (Synapse) — chat chiffré, salons, appels. Serveur fermé par défaut (fédération désactivée). Client recommandé : Element.",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8008, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/matrix/data", "target": "/data" },
+    { "source": "app-data/matrix/db", "target": "/var/lib/postgresql/data" }
+  ],
+  "backup": { "enabled": true }
+}

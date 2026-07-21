@@ -1,0 +1,25 @@
+services:
+  element:
+    image: vectorim/element-web:latest
+    container_name: element
+    restart: unless-stopped
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/config.json:/app/config.json:ro
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.element.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.element.entrypoints=websecure"
+      - "traefik.http.routers.element.tls=true"
+      - "traefik.http.services.element.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
