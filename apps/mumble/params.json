@@ -1,0 +1,10 @@
+[
+  {
+    "id": "WELCOME_TEXT",
+    "label": "Message d'accueil",
+    "description": "Texte affiché aux utilisateurs à la connexion.",
+    "type": "string",
+    "required": false,
+    "default": "Bienvenue sur ce serveur Mumble Caleope."
+  }
+]

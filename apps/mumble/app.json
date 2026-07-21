@@ -1,0 +1,18 @@
+{
+  "id": "mumble",
+  "name": "Mumble",
+  "description": "Serveur de discussion vocale basse latence (jeux, réunions). Protocole natif — client Mumble requis, pas d'interface web.",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": false, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": false, "internal": false },
+  "ports": [
+    { "name": "voice-tcp", "container": 64738, "host": 64738, "dynamic": false, "firewall": true, "protocol": "tcp" },
+    { "name": "voice-udp", "container": 64738, "host": 64738, "dynamic": false, "firewall": true, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-data/mumble/data", "target": "/data" }
+  ],
+  "backup": { "enabled": true }
+}
