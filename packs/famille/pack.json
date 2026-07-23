@@ -1,0 +1,12 @@
+{
+  "id": "famille",
+  "name": "Serveur familial",
+  "icon": "ti-home",
+  "description": "Le serveur de la maison : médiathèque, cloud partagé, photos et mots de passe pour toute la famille.",
+  "apps": [
+    "jellyfin",
+    "nextcloud",
+    "immich",
+    "vaultwarden"
+  ]
+}

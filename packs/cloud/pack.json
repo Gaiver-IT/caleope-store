@@ -1,0 +1,11 @@
+{
+  "id": "cloud",
+  "name": "Cloud personnel",
+  "icon": "ti-cloud",
+  "description": "Votre cloud privé : fichiers, agenda, contacts, édition de documents en ligne et coffre-fort.",
+  "apps": [
+    "nextcloud",
+    "collabora",
+    "vaultwarden"
+  ]
+}

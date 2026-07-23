@@ -1,0 +1,12 @@
+{
+  "id": "vie-privee",
+  "name": "Vie privée",
+  "icon": "ti-shield-lock",
+  "description": "Reprenez la main sur vos données : gestionnaire de mots de passe, recherche sans traçage, filtrage des pubs et VPN.",
+  "apps": [
+    "vaultwarden",
+    "searxng",
+    "pihole",
+    "wg-easy"
+  ]
+}

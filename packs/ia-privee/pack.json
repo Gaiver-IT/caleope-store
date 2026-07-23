@@ -1,0 +1,11 @@
+{
+  "id": "ia-privee",
+  "name": "IA privée",
+  "icon": "ti-robot",
+  "description": "Votre assistant IA auto-hébergé : modèles de langage locaux, interface de chat et base vectorielle. Rien ne sort de chez vous.",
+  "apps": [
+    "ollama",
+    "open-webui",
+    "qdrant"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "souverainete",
+  "name": "Souveraineté numérique",
+  "icon": "ti-flag",
+  "description": "Une infrastructure personnelle sur des logiciels libres et des protocoles ouverts, pour limiter votre dépendance à un fournisseur unique.",
+  "apps": [
+    "authentik",
+    "nextcloud",
+    "vaultwarden",
+    "syncthing",
+    "searxng",
+    "forgejo",
+    "matrix",
+    "element"
+  ]
+}

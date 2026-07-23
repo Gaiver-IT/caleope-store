@@ -1,0 +1,11 @@
+{
+  "id": "developpement",
+  "name": "Développement",
+  "icon": "ti-code",
+  "description": "Forge Git, intégration continue et authentification unique pour votre équipe de dev.",
+  "apps": [
+    "forgejo",
+    "woodpecker",
+    "authentik"
+  ]
+}

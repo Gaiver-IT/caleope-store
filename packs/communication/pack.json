@@ -1,0 +1,11 @@
+{
+  "id": "communication",
+  "name": "Communication",
+  "icon": "ti-messages",
+  "description": "Messagerie chiffrée (Matrix + Element) et visioconférence (Jitsi) auto-hébergées.",
+  "apps": [
+    "matrix",
+    "element",
+    "jitsi"
+  ]
+}
