@@ -1,0 +1,71 @@
+services:
+  jitsi-web:
+    image: jitsi/web:stable
+    container_name: jitsi-web
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/web:/config:Z
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jitsi.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.jitsi.entrypoints=websecure"
+      - "traefik.http.routers.jitsi.tls=true"
+      - "traefik.http.services.jitsi.loadbalancer.server.port=80"
+      - "traefik.docker.network=caleope-public"
+    depends_on:
+      - jitsi-prosody
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  jitsi-prosody:
+    image: jitsi/prosody:stable
+    container_name: jitsi-prosody
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/prosody/config:/config:Z
+      - {{.BaseDir}}/app-config/{{.AppID}}/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
+    networks:
+      caleope-internal:
+        aliases:
+          - xmpp.meet.jitsi
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:stable
+    container_name: jitsi-jicofo
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/jicofo:/config:Z
+    depends_on:
+      - jitsi-prosody
+    networks:
+      - caleope-internal
+
+  jitsi-jvb:
+    image: jitsi/jvb:stable
+    container_name: jitsi-jvb
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/jvb:/config:Z
+    ports:
+      - "10000:10000/udp"
+    depends_on:
+      - jitsi-prosody
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

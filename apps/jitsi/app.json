@@ -1,0 +1,18 @@
+{
+  "id": "jitsi",
+  "name": "Jitsi Meet",
+  "description": "Visioconférence auto-hébergée (appels vidéo de groupe, partage d'écran). Nécessite un port UDP 10000 ouvert pour le flux vidéo.",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web", "container": 80, "dynamic": true },
+    { "name": "video", "container": 10000, "host": 10000, "dynamic": false, "firewall": true, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-config/jitsi/web", "target": "/config" }
+  ],
+  "backup": { "enabled": false }
+}
