@@ -1,0 +1,18 @@
+services:
+  mumble:
+    image: mumblevoip/mumble-server:latest
+    container_name: mumble
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/data:/data
+    ports:
+      - "64738:64738/tcp"
+      - "64738:64738/udp"
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true
