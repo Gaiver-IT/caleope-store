@@ -10,6 +10,7 @@ services:
     - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx-no-auth-shared.conf:/etc/nginx/wazo-no-auth-shared.conf:ro'
     - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx.conf:/etc/nginx/conf.d/config.conf:ro'
     - '{{.BaseDir}}/app-config/{{.AppID}}/certs:/certs:ro'
+    - /dev/null:/etc/nginx/conf.d/default.conf:ro
     depends_on:
     - agentd
     - amid
