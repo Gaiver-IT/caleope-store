@@ -77,7 +77,7 @@ services:
     networks:
     - xivo-internal
   confd:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-confd:manage-db
+    image: wazoplatform/wazo-confd:manage-db
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -97,7 +97,7 @@ services:
     networks:
     - xivo-internal
   provd:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-provd:confgend
+    image: wazoplatform/wazo-provd:confgend
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -130,7 +130,7 @@ services:
     networks:
     - xivo-internal
   webhookd:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-webhookd:netcat
+    image: wazoplatform/wazo-webhookd:netcat
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -147,7 +147,7 @@ services:
     networks:
     - xivo-internal
   asterisk:
-    image: caleope-registry.gaiver-it.fr/wazo/asterisk:sounds
+    image: wazoplatform/asterisk:sounds
     hostname: asterisk.wazo-docker
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
@@ -208,7 +208,7 @@ services:
     networks:
     - xivo-internal
   dird:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-dird:netcat
+    image: wazoplatform/wazo-dird:netcat
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -260,7 +260,7 @@ services:
     networks:
     - xivo-internal
   chatd:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-chatd:netcat
+    image: wazoplatform/wazo-chatd:netcat
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -294,7 +294,7 @@ services:
     networks:
     - xivo-internal
   websocketd:
-    image: caleope-registry.gaiver-it.fr/wazo/wazo-websocketd:netcat
+    image: wazoplatform/wazo-websocketd:netcat
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     expose:
@@ -356,7 +356,7 @@ services:
     networks:
     - xivo-internal
   bootstrap:
-    image: caleope-registry.gaiver-it.fr/wazo/uc-bootstrap:latest
+    image: wazoplatform/uc-bootstrap:latest
     env_file:
     - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
     volumes:
