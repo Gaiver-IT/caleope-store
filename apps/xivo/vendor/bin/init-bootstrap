@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -xe
+
+container_timeout=${INIT_TIMEOUT:-60}
+
+function wait_for_wazo_auth() {
+    seconds=0
+    while [ "$seconds" -lt "$container_timeout" ] && ! wazo-auth-cli user list > /dev/null
+      do
+        echo -n .
+        seconds=$((seconds+1))
+        sleep 1
+      done
+}
+
+echo Waiting for wazo-auth...
+wait_for_wazo_auth
+
+echo Generating or updating service users...
+wazo-auth-keys service update
+
+echo Waiting for wazo-confd...
+python - <<EOF
+import requests, time
+url = 'http://confd:9486/1.1/infos'
+retry = $container_timeout
+delay = 1
+for n in range(retry):
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        if n < retry - 1:
+            time.sleep(delay)
+            continue
+        else:
+            raise
+    print(f'Response: {r}')
+    break
+EOF
+
+echo Waiting for wazo-provd...
+python - <<EOF
+import requests, time
+url = 'http://provd:8666/0.2/status'
+retry = $container_timeout
+delay = 1
+for n in range(retry):
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        if n < retry - 1:
+            time.sleep(delay)
+            continue
+        else:
+            raise
+    print(f'Response: {r}')
+    break
+EOF
+
+echo Waiting for wazo-sysconfd...
+python - <<EOF
+import requests, time
+url = 'http://sysconfd:8668/status-check'
+retry = $container_timeout
+delay = 1
+for n in range(retry):
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        if n < retry - 1:
+            time.sleep(delay)
+            continue
+        else:
+            raise
+    print(f'Response: {r}')
+    break
+EOF
+
+# To create default directory sources when tenant will be created
+echo Waiting for wazo-dird...
+python - <<EOF
+import requests, time
+url = 'http://dird:9489/0.1/status'
+retry = $container_timeout
+delay = 1
+for n in range(retry):
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        if n < retry - 1:
+            time.sleep(delay)
+            continue
+        else:
+            raise
+    print(f'Response: {r}')
+    break
+EOF
+
+TENANT_NAME='my-company'
+if [[ ! $(wazo-auth-cli tenant show $TENANT_NAME) = *$TENANT_NAME* ]]; then
+  echo Executing wizard...
+  CONFD_IP=$(dig +short confd)
+  GATEWAY=$(/usr/sbin/ip route | awk '/default/ { print $3 }')
+
+  curl --silent -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d "{
+     \"admin_password\": \"secret\",
+     \"language\": \"en_US\",
+     \"license\": true,
+     \"network\": {
+       \"domain\": \"undefined\",
+       \"gateway\": \"$GATEWAY\",
+       \"hostname\": \"confd\",
+       \"interface\": \"eth0\",
+       \"ip_address\": \"$CONFD_IP\",
+       \"nameservers\": [\"1.1.1.1\"],
+       \"netmask\": \"255.255.0.0\"
+     },
+     \"steps\": {
+       \"admin\": true,
+       \"commonconf\": false,
+       \"database\": true,
+       \"manage_hosts_file\": false,
+       \"manage_resolv_file\": false,
+       \"manage_services\": false,
+       \"provisioning\": true
+     },
+     \"timezone\": \"America/Montreal\"
+   }" 'http://confd:9486/1.1/wizard'
+
+
+  # Need to restrict port range to avoid docker issue
+  # https://github.com/moby/moby/issues/11185
+  TOKEN=$(wazo-auth-cli token create)
+  RTP_START=19980
+  RTP_END=20000
+  echo -n "Configuring RTP ports (${RTP_START}-${RTP_END}) ..."
+  RESULT=$(curl --silent -X PUT --header 'Content-Type: application/json' --header 'Accept: application/json' --header "X-Auth-Token: ${TOKEN}" -d "{
+     \"options\": {
+        \"icesupport\": \"true\",
+        \"rtpchecksums\": \"yes\",
+        \"strictrtp\": \"no\",
+        \"rtpstart\": \"${RTP_START}\",
+        \"rtpend\": \"${RTP_END}\"
+     }
+   }" 'http://confd:9486/1.1/asterisk/rtp/general')
+
+   if [ -n "${RESULT}" ]; then
+     echo ' FAILED'
+     exit 1
+   fi
+   echo ' SUCCEED'
+
+
+  echo "Waiting for wazo-webhookd (initializing amqp exchanges)..."
+  python - <<EOF
+import requests, time
+url = 'http://webhookd:9300/1.0/status'
+retry = $container_timeout
+delay = 1
+for n in range(retry):
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        if n < retry - 1:
+            time.sleep(delay)
+            continue
+        else:
+            raise
+    print(f'Response: {r}')
+    break
+EOF
+
+  echo Creating first tenant...
+  wazo-auth-cli tenant create $TENANT_NAME
+fi
+
+echo Successfully bootstrapped !

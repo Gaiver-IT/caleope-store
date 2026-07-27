@@ -1,0 +1,386 @@
+services:
+  nginx:
+    image: nginx
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx-auth-shared.conf:/etc/nginx/wazo-auth-shared.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx-calld-shared.conf:/etc/nginx/wazo-calld-shared.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx-confd-shared.conf:/etc/nginx/wazo-confd-shared.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx-no-auth-shared.conf:/etc/nginx/wazo-no-auth-shared.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/nginx.conf:/etc/nginx/conf.d/config.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/certs:/certs:ro'
+    depends_on:
+    - agentd
+    - amid
+    - asterisk
+    - auth
+    - call-logd
+    - calld
+    - chatd
+    - confd
+    - dird
+    - phoned
+    - provd
+    - ui
+    - webhookd
+    - websocketd
+    networks:
+    - caleope-public
+    - xivo-internal
+    ports:
+    - ${CALEOPE_PORT_WEB}:80
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.xivo.rule=Host(`{{.Domain}}`)
+    - traefik.http.routers.xivo.entrypoints=websecure
+    - traefik.http.routers.xivo.tls=true
+    - traefik.http.services.xivo.loadbalancer.server.port=80
+    - traefik.docker.network=caleope-public
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: wazo
+      POSTGRES_USER: wazo
+      POSTGRES_PASSWORD: secret
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    volumes:
+    - pgdata:/var/lib/postgresql/data
+    - '{{.BaseDir}}/app-config/{{.AppID}}/init-db:/docker-entrypoint-initdb.d'
+    expose:
+    - '5432'
+    networks:
+    - xivo-internal
+  rabbitmq:
+    image: rabbitmq:3
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - '5672'
+    volumes:
+    - tmp-rabbitmq:/var/lib/rabbitmq:rw
+    networks:
+    - xivo-internal
+  auth:
+    image: wazoplatform/wazo-auth
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9497
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-auth.yml:/etc/wazo-auth/conf.d/config.yml:ro'
+    - type: bind
+      source: '{{.BaseDir}}/app-config/{{.AppID}}/wazo-auth-keys/config.yml'
+      target: /etc/wazo-auth/conf.d/50-wazo-default.yml
+      read_only: true
+    networks:
+    - xivo-internal
+  confd:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-confd:manage-db
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9486
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-confd.yml:/etc/wazo-confd/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/xivo-dao.yml:/etc/xivo-dao/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-confd:/bin/wazo-confd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    - asterisk-autoprov:/etc/asterisk/pjsip.d:rw
+    - asterisk-doc:/var/lib/wazo-confd/asterisk-doc:ro
+    entrypoint:
+    - /bin/wazo-confd/init
+    command:
+    - wazo-confd
+    networks:
+    - xivo-internal
+  provd:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-provd:confgend
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 8666
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-confgend-client.conf:/etc/wazo-confgend-client/config.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-provd.yml:/etc/wazo-provd/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-provd:/bin/wazo-provd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    - provd-data:/var/lib/wazo-provd:rw
+    entrypoint:
+    - /bin/wazo-provd/init
+    command:
+    - twistd
+    - --nodaemon
+    - --no_save
+    - --pidfile=
+    - wazo-provd
+    - --stderr
+    - --verbose
+    networks:
+    - xivo-internal
+  sysconfd:
+    image: wazoplatform/wazo-sysconfd-mock
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 8668
+    networks:
+    - xivo-internal
+  webhookd:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-webhookd:netcat
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9300
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-webhookd.yml:/etc/wazo-webhookd/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-webhookd:/bin/wazo-webhookd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-webhookd/init
+    command:
+    - wazo-webhookd
+    networks:
+    - xivo-internal
+  asterisk:
+    image: caleope-registry.gaiver-it.fr/wazo/asterisk:sounds
+    hostname: asterisk.wazo-docker
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - '5038'
+    - '5039'
+    ports:
+    - 5060:5060/udp
+    - 19980-20000:19980-20000/udp
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-confgend-client.conf:/etc/wazo-confgend-client/config.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/asterisk-http.conf:/etc/asterisk/http.d/02-docker.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/asterisk-extensions.conf:/etc/asterisk/extensions.d/02-docker.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/asterisk-odbc.ini:/etc/odbc.ini:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/asterisk-res_odbc.conf:/etc/asterisk/res_odbc.d/02-docker.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/asterisk-manager.conf:/etc/asterisk/manager.d/999-docker.conf:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-asterisk:/bin/asterisk/init:ro'
+    - asterisk-autoprov:/etc/asterisk/pjsip.d:rw
+    - asterisk-doc:/usr/share/asterisk/documentation:rw
+    - asterisk-voicemail:/var/spool/asterisk/voicemail:rw
+    entrypoint:
+    - /bin/asterisk/init
+    command:
+    - asterisk
+    - -fTvvv
+    networks:
+    - xivo-internal
+  confgend:
+    image: wazoplatform/wazo-confgend
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 8669
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-confgend.yml:/etc/wazo-confgend/conf.d/config.yml:ro'
+    networks:
+    - xivo-internal
+  agid:
+    image: wazoplatform/wazo-agid
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 4573
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-agid:/bin/wazo-agid/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-agid.yml:/etc/wazo-agid/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    - type: bind
+      source: ${LOCAL_GIT_REPOS}/xivo-config/etc/xivo
+      target: /etc/xivo
+      read_only: true
+    entrypoint:
+    - /bin/wazo-agid/init
+    command:
+    - wazo-agid
+    networks:
+    - xivo-internal
+  dird:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-dird:netcat
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9489
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-dird:/bin/wazo-dird/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-dird.yml:/etc/wazo-dird/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-dird/init
+    command:
+    - wazo-dird
+    networks:
+    - xivo-internal
+  amid:
+    image: wazoplatform/wazo-amid
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9491
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-amid:/bin/wazo-amid/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-amid.yml:/etc/wazo-amid/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-amid/init
+    command:
+    - wazo-amid
+    networks:
+    - xivo-internal
+  call-logd:
+    image: wazoplatform/wazo-call-logd
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9298
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-call-logd:/bin/wazo-call-logd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-call-logd.yml:/etc/wazo-call-logd/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-call-logd/init
+    command:
+    - wazo-call-logd
+    - --db-upgrade-on-startup
+    networks:
+    - xivo-internal
+  chatd:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-chatd:netcat
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9304
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-chatd:/bin/wazo-chatd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-chatd.yml:/etc/wazo-chatd/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-chatd/init
+    command:
+    - wazo-chatd
+    networks:
+    - xivo-internal
+  phoned:
+    image: wazoplatform/wazo-phoned
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9304
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-phoned:/bin/wazo-phoned/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-phoned.yml:/etc/wazo-phoned/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-phoned/init
+    command:
+    - wazo-phoned
+    networks:
+    - xivo-internal
+  websocketd:
+    image: caleope-registry.gaiver-it.fr/wazo/wazo-websocketd:netcat
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9502
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-websocketd.yml:/etc/wazo-websocketd/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-websocketd:/bin/wazo-websocketd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-websocketd/init
+    command:
+    - wazo-websocketd
+    networks:
+    - xivo-internal
+  calld:
+    image: wazoplatform/wazo-calld
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9491
+    volumes:
+    - asterisk-voicemail:/var/spool/asterisk/voicemail:rw
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-calld.yml:/etc/wazo-calld/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-calld:/bin/wazo-calld/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-calld/init
+    command:
+    - wazo-calld
+    networks:
+    - xivo-internal
+  agentd:
+    image: wazoplatform/wazo-agentd
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9493
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-agentd.yml:/etc/wazo-agentd/conf.d/config.yml:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-agentd:/bin/wazo-agentd/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-helpers:/var/lib/wazo/helpers:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:ro
+    entrypoint:
+    - /bin/wazo-agentd/init
+    command:
+    - wazo-agentd
+    networks:
+    - xivo-internal
+  ui:
+    image: wazoplatform/wazo-ui
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    expose:
+    - 9296
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-ui.yml:/etc/wazo-ui/conf.d/config.yml:ro'
+    networks:
+    - xivo-internal
+  bootstrap:
+    image: caleope-registry.gaiver-it.fr/wazo/uc-bootstrap:latest
+    env_file:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/variables.env'
+    volumes:
+    - '{{.BaseDir}}/app-config/{{.AppID}}/bin/init-bootstrap:/bin/platform-bootstrap/init:ro'
+    - '{{.BaseDir}}/app-config/{{.AppID}}/etc/wazo-auth-cli.yml:/etc/wazo-auth-cli/conf.d/config.yml:ro'
+    - wazo-auth-keys:/var/lib/wazo-auth-keys:rw
+    - type: bind
+      source: '{{.BaseDir}}/app-config/{{.AppID}}/wazo-auth-keys/config.yml'
+      target: /etc/wazo-auth-keys/config.yml
+      read_only: true
+    entrypoint:
+    - /bin/platform-bootstrap/init
+    networks:
+    - xivo-internal
+volumes:
+  pgdata: null
+  provd-data: null
+  wazo-auth-keys: null
+  asterisk-autoprov: null
+  asterisk-doc: null
+  asterisk-voicemail: null
+  tmp-rabbitmq: null
+networks:
+  xivo-internal:
+    driver: bridge
+  caleope-public:
+    external: true

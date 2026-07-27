@@ -1,0 +1,16 @@
+{
+  "id": "xivo",
+  "name": "XiVO (Wazo)",
+  "description": "Standard téléphonique IP (PBX) complet basé sur Asterisk — appels, messagerie vocale, files d'attente. ⚠ EXPÉRIMENTAL : stack de 19 services, port UDP 5060 (SIP) + 19980-20000 (RTP) à ouvrir. Upstream déconseille la production.",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": { "reverse_proxy": true, "gpu": false, "docker_socket": false, "privileged": false },
+  "network": { "public": true, "internal": true },
+  "ports": [
+    { "name": "web", "container": 80, "dynamic": true },
+    { "name": "sip", "container": 5060, "host": 5060, "dynamic": false, "firewall": true, "protocol": "udp" }
+  ],
+  "volumes": [],
+  "backup": { "enabled": false }
+}

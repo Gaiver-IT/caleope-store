@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -x
+
+source /var/lib/wazo/helpers
+
+# Allow wazo-confd to write file 05-autoprov-wizard.conf
+chown asterisk:www-data /etc/asterisk/pjsip.d
+chmod 770 /etc/asterisk/pjsip.d
+
+# Allow wazo-calld to write file
+chown asterisk:www-data /var/spool/asterisk/voicemail
+chmod 770 /var/spool/asterisk/voicemail
+
+db_host='postgres'
+db_port='5432'
+
+echo Waiting for postgres...
+wait_for_service $db_host $db_port
+
+confd_host='confd'
+confd_port='9486'
+
+echo Waiting for asterisk DB initialized...
+wait_for_service $confd_host $confd_port
+
+confgend_host='confgend'
+confgend_port='8669'
+
+echo Waiting for wazo-confgend...
+wait_for_service $confgend_host $confgend_port
+
+wazo-confgen asterisk/modules.conf > /etc/asterisk/modules.conf
+
+exec "$@"
