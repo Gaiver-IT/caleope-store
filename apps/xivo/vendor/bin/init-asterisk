@@ -31,4 +31,53 @@ wait_for_service $confgend_host $confgend_port
 
 wazo-confgen asterisk/modules.conf > /etc/asterisk/modules.conf
 
+# --- Caleope: génération PJSIP + réconciliation confd -> asterisk ---------
+# Le harness wazo-docker ne câble pas le reload PJSIP automatique (sysconfd
+# est dans un conteneur séparé du filesystem d'asterisk). Sans ça, provisionner
+# un utilisateur/une ligne via l'UI web ne pousse rien vers asterisk et aucun
+# téléphone ne peut s'enregistrer. On génère donc pjsip.conf au boot puis on
+# reconcilie en continu : régénère depuis confd et reload res_pjsip QUAND la
+# config change (comparaison, pas de reload inutile).
+CALEOPE_PJSIP=/etc/asterisk/pjsip.conf
+
+caleope_gen_pjsip() {
+    # Sortie = config PJSIP complète depuis confd (global/system/transports/
+    # endpoints/auths/aors). On N'inclut PAS pjsip.d/*.conf : le fichier
+    # d'autoprovisioning (05-autoprov-wizard.conf) redéfinit [global](+) et
+    # entre en conflit avec le [global] émis par confgen -> res_pjsip rejette
+    # alors TOUT le fichier ("duplicate object 'global'") et ne charge aucun
+    # endpoint. L'autoprov concerne le provisioning de téléphones physiques
+    # (DHCP/TFTP), hors périmètre softphone. On garde donc la sortie confgen
+    # pure, qui charge correctement les comptes SIP.
+    # Garde-fou : ne considérer la génération valide que si la sortie contient
+    # bien les transports (sinon confd transitoirement indisponible -> on ne
+    # veut pas écraser une bonne config par une config dégradée).
+    if wazo-confgen asterisk/pjsip.conf > /tmp/pjsip.caleope 2>/dev/null \
+       && grep -q 'type = transport' /tmp/pjsip.caleope; then
+        return 0
+    fi
+    return 1
+}
+
+# Génération initiale (asterisk pas encore démarré : on écrit juste le fichier)
+if caleope_gen_pjsip; then
+    cp /tmp/pjsip.caleope "$CALEOPE_PJSIP"
+fi
+
+# Boucle de réconciliation en tâche de fond
+(
+    # Attendre qu'asterisk réponde à la CLI
+    until asterisk -rx 'core show version' >/dev/null 2>&1; do sleep 3; done
+    echo '[caleope-reconcile] asterisk prêt, réconciliation PJSIP active (15s)'
+    while true; do
+        if caleope_gen_pjsip && ! cmp -s /tmp/pjsip.caleope "$CALEOPE_PJSIP"; then
+            cp /tmp/pjsip.caleope "$CALEOPE_PJSIP"
+            asterisk -rx 'module reload res_pjsip.so' >/dev/null 2>&1
+            echo '[caleope-reconcile] pjsip.conf régénéré + res_pjsip rechargé'
+        fi
+        sleep 15
+    done
+) &
+# --------------------------------------------------------------------------
+
 exec "$@"
