@@ -1,0 +1,37 @@
+{
+  "id": "xivo-appliance",
+  "name": "XiVO PBX (appliance)",
+  "category": "communication",
+  "channel": "stable",
+  "repository": "official",
+
+  "type": "appliance",
+  "appliance": {
+    "iso_url": "https://cdimage.debian.org/cdimage/archive/11.11.0/amd64/iso-cd/debian-11.11.0-amd64-netinst.iso",
+    "iso_sha256": "cd5b2a6fc22050affa1d141adb3857af07e94ff886dca1ce17214e2761a3b316",
+    "preseed": "preseed.cfg",
+    "vcpus": 2,
+    "mem_mb": 4096,
+    "disk_gb": 25,
+    "network": "bridge"
+  },
+
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+
+  "network": {
+    "public": false,
+    "internal": false
+  },
+
+  "ports": [],
+  "volumes": [],
+
+  "backup": {
+    "enabled": false
+  }
+}

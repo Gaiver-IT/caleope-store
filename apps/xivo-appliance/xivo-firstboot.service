@@ -1,0 +1,15 @@
+[Unit]
+Description=Installation XiVO au premier démarrage (appliance Caleope)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/opt/xivo-appliance/.installed
+
+[Service]
+Type=oneshot
+ExecStart=/opt/xivo-appliance/xivo-firstboot.sh
+RemainAfterExit=no
+# Le script gère ses propres retries ; si le boot échoue, on reste enabled.
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target
