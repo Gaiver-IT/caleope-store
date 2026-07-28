@@ -31,14 +31,16 @@ wait_for_service $confgend_host $confgend_port
 
 wazo-confgen asterisk/modules.conf > /etc/asterisk/modules.conf
 
-# --- Caleope: génération PJSIP + réconciliation confd -> asterisk ---------
-# Le harness wazo-docker ne câble pas le reload PJSIP automatique (sysconfd
-# est dans un conteneur séparé du filesystem d'asterisk). Sans ça, provisionner
-# un utilisateur/une ligne via l'UI web ne pousse rien vers asterisk et aucun
-# téléphone ne peut s'enregistrer. On génère donc pjsip.conf au boot puis on
-# reconcilie en continu : régénère depuis confd et reload res_pjsip QUAND la
-# config change (comparaison, pas de reload inutile).
+# --- Caleope: réconciliation confd -> asterisk (PJSIP + dialplan) ----------
+# Le harness wazo-docker ne câble pas le reload automatique (sysconfd est dans
+# un conteneur séparé du filesystem d'asterisk). Sans ça, provisionner un
+# utilisateur/une ligne via l'UI web ne pousse RIEN vers asterisk : aucun
+# téléphone ne peut s'enregistrer (PJSIP) ni s'appeler (dialplan).
+# On génère donc la config depuis confd au boot puis on reconcilie en continu :
+# on régénère et on recharge QUAND la config change (comparaison, pas de reload
+# inutile).
 CALEOPE_PJSIP=/etc/asterisk/pjsip.conf
+CALEOPE_DIALPLAN=/etc/asterisk/extensions.d/50-caleope-users.conf
 
 caleope_gen_pjsip() {
     # Sortie = config PJSIP complète depuis confd (global/system/transports/
@@ -59,21 +61,38 @@ caleope_gen_pjsip() {
     return 1
 }
 
-# Génération initiale (asterisk pas encore démarré : on écrit juste le fichier)
-if caleope_gen_pjsip; then
-    cp /tmp/pjsip.caleope "$CALEOPE_PJSIP"
-fi
+caleope_gen_dialplan() {
+    # Contextes utilisateurs + motifs d'extensions (ex: 1001 -> PJSIP/<endpoint>)
+    # depuis confd. Écrit dans un fichier séparé de extensions.d/ (chargé via
+    # #include extensions.d/*.conf) : les contextes se MERGENT avec la base
+    # wazo (extensions_lib_*.conf, contextes helper user/contextlib/paging...)
+    # sans conflit. Garde-fou : présence du contexte des fonctionnalités wazo.
+    if wazo-confgen asterisk/extensions.conf > /tmp/extensions.caleope 2>/dev/null \
+       && grep -q '^\[xivo-features\]' /tmp/extensions.caleope; then
+        return 0
+    fi
+    return 1
+}
+
+# Génération initiale (asterisk pas encore démarré : on écrit juste les fichiers)
+caleope_gen_pjsip    && cp /tmp/pjsip.caleope      "$CALEOPE_PJSIP"
+caleope_gen_dialplan && cp /tmp/extensions.caleope "$CALEOPE_DIALPLAN"
 
 # Boucle de réconciliation en tâche de fond
 (
     # Attendre qu'asterisk réponde à la CLI
     until asterisk -rx 'core show version' >/dev/null 2>&1; do sleep 3; done
-    echo '[caleope-reconcile] asterisk prêt, réconciliation PJSIP active (15s)'
+    echo '[caleope-reconcile] asterisk prêt, réconciliation PJSIP + dialplan active (15s)'
     while true; do
         if caleope_gen_pjsip && ! cmp -s /tmp/pjsip.caleope "$CALEOPE_PJSIP"; then
             cp /tmp/pjsip.caleope "$CALEOPE_PJSIP"
             asterisk -rx 'module reload res_pjsip.so' >/dev/null 2>&1
             echo '[caleope-reconcile] pjsip.conf régénéré + res_pjsip rechargé'
+        fi
+        if caleope_gen_dialplan && ! cmp -s /tmp/extensions.caleope "$CALEOPE_DIALPLAN"; then
+            cp /tmp/extensions.caleope "$CALEOPE_DIALPLAN"
+            asterisk -rx 'dialplan reload' >/dev/null 2>&1
+            echo '[caleope-reconcile] dialplan régénéré + rechargé'
         fi
         sleep 15
     done
