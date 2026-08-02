@@ -1,0 +1,20 @@
+{
+  "id": "homepage",
+  "name": "Homepage",
+  "description": "Tableau de bord d'accueil : raccourcis vers vos applications, état de santé en direct et métriques système. Configuration en fichiers YAML.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": true,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 3000, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/homepage/config", "target": "/app/config" }
+  ],
+  "backup": { "enabled": true }
+}

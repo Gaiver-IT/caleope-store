@@ -1,0 +1,37 @@
+services:
+  homepage:
+    # Version épinglée : un dashboard qui change de version tout seul finit par
+    # changer de comportement de configuration (Homepage l'a déjà fait en 1.0
+    # avec HOMEPAGE_ALLOWED_HOSTS). On monte de version volontairement.
+    image: ghcr.io/gethomepage/homepage:v1.4.5
+    container_name: homepage
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/homepage/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:3000"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/homepage/config:/app/config
+      # Lecture seule : sert à afficher l'état et la santé des conteneurs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Deux dossiers VIDES, un par système de fichiers à mesurer. Monter la
+      # racine de l'hôte donnerait le même chiffre en exposant tout ; ici le
+      # widget « disque » lit un statvfs correct sans rien exposer du tout.
+      - ${CALEOPE_BASE_DIR}/app-config/homepage/df-system:/mnt/df-system:ro
+      - ${CALEOPE_BASE_DIR}/app-data/homepage/df-appdata:/mnt/df-appdata:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls=true"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
