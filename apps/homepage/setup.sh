@@ -13,8 +13,8 @@ CFG="${DATA_DIR}/config"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 
 mkdir -p "${CONFIG_DIR}" "${CFG}"
-# Deux dossiers vides, un par système de fichiers à mesurer (cf docker-compose).
-mkdir -p "${CONFIG_DIR}/df-system" "${DATA_DIR}/df-appdata"
+# Dossier vide sur le disque SYSTÈME, pour le widget « disque » (cf compose).
+mkdir -p "${CONFIG_DIR}/df-system"
 
 DOMAIN="${CALEOPE_DOMAIN:-localhost}"
 
@@ -22,8 +22,17 @@ DOMAIN="${CALEOPE_DOMAIN:-localhost}"
 # HOMEPAGE_ALLOWED_HOSTS est OBLIGATOIRE depuis Homepage 1.0 : sans lui, toute
 # requête dont l'en-tête Host n'est pas listé reçoit un 400 et la page reste
 # blanche. C'est LA cause n°1 de « mon Homepage ne s'affiche pas ».
+#
+# Le PORT compte : Homepage compare l'en-tête Host TEL QUEL, donc « localhost »
+# n'autorise pas « localhost:8004 ». Sans les variantes avec port, tout appel
+# direct à l'API (sonde de santé, test en ligne de commande) reçoit
+# « Host validation failed » alors que le navigateur, lui, fonctionne.
+PORT="$(sed -n 's/^CALEOPE_PORT_WEB=//p' "${CALEOPE_BASE_DIR}/apps-installed/homepage/app.env" 2>/dev/null | head -1)"
+ALLOWED="${DOMAIN},localhost,127.0.0.1,homepage"
+[ -n "${PORT}" ] && ALLOWED="${ALLOWED},localhost:${PORT},127.0.0.1:${PORT}"
+
 cat > "${_SECRETS}" <<ENV
-HOMEPAGE_ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
+HOMEPAGE_ALLOWED_HOSTS=${ALLOWED}
 ENV
 chmod 600 "${_SECRETS}"
 
@@ -65,9 +74,14 @@ write_if_absent "${CFG}/widgets.yaml" <<'YAML'
     label: Serveur
     cpu: true
     memory: true
+    uptime: true
     disk:
+      # Disque système (dossier vide bind-monté) et disque des données
+      # (/app/config est déjà dessus — ne PAS ajouter un second chemin sur le
+      # même périphérique, `df` les replierait et le widget afficherait
+      # « Drive not found »).
       - /mnt/df-system
-      - /mnt/df-appdata
+      - /app/config
 - search:
     provider: duckduckgo
     target: _blank

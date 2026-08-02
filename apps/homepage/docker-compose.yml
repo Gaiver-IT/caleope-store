@@ -14,11 +14,14 @@ services:
       - ${CALEOPE_BASE_DIR}/app-data/homepage/config:/app/config
       # Lecture seule : sert à afficher l'état et la santé des conteneurs.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Deux dossiers VIDES, un par système de fichiers à mesurer. Monter la
-      # racine de l'hôte donnerait le même chiffre en exposant tout ; ici le
-      # widget « disque » lit un statvfs correct sans rien exposer du tout.
+      # Un dossier VIDE bind-monté depuis le disque SYSTÈME, uniquement pour
+      # que le widget « disque » puisse le mesurer. Monter la racine de l'hôte
+      # donnerait le même chiffre en exposant tout le système de fichiers.
+      # Le disque des DONNÉES, lui, n'a besoin d'aucun montage : /app/config
+      # est déjà dessus. Et il ne FAUT PAS en ajouter un second : deux chemins
+      # sur le même périphérique se replient sur une seule ligne de `df`, et le
+      # widget signale alors « Drive not found » pour celui qui a disparu.
       - ${CALEOPE_BASE_DIR}/app-config/homepage/df-system:/mnt/df-system:ro
-      - ${CALEOPE_BASE_DIR}/app-data/homepage/df-appdata:/mnt/df-appdata:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.homepage.rule=Host(`${CALEOPE_DOMAIN}`)"
