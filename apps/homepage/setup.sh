@@ -50,17 +50,93 @@ write_if_absent() {
 
 write_if_absent "${CFG}/settings.yaml" <<'YAML'
 title: Tableau de bord
+language: fr
 theme: dark
+# Base NEUTRE volontairement : une couleur de thème (`sky`, `blue`…) repeint
+# tout le fond en aplat uni et écrase le dégradé de custom.css.
 color: slate
-headerStyle: boxed
+headerStyle: boxedWidgets
+cardBlur: md
+hideVersion: true
+statusStyle: dot
 layout:
   Applications:
     style: row
     columns: 4
-  Système:
-    style: row
-    columns: 3
 YAML
+
+# ── Habillage par défaut ─────────────────────────────────────────────────────
+# Le thème d'origine de Homepage est austère. Ces quelques règles suffisent à
+# le rendre présentable, sans dépendre d'aucune ressource externe (ni image,
+# ni police à télécharger : la page reste utilisable hors ligne).
+write_if_absent "${CFG}/custom.css" <<'CSS'
+/* ⚠️ Le dégradé DOIT être posé sur #__next, pas sur body : Next.js peint un
+   aplat opaque sur ce conteneur, qui recouvrirait un fond mis sur body. */
+html, body { background-color: #090d1a !important; }
+
+#__next {
+  background:
+    radial-gradient(1100px 750px at 10% -12%, rgba(56,189,248,.20), transparent 62%),
+    radial-gradient(950px 650px at 90% 4%,   rgba(167,139,250,.17), transparent 62%),
+    radial-gradient(900px 600px at 50% 112%, rgba(45,212,191,.12), transparent 62%),
+    linear-gradient(165deg, #0a0f1e 0%, #0d1528 48%, #090d1a 100%) !important;
+  background-attachment: fixed !important;
+  min-height: 100vh;
+}
+
+#information-widgets {
+  background: rgba(255,255,255,.055) !important;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 18px !important;
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 18px 40px -24px rgba(0,0,0,.85);
+}
+
+.service-card {
+  background: rgba(255,255,255,.045) !important;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform .18s ease, background .18s ease,
+              border-color .18s ease, box-shadow .18s ease;
+}
+.service-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,.085) !important;
+  border-color: rgba(56,189,248,.40);
+  box-shadow: 0 14px 34px -18px rgba(0,0,0,.9);
+}
+
+.service-group-name,
+.bookmark-group-name {
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: .95rem !important;
+  color: #7dd3fc !important;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid rgba(125,211,252,.18);
+}
+
+.service-card img,
+.service-card svg { filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
+
+/* Ne styler QUE la carte extérieure des raccourcis : toucher aussi les div
+   internes crée une pastille parasite autour du libellé. */
+.bookmark-text {
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px !important;
+  transition: background .18s ease, border-color .18s ease;
+}
+.bookmark-text:hover {
+  background: rgba(255,255,255,.08) !important;
+  border-color: rgba(56,189,248,.35);
+}
+
+.services-group { margin-bottom: .9rem; }
+CSS
 
 write_if_absent "${CFG}/docker.yaml" <<'YAML'
 # Permet à Homepage d'afficher l'état RÉEL des conteneurs (démarré, arrêté,
