@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "HEIMDALL_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès à la page d'accueil Heimdall",
+    "type":        "port",
+    "required":    false,
+    "default":     "3040"
+  }
+]

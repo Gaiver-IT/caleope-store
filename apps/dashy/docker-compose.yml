@@ -1,0 +1,30 @@
+services:
+  dashy:
+    # Version épinglée : Dashy a déjà déplacé son fichier de configuration
+    # entre deux majeures (de /app/public/conf.yml vers /app/user-data/conf.yml).
+    # On monte de version volontairement, pas au gré des publications.
+    image: lissy93/dashy:4.5.5
+    container_name: dashy
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/dashy/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:8080"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/dashy/user-data:/app/user-data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashy.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.dashy.entrypoints=websecure"
+      - "traefik.http.routers.dashy.tls=true"
+      - "traefik.http.services.dashy.loadbalancer.server.port=8080"
+      - "traefik.docker.network=caleope-public"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

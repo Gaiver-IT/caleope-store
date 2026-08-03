@@ -1,0 +1,20 @@
+{
+  "id": "heimdall",
+  "name": "Heimdall",
+  "description": "Page d'accueil élégante et minimaliste : une grille de raccourcis vers vos applications, avec fond personnalisable. Volontairement simple — pas de widgets ni de supervision.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/heimdall/config", "target": "/config" }
+  ],
+  "backup": { "enabled": true }
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "key":         "DASHY_PORT_WEB",
+    "label":       "Port web",
+    "description": "Port d'accès au tableau de bord Dashy",
+    "type":        "port",
+    "required":    false,
+    "default":     "3035"
+  }
+]

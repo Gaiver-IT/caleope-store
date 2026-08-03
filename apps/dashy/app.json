@@ -1,0 +1,20 @@
+{
+  "id": "dashy",
+  "name": "Dashy",
+  "description": "Tableau de bord d'accueil très personnalisable : nombreux thèmes, éditeur intégré, vérification d'état des services. Se configure à la souris ou en YAML.",
+  "category": "utilities",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8080, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/dashy/user-data", "target": "/app/user-data" }
+  ],
+  "backup": { "enabled": true }
+}
