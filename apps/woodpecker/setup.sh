@@ -41,10 +41,10 @@ fi
     FDIR="${CALEOPE_BASE_DIR}/apps-installed/${f}"
     FSECRETS="${CALEOPE_BASE_DIR}/app-config/${f}/secrets.env"
     [ -d "${FDIR}" ] && [ -f "${FSECRETS}" ] || continue
-    FPORT=$(grep "^CALEOPE_PORT_WEB=" "${FDIR}/app.env" 2>/dev/null | cut -d= -f2-)
-    FDOMAIN=$(grep "^GITEA__server__DOMAIN=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-)
-    AU=$(grep "^GITEA_ADMIN_USER=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-)
-    AP=$(grep "^GITEA_ADMIN_PASS=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-)
+    FPORT=$(grep "^CALEOPE_PORT_WEB=" "${FDIR}/app.env" 2>/dev/null | cut -d= -f2-) || true
+    FDOMAIN=$(grep "^GITEA__server__DOMAIN=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    AU=$(grep "^GITEA_ADMIN_USER=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-) || true
+    AP=$(grep "^GITEA_ADMIN_PASS=" "${FSECRETS}" 2>/dev/null | cut -d= -f2-) || true
     [ -n "${FPORT}" ] && [ -n "${AU}" ] && [ -n "${AP}" ] || continue
 
     echo "  → Forge détectée : ${f} (création de l'app OAuth)..."

@@ -13,7 +13,7 @@ ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
 ONLYOFFICE_JWT=$(openssl rand -hex 20)
 
 # Domaines dérivés du domaine de base depuis caleope.conf
-BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2)
+BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2) || true
 ONLYOFFICE_DOMAIN="onlyoffice.${BASE_DOMAIN}"
 # Domaine Authentik — utilisé dans extra_hosts du docker-compose pour contourner le hairpin NAT
 AUTHENTIK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
@@ -41,8 +41,8 @@ NC_OIDC_CLIENT_ID="" NC_OIDC_CLIENT_SECRET="" NC_OIDC_DISCOVERY_URI=""
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${AK_SECRETS}" ]; then
-        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-) || true
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-) || true
         if [ -z "${AK_DOMAIN}" ]; then
             AK_DOMAIN="authentik.${BASE_DOMAIN}"
         fi

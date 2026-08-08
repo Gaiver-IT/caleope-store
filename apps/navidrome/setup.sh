@@ -23,8 +23,8 @@ chmod 600 "${_SECRETS}"
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${AK_SECRETS}" ]; then
-        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-) || true
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-) || true
         [ -n "${AK_DOMAIN}" ] || AK_DOMAIN="authentik.$(echo "${CALEOPE_DOMAIN}" | cut -d. -f2-)"
         AK_PORT=$(python3 -c "import json; d=json.load(open('${CALEOPE_BASE_DIR}/runtime/apps/authentik.json')); print(next((p['host'] for p in d.get('ports',[]) if p['name']=='web'), 9000))" 2>/dev/null || echo "9000")
         AK_BASE="http://localhost:${AK_PORT}/api/v3"

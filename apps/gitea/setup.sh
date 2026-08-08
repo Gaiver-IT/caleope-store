@@ -113,15 +113,15 @@ chmod 644 "${CONFIG_DIR}/bootstrap.sh"
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${AK_SECRETS}" ]; then
-        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-)
-        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-)
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${AK_SECRETS}" | cut -d= -f2-) || true
+        AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${AK_SECRETS}" | cut -d= -f2-) || true
         if [ -z "${AK_DOMAIN}" ]; then
-            BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-)
+            BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" 2>/dev/null | cut -d= -f2-) || true
             AK_DOMAIN="authentik.${BASE_DOMAIN}"
         fi
 
         if [ -n "${AK_TOKEN}" ] && [ -n "${AK_DOMAIN}" ]; then
-            AK_PORT=$(grep "^CALEOPE_PORT_WEB=" "${CALEOPE_BASE_DIR}/apps-installed/authentik/app.env" 2>/dev/null | cut -d= -f2-)
+            AK_PORT=$(grep "^CALEOPE_PORT_WEB=" "${CALEOPE_BASE_DIR}/apps-installed/authentik/app.env" 2>/dev/null | cut -d= -f2-) || true
             AK_PORT="${AK_PORT:-8000}"
             AK_BASE="http://localhost:${AK_PORT}/api/v3"
             AK_HA="Authorization: Bearer ${AK_TOKEN}"

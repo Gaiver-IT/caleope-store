@@ -51,7 +51,7 @@ until docker inspect --format="{{.State.Running}}" "${CONTAINER_NAME}" 2>/dev/nu
 done
 
 sleep 2
-RANDOM_PASS=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep "randomly generated password:" | grep -oP "password: \K\S+" | tail -1)
+RANDOM_PASS=$(docker logs "${CONTAINER_NAME}" 2>&1 | grep "randomly generated password:" | grep -oP "password: \K\S+" | tail -1) || true
 if [ -n "${RANDOM_PASS}" ]; then
     echo "  ✓ Filebrowser admin password: ${RANDOM_PASS}"
     echo "    (noté ci-dessus — à changer dans Admin → User Management)"

@@ -218,7 +218,7 @@ if echo "${EFFECTIVE_URL}" | grep -q "/setup"; then
     # Étape 1 : GET /setup/register pour récupérer le token CSRF
     REGISTER_URL="${AZ_URL}/setup/register"
     SETUP_HTML=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" "${REGISTER_URL}" 2>/dev/null) || SETUP_HTML=""
-    FORM_CSRF=$(echo "${SETUP_HTML}" | grep -o '"csrf":"[^"]*"' | head -1 | cut -d'"' -f4)
+    FORM_CSRF=$(echo "${SETUP_HTML}" | grep -o '"csrf":"[^"]*"' | head -1 | cut -d'"' -f4) || true
     echo "  → CSRF formulaire: ${FORM_CSRF:-<non trouvé>}"
 
     if [[ -n "${FORM_CSRF}" ]]; then
@@ -247,7 +247,7 @@ fi
 # Les POST à l'API requièrent le header X-API-CSRF extrait de la page dashboard.
 sleep 3
 DASH_HTML=$(curl -s -c "${AZ_COOKIE_JAR}" -b "${AZ_COOKIE_JAR}" "${AZ_URL}/dashboard" 2>/dev/null) || DASH_HTML=""
-API_CSRF=$(echo "${DASH_HTML}" | grep -o '"apiCsrf":"[^"]*"' | head -1 | cut -d'"' -f4)
+API_CSRF=$(echo "${DASH_HTML}" | grep -o '"apiCsrf":"[^"]*"' | head -1 | cut -d'"' -f4) || true
 echo "  → API CSRF: ${API_CSRF:-<non trouvé>}"
 
 if [[ -z "${API_CSRF}" ]]; then

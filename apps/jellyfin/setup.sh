@@ -98,8 +98,8 @@ AK_DOMAIN="authentik.${CALEOPE_DOMAIN}"
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
     _AK_SECRETS="${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env"
     if [ -f "${_AK_SECRETS}" ]; then
-        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${_AK_SECRETS}" | cut -d= -f2-)
-        _AK_D=$(grep "^AUTHENTIK_DOMAIN=" "${_AK_SECRETS}" | cut -d= -f2-)
+        AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${_AK_SECRETS}" | cut -d= -f2-) || true
+        _AK_D=$(grep "^AUTHENTIK_DOMAIN=" "${_AK_SECRETS}" | cut -d= -f2-) || true
         [ -n "${_AK_D}" ] && AK_DOMAIN="${_AK_D}"
         [ -n "${AK_TOKEN}" ] && echo "  → Authentik détecté — SSO OIDC sera configuré"
     fi
