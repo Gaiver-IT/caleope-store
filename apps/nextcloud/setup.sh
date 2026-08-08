@@ -122,15 +122,21 @@ print(json.dumps(d))
                         awk '{print $1}')
                     TRAEFIK_CERT="${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
                     if [ -n "${TRAEFIK_IP}" ]; then
-                        # extra_hosts + entrypoint update-ca-certificates + cert mount
-                        # Nextcloud (PHP) vérifie SSL → il faut lui faire confiance au cert Traefik
-                        awk -v domain="${AK_DOMAIN}" -v ip="${TRAEFIK_IP}" -v cert="${TRAEFIK_CERT}" '
+                        # entrypoint update-ca-certificates + montage du certificat.
+                        # Nextcloud (PHP) vérifie le SSL → il faut lui faire confiance
+                        # au certificat de Traefik.
+                        #
+                        # ⚠️ On n'injecte PLUS extra_hosts ici : le modèle compose le
+                        # définit déjà dans ce même service (`${AUTHENTIK_DOMAIN}:host-gateway`).
+                        # Injecter le nôtre créait une SECONDE clé `extra_hosts` dans le
+                        # même mapping → « mapping key already defined » → docker compose
+                        # refuse le fichier et l'installation échoue. Le modèle a été
+                        # modernisé sans que cette injection soit retirée.
+                        awk -v cert="${TRAEFIK_CERT}" '
 /^  nextcloud:$/ { in_nc=1 }
 /^  [a-z]/ && !/^  nextcloud:$/ { in_nc=0 }
 in_nc && /^    env_file:/ && !extra_done {
     print "    entrypoint: [\"/bin/sh\", \"-c\", \"update-ca-certificates 2>/dev/null || true; exec /entrypoint.sh apache2-foreground\"]"
-    print "    extra_hosts:"
-    print "      - \"" domain ":" ip "\""
     extra_done=1
 }
 in_nc && /^    volumes:/ && !vol_done {
