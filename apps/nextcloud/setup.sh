@@ -189,6 +189,33 @@ in_nc && /^    volumes:/ && !vol_done {
 { print }
 ' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/nc_compose_sso.yml && \
                         mv /tmp/nc_compose_sso.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+
+                        # ── extra_hosts : SEULEMENT en cas de vrai hairpin NAT ──
+                        # Si le domaine public d'Authentik résout déjà depuis le
+                        # serveur (DNS interne, entrée /etc/hosts, proxy en amont),
+                        # le détourner vers le Traefik LOCAL est NUISIBLE : celui-ci
+                        # n'a ni certificat valide pour ce nom, ni routeur sur 443.
+                        # Constaté le 09/08 en production : Nextcloud affichait
+                        # « Impossible de joindre le fournisseur OpenID Connect »
+                        # alors que le chemin normal, via le proxy, répondait 200
+                        # avec un certificat valide. On ne détourne donc que si le
+                        # nom ne résout vraiment pas.
+                        if ! getent hosts "${AK_DOMAIN}" >/dev/null 2>&1; then
+                            echo "  → ${AK_DOMAIN} ne résout pas : détournement vers Traefik (${TRAEFIK_IP})"
+                            awk -v domain="${AK_DOMAIN}" -v ip="${TRAEFIK_IP}" '
+/^  nextcloud:$/ { in_nc=1 }
+/^  [a-z]/ && !/^  nextcloud:$/ { in_nc=0 }
+in_nc && /^    env_file:/ && !eh_done {
+    print "    extra_hosts:"
+    print "      - \"" domain ":" ip "\""
+    eh_done=1
+}
+{ print }
+' "${CALEOPE_APP_DIR}/compose.yml" > /tmp/nc_compose_eh.yml && \
+                            mv /tmp/nc_compose_eh.yml "${CALEOPE_APP_DIR}/compose.yml" || true
+                        else
+                            echo "  → ${AK_DOMAIN} résout normalement : pas de détournement (le proxy fait le travail)"
+                        fi
                     fi
 
                     cat >> "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env" << OIDCENV
