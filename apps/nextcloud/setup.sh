@@ -6,11 +6,30 @@ mkdir -p "${CALEOPE_BASE_DIR}/app-data/nextcloud/"{html,db,redis}
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/nextcloud/onlyoffice/"{logs,data}
 mkdir -p "${CALEOPE_BASE_DIR}/app-config/nextcloud"
 
-# Génération des secrets
-DB_PASS=$(openssl rand -hex 20)
-DB_ROOT_PASS=$(openssl rand -hex 20)
-ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
-ONLYOFFICE_JWT=$(openssl rand -hex 20)
+# ── Secrets : on RELIT l'existant avant de générer ───────────────────────────
+# `caleope install --force` rejoue ce script SANS redemander les paramètres.
+# Régénérer les mots de passe ici ne serait pas une simple rotation gênante,
+# ce serait une PANNE TOTALE :
+#   • MYSQL_PASSWORD change dans le fichier mais PAS dans MariaDB (qui l'a déjà
+#     inscrit à sa création) → Nextcloud ne peut plus ouvrir sa propre base ;
+#   • NEXTCLOUD_ADMIN_PASSWORD n'est lu qu'à la toute première initialisation →
+#     le fichier annoncerait un mot de passe qui n'ouvre plus rien.
+# Même motif que `_keep` dans authentik / jellyfin / azuracast-discord-bot,
+# posé après l'incident du 14/07 où un token Discord avait été vidé ainsi.
+_SECRETS="${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
+_prev() { [ -f "${_SECRETS}" ] && grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+
+DB_PASS=$(_prev MYSQL_PASSWORD)
+[ -n "${DB_PASS}" ] || DB_PASS=$(openssl rand -hex 20)
+
+DB_ROOT_PASS=$(_prev MYSQL_ROOT_PASSWORD)
+[ -n "${DB_ROOT_PASS}" ] || DB_ROOT_PASS=$(openssl rand -hex 20)
+
+ADMIN_PASS=$(_prev NEXTCLOUD_ADMIN_PASSWORD)
+[ -n "${ADMIN_PASS}" ] || ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+ONLYOFFICE_JWT=$(_prev JWT_SECRET)
+[ -n "${ONLYOFFICE_JWT}" ] || ONLYOFFICE_JWT=$(openssl rand -hex 20)
 
 # Domaines dérivés du domaine de base depuis caleope.conf
 BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2) || true
