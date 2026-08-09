@@ -139,9 +139,23 @@ print('%s|%s' % (r[0]['pk'], r[0].get('client_secret', '')) if r else '')
                 fi
 
                 if [ -n "${PROV_PK}" ]; then
+                    # Création SI ABSENTE, puis mise à jour DANS TOUS LES CAS.
+                    # ⚠️ L'application peut déjà exister d'une installation
+                    # précédente. Le POST échoue alors (slug en double) et
+                    # l'application reste accrochée à un ANCIEN fournisseur.
+                    # Authentik refuse alors l'autorisation — « Permission
+                    # denied » — alors que tout paraît configuré : le client_id
+                    # envoyé par Nextcloud pointe vers un fournisseur qui n'a
+                    # aucune application liée. Constaté en production le 09/08.
+                    # Le PATCH qui suit garantit le bon lien, création ou pas.
                     curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
                         "${AK_BASE}/core/applications/" \
                         -d "{\"name\":\"Nextcloud\",\"slug\":\"nextcloud-sso\",\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
+                        >/dev/null 2>&1 || true
+
+                    curl -s --max-time 10 -X PATCH -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/core/applications/nextcloud-sso/" \
+                        -d "{\"provider\":${PROV_PK},\"meta_launch_url\":\"https://${CALEOPE_DOMAIN}/\"}" \
                         >/dev/null 2>&1 || true
 
                     # Groupes Authentik par app
