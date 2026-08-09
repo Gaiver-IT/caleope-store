@@ -112,9 +112,31 @@ if '${SIGN_KEY}':
     d['signing_key'] = '${SIGN_KEY}'
 print(json.dumps(d))
 " 2>/dev/null)
-                PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
-                    "${AK_BASE}/providers/oauth2/" -d "${PROV_BODY}" \
-                    | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                # ── Réutiliser le fournisseur s'il existe déjà ───────────────
+                # Authentik REFUSE un client_id en double (400). Le script
+                # postait aveuglément : à la deuxième installation (ou après un
+                # `--force`), la création échouait, PROV_PK restait vide, et on
+                # repartait SANS SSO — en silence, sans message d'erreur.
+                # On regarde donc d'abord. Authentik renvoie le client_secret
+                # existant, ce qui permet de le réutiliser tel quel.
+                _EXIST=$(curl -s --max-time 10 -H "${AK_HA}" \
+                    "${AK_BASE}/providers/oauth2/?client_id=nextcloud" \
+                    | python3 -c "
+import sys, json
+r = (json.load(sys.stdin).get('results') or [])
+print('%s|%s' % (r[0]['pk'], r[0].get('client_secret', '')) if r else '')
+" 2>/dev/null || echo "")
+
+                if [ -n "${_EXIST}" ]; then
+                    PROV_PK="${_EXIST%%|*}"
+                    _EXIST_SECRET="${_EXIST#*|}"
+                    [ -n "${_EXIST_SECRET}" ] && NC_OIDC_SECRET="${_EXIST_SECRET}"
+                    echo "  → fournisseur OIDC Nextcloud déjà présent (PK=${PROV_PK}) — réutilisé"
+                else
+                    PROV_PK=$(curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
+                        "${AK_BASE}/providers/oauth2/" -d "${PROV_BODY}" \
+                        | python3 -c "import sys,json; print(json.load(sys.stdin).get('pk',''))" 2>/dev/null || echo "")
+                fi
 
                 if [ -n "${PROV_PK}" ]; then
                     curl -s --max-time 10 -X POST -H "${AK_HA}" -H "${AK_HJ}" \
