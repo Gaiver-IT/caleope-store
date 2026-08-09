@@ -31,6 +31,18 @@ ADMIN_PASS=$(_prev NEXTCLOUD_ADMIN_PASSWORD)
 ONLYOFFICE_JWT=$(_prev JWT_SECRET)
 [ -n "${ONLYOFFICE_JWT}" ] || ONLYOFFICE_JWT=$(openssl rand -hex 20)
 
+# Les identifiants OIDC subissent le MÊME piège, en pire : secrets.env est
+# réécrit intégralement juste en dessous, alors que les clés NC_OIDC_* ne sont
+# ré-ajoutées que dans la branche de succès Authentik, bien plus bas. Un
+# `install --force` pendant qu'Authentik est arrêté effacerait donc le SSO —
+# et comme le bootstrap ne configure user_oidc que si ces clés existent, le
+# bouton « Se connecter avec Authentik » disparaîtrait sans un mot d'erreur.
+# On capture les valeurs en place AVANT la réécriture ; un filet plus bas les
+# restaure si la branche Authentik n'a rien produit.
+PREV_OIDC_CLIENT_ID=$(_prev NC_OIDC_CLIENT_ID)
+PREV_OIDC_CLIENT_SECRET=$(_prev NC_OIDC_CLIENT_SECRET)
+PREV_OIDC_DISCOVERY_URI=$(_prev NC_OIDC_DISCOVERY_URI)
+
 # Domaines dérivés du domaine de base depuis caleope.conf
 BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2) || true
 ONLYOFFICE_DOMAIN="onlyoffice.${BASE_DOMAIN}"
@@ -247,6 +259,19 @@ OIDCENV
         fi
     fi
 fi
+# Filet SSO : si aucune des branches ci-dessus n'a écrit les clés OIDC (Authentik
+# arrêté, API muette, flows introuvables...), on restaure celles qui étaient déjà
+# en place plutôt que de laisser secrets.env amputé. Sans ça, une simple
+# réinstallation pendant qu'Authentik est down suffit à faire disparaître le SSO.
+if ! grep -q "^NC_OIDC_CLIENT_ID=" "${_SECRETS}" 2>/dev/null && [ -n "${PREV_OIDC_CLIENT_ID}" ]; then
+    cat >> "${_SECRETS}" << OIDCKEEP
+NC_OIDC_CLIENT_ID=${PREV_OIDC_CLIENT_ID}
+NC_OIDC_CLIENT_SECRET=${PREV_OIDC_CLIENT_SECRET}
+NC_OIDC_DISCOVERY_URI=${PREV_OIDC_DISCOVERY_URI}
+OIDCKEEP
+    echo "  ↺ SSO : identifiants OIDC précédents conservés (Authentik injoignable)"
+fi
+
 echo "CALEOPE_AUTH_MIDDLEWARE=${CALEOPE_AUTH_MIDDLEWARE}" >> "${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
 
 # Script de configuration automatique du connecteur OnlyOffice
@@ -257,26 +282,70 @@ set -e
 
 occ() { su -s /bin/bash www-data -c "php /var/www/html/occ $*"; }
 
+# Les attentes sont PLAFONNÉES. Une boucle `until` sans compteur laisse le
+# conteneur de bootstrap tourner indéfiniment si le service ne vient jamais :
+# l'installation semble « en cours » pour toujours, et personne ne sait pourquoi.
 echo "→ En attente de Nextcloud..."
-until curl -sf "http://nextcloud/status.php" 2>/dev/null | grep -q '"installed":true'; do
+NC_PRET=0
+for _ in $(seq 1 60); do   # 60 × 5 s = 5 min
+    if curl -sf "http://nextcloud/status.php" 2>/dev/null | grep -q '"installed":true'; then
+        NC_PRET=1
+        break
+    fi
     sleep 5
 done
+if [ "${NC_PRET}" != 1 ]; then
+    echo "✗ Nextcloud n'est toujours pas initialisé après 5 minutes — bootstrap abandonné."
+    echo "  Diagnostic : docker logs nextcloud"
+    exit 1
+fi
 
-echo "→ En attente de OnlyOffice..."
-until curl -sf "http://nextcloud-onlyoffice/healthcheck" 2>/dev/null | grep -q "true"; do
+echo "→ En attente du serveur de documents..."
+DS_PRET=0
+for _ in $(seq 1 60); do
+    if curl -sf "http://nextcloud-onlyoffice/healthcheck" 2>/dev/null | grep -q "true"; then
+        DS_PRET=1
+        break
+    fi
     sleep 5
 done
+if [ "${DS_PRET}" != 1 ]; then
+    echo "⚠ Serveur de documents injoignable après 5 minutes."
+    echo "  On continue quand même : le reste de la configuration Nextcloud"
+    echo "  (proxys de confiance, SSO) ne doit pas être perdu pour autant."
+    echo "  Diagnostic : docker logs nextcloud-onlyoffice"
+fi
 
+# ⚠️ Cette étape ne doit JAMAIS tuer le bootstrap. Le connecteur n'est pas
+# embarqué dans l'image Nextcloud : `app:install` le TÉLÉCHARGE depuis
+# apps.nextcloud.com. Sur une machine hors ligne (ISO, air-gap, coupure), la
+# commande échoue — et avec `set -e` elle emportait TOUT ce qui suit : URLs du
+# serveur de documents, secret JWT, proxys de confiance, SSO. Sans un mot.
 echo "→ Installation du connecteur OnlyOffice..."
-occ "app:install onlyoffice 2>/dev/null || php /var/www/html/occ app:enable onlyoffice"
+CONNECTEUR_OK=0
+if occ "app:enable onlyoffice" > /dev/null 2>&1; then
+    CONNECTEUR_OK=1            # déjà présent — app:enable est idempotent
+elif occ "app:install onlyoffice" > /dev/null 2>&1; then
+    CONNECTEUR_OK=1            # téléchargé puis activé par app:install
+fi
 
-echo "→ Configuration du connecteur OnlyOffice..."
-occ "config:app:set onlyoffice DocumentServerUrl         --value='https://${ONLYOFFICE_DOMAIN}/'"
-occ "config:app:set onlyoffice DocumentServerInternalUrl --value='http://nextcloud-onlyoffice/'"
-occ "config:app:set onlyoffice StorageUrl                --value='http://nextcloud/'"
-occ "config:app:set onlyoffice jwt_secret                --value='${JWT_SECRET}'"
-occ "config:app:set onlyoffice jwt_header                --value='Authorization'"
-echo "✓ OnlyOffice connecté à Nextcloud"
+if [ "${CONNECTEUR_OK}" = 1 ]; then
+    echo "→ Configuration du connecteur OnlyOffice..."
+    occ "config:app:set onlyoffice DocumentServerUrl         --value='https://${ONLYOFFICE_DOMAIN}/'"
+    occ "config:app:set onlyoffice DocumentServerInternalUrl --value='http://nextcloud-onlyoffice/'"
+    occ "config:app:set onlyoffice StorageUrl                --value='http://nextcloud/'"
+    occ "config:app:set onlyoffice jwt_secret                --value='${JWT_SECRET}'"
+    occ "config:app:set onlyoffice jwt_header                --value='Authorization'"
+    # Contrôle explicite : on relit ce qui a été écrit plutôt que de supposer.
+    echo "✓ OnlyOffice connecté à Nextcloud (serveur : $(occ "config:app:get onlyoffice DocumentServerUrl" 2>/dev/null))"
+else
+    echo "✗ Le connecteur OnlyOffice n'a pas pu être installé."
+    echo "  Il se télécharge depuis apps.nextcloud.com : sans accès Internet, c'est attendu."
+    echo "  L'édition de documents restera indisponible tant qu'il manque."
+    echo "  Une fois la machine en ligne :"
+    echo "    docker exec -u www-data nextcloud php occ app:install onlyoffice"
+    echo "    caleope install nextcloud --force"
+fi
 
 # Autoriser les requêtes vers les IPs internes Docker (protection SSRF désactivée
 # pour les serveurs internes — nécessaire pour joindre authentik-server:9000)
