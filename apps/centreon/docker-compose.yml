@@ -1,0 +1,62 @@
+services:
+  centreon-db:
+    image: mariadb:10.11
+    container_name: centreon-db
+    restart: unless-stopped
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/secrets.env
+    # Réglages exigés par Centreon : sans open_files_limit relevé, l'étape de
+    # partitionnement des tables de métriques échoue au bout de plusieurs
+    # minutes, et le formulaire d'installation rend un « succès » creux.
+    command: >
+      --innodb-file-per-table=1
+      --open-files-limit=32000
+      --max-allowed-packet=64M
+      --skip-log-bin
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/centreon/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - caleope-internal
+
+  centreon:
+    image: caleope-centreon:24.10
+    container_name: centreon
+    restart: unless-stopped
+    depends_on:
+      centreon-db:
+        condition: service_healthy
+    env_file:
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/secrets.env
+    ports:
+      - "${CALEOPE_PORT_WEB}:80"
+    volumes:
+      - ${CALEOPE_BASE_DIR}/app-data/centreon/lib:/var/lib/centreon
+      - ${CALEOPE_BASE_DIR}/app-data/centreon/broker:/var/lib/centreon-broker
+      - ${CALEOPE_BASE_DIR}/app-data/centreon/engine:/var/lib/centreon-engine
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/etc:/etc/centreon
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/etc-engine:/etc/centreon-engine
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/etc-broker:/etc/centreon-broker
+      # /etc/centreon-gorgone reçoit à l'installation un 40-gorgoned.yaml
+      # ENGENDRÉ, porteur des identifiants de base. Sans persistance, il
+      # disparaît au premier redémarrage et gorgone tombe en FATAL.
+      - ${CALEOPE_BASE_DIR}/app-config/centreon/etc-gorgone:/etc/centreon-gorgone
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.centreon.rule=Host(`${CALEOPE_DOMAIN}`)"
+      - "traefik.http.routers.centreon.entrypoints=websecure"
+      - "traefik.http.routers.centreon.tls=true"
+      - "traefik.http.services.centreon.loadbalancer.server.port=80"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true

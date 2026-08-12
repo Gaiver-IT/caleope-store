@@ -1,0 +1,18 @@
+# Liste blanche additionnelle — appliance Caleope.
+#
+# Gorgone n'exécute que les commandes correspondant à un motif de sa liste
+# blanche, et REFUSE les autres EN SILENCE. Le motif livré par Centreon exige
+# « sudo » :
+#     ^sudo\s+(/bin/|/usr/bin/)?systemctl\s+(reload|restart)\s+(centengine|…)$
+# alors que l'installation renseigne en base « systemctl restart centengine »,
+# sans sudo. Résultat : appliquer une configuration renvoie « OK: A reload signal
+# has been sent », et rien ne se passe. Le moteur reste sur son ancienne
+# configuration et les nouveaux hôtes n'apparaissent jamais.
+# Diagnostiqué le 12/08/2026 : trois heures pour trouver un refus muet.
+#
+# Le fichier officiel dit lui-même « CREATE YOUR OWN FILE IN WHITELIST.CONF.D » :
+# c'est le point d'extension prévu, on ne modifie donc rien de Centreon.
+#
+# Dans cette image, « systemctl » est notre traducteur vers supervisor
+# (/usr/local/bin/systemctl) : il n'y a pas de systemd dans un conteneur.
+- ^(/usr/local/bin/)?systemctl\s+(reload|restart|start|stop)\s+(centengine|centreontrapd|cbd|gorgoned)(\.service)?\s*$

@@ -1,0 +1,34 @@
+[
+  {
+    "key":         "CENTREON_ADMIN_PASSWORD",
+    "label":       "Mot de passe de l'administrateur Centreon",
+    "description": "Compte « admin » de l'interface. Centreon impose 12 caractères minimum, avec majuscule, minuscule, chiffre et caractère spécial — un mot de passe plus faible fait échouer l'installation. Laisser vide : Caleope en engendre un et l'affiche à la fin.",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "CENTREON_ADMIN_EMAIL",
+    "label":       "Courriel de l'administrateur",
+    "description": "Sert aux notifications de supervision.",
+    "type":        "string",
+    "required":    false,
+    "default":     "admin@localhost"
+  },
+  {
+    "key":         "CENTREON_DB_ROOT_PASSWORD",
+    "label":       "Mot de passe root de la base",
+    "description": "Compte root MariaDB, utilisé le temps de l'installation. Laisser vide pour qu'il soit engendré.",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "CENTREON_DB_PASSWORD",
+    "label":       "Mot de passe de la base Centreon",
+    "description": "Compte applicatif « centreon ». Laisser vide pour qu'il soit engendré.",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  }
+]

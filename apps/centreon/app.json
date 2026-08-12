@@ -1,0 +1,26 @@
+{
+  "id": "centreon",
+  "name": "Centreon",
+  "category": "monitoring",
+  "channel": "alpha",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 80, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/centreon/db", "target": "/var/lib/mysql" },
+    { "source": "app-data/centreon/lib", "target": "/var/lib/centreon" },
+    { "source": "app-data/centreon/broker", "target": "/var/lib/centreon-broker" },
+    { "source": "app-data/centreon/engine", "target": "/var/lib/centreon-engine" },
+    { "source": "app-config/centreon/etc", "target": "/etc/centreon" },
+    { "source": "app-config/centreon/etc-engine", "target": "/etc/centreon-engine" },
+    { "source": "app-config/centreon/etc-broker", "target": "/etc/centreon-broker" },
+    { "source": "app-config/centreon/etc-gorgone", "target": "/etc/centreon-gorgone" }
+  ],
+  "backup": { "enabled": true }
+}
