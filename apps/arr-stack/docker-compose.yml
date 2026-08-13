@@ -391,7 +391,7 @@ services:
 
   # ── BOOTSTRAP — configure toutes les connexions API au démarrage ────
   arr-bootstrap:
-    image: alpine:3.19
+    image: alpine:3.22
     container_name: arr-bootstrap
     restart: "no"
     dns_search: []

@@ -43,7 +43,7 @@ services:
       - caleope-internal
 
   ghost-bootstrap:
-    image: alpine:3.19
+    image: alpine:3.22
     container_name: ghost-bootstrap
     restart: "no"
     env_file:

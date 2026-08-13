@@ -43,13 +43,13 @@ echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
 # Même logique que arr-stack/setup.sh pour le Jellyfin embarqué
 if [[ -f "${JF_CFG}/data/jellyfin.db" || -d "${JF_CFG}/root" ]]; then
     echo "→ Nettoyage configuration Jellyfin précédente..."
-    docker run --rm -v "${JF_CFG}:/jf" alpine:3.19 \
+    docker run --rm -v "${JF_CFG}:/jf" alpine:3.22 \
         sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
         >/dev/null 2>&1 || true
     echo "  ✓ Données Jellyfin précédentes supprimées"
 fi
 if [[ -f "${JF_CFG}/config/system.xml" ]]; then
-    docker run --rm -v "${JF_CFG}:/jf" alpine:3.19 \
+    docker run --rm -v "${JF_CFG}:/jf" alpine:3.22 \
         sh -c "sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; true" \
         >/dev/null 2>&1 || true
     echo "  ✓ Flag wizard Jellyfin réinitialisé"

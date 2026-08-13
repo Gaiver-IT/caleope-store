@@ -61,7 +61,7 @@ if [[ -f "${JELLYFIN_CFG}/data/jellyfin.db" || -d "${JELLYFIN_CFG}/root" ]]; the
     echo "→ Nettoyage de la configuration Jellyfin précédente (data/root)..."
     docker run --rm \
         -v "${JELLYFIN_CFG}:/jf" \
-        alpine:3.19 \
+        alpine:3.22 \
         sh -c "rm -rf /jf/data /jf/log /jf/root 2>/dev/null; true" \
         >/dev/null 2>&1 || true
     echo "  ✓ Données Jellyfin supprimées"
@@ -71,7 +71,7 @@ fi
 if [[ -f "${JELLYFIN_CFG}/config/system.xml" ]]; then
     docker run --rm \
         -v "${JELLYFIN_CFG}:/jf" \
-        alpine:3.19 \
+        alpine:3.22 \
         sh -c "sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' /jf/config/system.xml 2>/dev/null; true" \
         >/dev/null 2>&1 || true
     echo "  ✓ Flag wizard Jellyfin réinitialisé"

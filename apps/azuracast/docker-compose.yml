@@ -59,7 +59,7 @@ services:
 
   # ── BOOTSTRAP — configuration initiale (s'exécute une seule fois) ───
   azuracast-bootstrap:
-    image: alpine:3.19
+    image: alpine:3.22
     container_name: azuracast-bootstrap
     restart: "no"
     env_file:

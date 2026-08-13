@@ -62,7 +62,7 @@ services:
       - caleope-internal
 
   immich-bootstrap:
-    image: alpine:3.19
+    image: alpine:3.22
     container_name: immich-bootstrap
     restart: "no"
     env_file:
