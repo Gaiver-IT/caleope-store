@@ -26,7 +26,7 @@ un message — elle ne retombe **jamais** en silence sur une image tierce.
 
 ---
 
-## Les huit pièges, et ce qu'ils coûtent quand on les ignore
+## Les neuf pièges, et ce qu'ils coûtent quand on les ignore
 
 Chacun a été trouvé en mesurant, pas en lisant la documentation. Ils sont écrits
 ici parce qu'ils reviendront à la prochaine montée de version.
@@ -160,6 +160,32 @@ Deux corrections, complémentaires : le dossier est persisté (et amorcé depuis
 l'image, cf. piège n°5), et supervisor vise désormais `config.yaml` — le point
 d'entrée prévu par l'éditeur, qui fait `!include config.d/*.yaml` — au lieu de
 viser directement un fichier engendré.
+
+### 9. Un hôte sans `check_interval` n'est jamais contrôlé
+
+Le piège le plus discret des neuf, parce qu'il produit un écran parfaitement
+crédible.
+
+Créer un hôte et exporter la configuration ne suffit pas : il faut lui donner
+une **commande de contrôle** *et* un **intervalle**. Sans intervalle, l'hôte est
+créé, exporté, présent dans `hosts.cfg` — et le moteur ne le planifie jamais. Il
+reste à l'état **4 (« pending »)**, `last_check` à 0, sans le moindre résultat.
+La console affiche une ligne d'hôte, et personne ne se doute que rien n'est
+mesuré.
+
+Le nom du paramètre se cherche : le CLAPI de la 24.10 **refuse**
+`normal_check_interval` (« Please check that your parameters are valid ») et
+**accepte** `check_interval`. Vérifié en base : `host_check_interval = 5`.
+
+Avec l'intervalle, la même manœuvre donne, en moins d'une minute :
+
+```
+Central-Caleope  état=0  last_check=1786598819  PING OK - Packet loss = 0%, RTA = 0.04 ms
+```
+
+C'est cette ligne — un état, un horodatage et un **résultat de sonde** — qui
+prouve qu'une supervision supervise. Un simple `count(*)` sur
+`centreon_storage.hosts` compte aussi bien les hôtes jamais contrôlés.
 
 ---
 
@@ -296,16 +322,20 @@ les graphes de métriques et les modèles d'hôtes — pas la même classe d'out
 
 À dire franchement plutôt que de le laisser découvrir :
 
-- **Une installation neuve ne supervise rien du tout.** Pas même son propre
-  serveur : la table des hôtes est vide. Le premier hôte s'ajoute à la main ou
-  par découverte.
-- **Aucune commande de contrôle n'est définie.** Les six commandes livrées sont
-  toutes des commandes de *notification* (`host-notify-by-email` et compagnie) —
-  vérifié en base. Les **50 sondes Nagios sont pourtant bien là**, dans
-  `/usr/lib/nagios/plugins`. Il faut passer par Configuration ▸ Modèles pour les
-  raccorder. C'est le comportement de Centreon, pas une lacune du paquet, mais
-  personne ne s'y attend : on a une supervision installée qui ne sait encore
-  rien mesurer.
+- **Centreon, laissé à lui-même, n'aurait supervisé RIEN.** Table des hôtes
+  vide, et pour seules commandes six *notifications* (`host-notify-by-email` et
+  compagnie) — vérifié en base — alors que les **50 sondes Nagios** sont bien là,
+  dans `/usr/lib/nagios/plugins`. Le paquet corrige le minimum vital : il crée
+  la commande `caleope-check-ping` et l'hôte **`Central-Caleope`**, réellement
+  contrôlé (voir piège n°9). La console n'est donc pas vide au premier accès.
+- **Mais elle est presque vide.** Un ping sur le serveur central, rien d'autre :
+  ni disque, ni charge, ni service. Raccorder de vraies sondes passe par
+  Configuration ▸ Modèles, à la main.
+- **Le moteur mesure le CONTENEUR, pas le serveur.** Un `check_disk` lancé
+  depuis Centreon regarderait le système de fichiers du conteneur. Superviser
+  réellement la machine Caleope demande un agent ou du SNMP — c'est un chantier,
+  pas une case à cocher.
+- **Aucune notification ne partira.** `admin@localhost`, aucun SMTP câblé.
 - **Pas de poller distant.** Ce paquet est un central mono-collecteur.
 - **Pas de SSO Authentik.** Centreon sait faire de l'OpenID Connect ; ce n'est pas
   encore câblé ici.

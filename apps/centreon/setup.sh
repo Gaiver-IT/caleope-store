@@ -57,6 +57,13 @@ _keep() { # $1=clé  $2=paramètre fourni  $3=1 pour engendrer si vide
     _keep CENTREON_ADMIN_EMAIL      "${CALEOPE_PARAM_CENTREON_ADMIN_EMAIL:-}"      0
     echo "CENTREON_DB_HOST=centreon-db"
     echo "CENTREON_DB_PORT=3306"
+    # Le login et l'URL vivent ICI, à côté du mot de passe, parce que c'est là
+    # que la section « Secrets » de l'interface va les chercher. Publier la
+    # moitié d'un couple ne sert à personne : on voit CENTREON_ADMIN_PASSWORD
+    # sans jamais voir « admin », et on croit que l'information manque.
+    # C'est la convention majoritaire du magasin (16 paquets sur 25 le font).
+    echo "CENTREON_ADMIN_USER=admin"
+    [ -n "${CALEOPE_DOMAIN:-}" ] && echo "CENTREON_URL=https://${CALEOPE_DOMAIN}"
 } > "${SECRETS}.new"
 
 # MariaDB lit d'autres noms de variables que Centreon, mais il s'agit du même
@@ -142,27 +149,37 @@ _semer /var/lib/centreon-engine "${DATA_DIR}/engine"
 _semer /var/lib/centreon-broker "${DATA_DIR}/broker"
 
 ADMIN_PW=$(_prev CENTREON_ADMIN_PASSWORD)
+ADRESSE="https://${CALEOPE_DOMAIN:-<domaine-non-defini>}"
+
+# ⚠️ Pas de bordure à droite sur les lignes à contenu variable. Un cadre en
+# largeur fixe se casse dès qu'on y glisse un mot de passe ou un chemin — et un
+# encadré cassé, c'est le premier signe que personne n'a relu la sortie.
 cat > "${CONFIG_DIR}/post-install.txt" << EOF
 
   ┌──────────────────────────────────────────────────────────────┐
   │  Centreon — supervision                                      │
-  ├──────────────────────────────────────────────────────────────┤
-  │  L'installation se termine SEULE, dans le conteneur          │
-  │  (environ 30 s après le démarrage). Suivre :                 │
-  │     caleope logs centreon                                    │
-  │  La ligne « ✅ Centreon installé, vérifié, supervision       │
-  │  armée » signe la fin.                                       │
-  │                                                              │
-  │  Identifiant : admin                                         │
-  │  Mot de passe : ${ADMIN_PW}
-  │                                                              │
-  │  ⚠️ Une nouvelle installation ne surveille QUE son propre     │
-  │  serveur central. Les hôtes s'ajoutent ensuite, et une        │
-  │  Centreon neuve n'a AUCUNE commande de contrôle définie :     │
-  │  passer par Configuration ▸ Modèles pour en importer.        │
-  │                                                              │
-  │  Secrets : ${CONFIG_DIR}/secrets.env
   └──────────────────────────────────────────────────────────────┘
+
+  Interface     : ${ADRESSE}
+  Identifiant   : admin
+  Mot de passe  : ${ADMIN_PW}
+
+  L'installation se termine SEULE dans le conteneur, environ 30 s après
+  le démarrage. La suivre avec :  caleope logs centreon
+  La ligne « ✅ Centreon installé, vérifié, supervision armée » signe la fin.
+
+  Le serveur central est déjà créé et supervisé : la page Supervision ▸ Hôtes
+  n'est pas vide au premier accès. Les autres machines s'ajoutent depuis
+  Configuration ▸ Hôtes, puis « Exporter la configuration ».
+
+  ⚠️ Une Centreon neuve n'a AUCUNE commande de contrôle applicative définie,
+  alors que les 50 sondes Nagios sont bien présentes sur le disque. Pour en
+  raccorder : Configuration ▸ Modèles.
+
+  Ces identifiants restent consultables à tout moment :
+    · bouton NOTES sur la carte Centreon de l'interface Caleope
+    · section « Secrets » de l'interface (CENTREON_ADMIN_USER / _PASSWORD)
+    · ${CONFIG_DIR}/secrets.env
 EOF
 chmod 600 "${CONFIG_DIR}/post-install.txt"
 

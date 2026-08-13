@@ -157,6 +157,66 @@ log "génération et application de la configuration"
 
 demarrer_moteurs || mourir "les moteurs n'ont pas démarré : Centreon est installé mais ne supervise rien"
 
+# ── PREMIER HÔTE RÉELLEMENT SUPERVISÉ ────────────────────────────────────────
+# Sans ce bloc, l'installation se termine sur une supervision VIDE : zéro hôte,
+# zéro commande de contrôle. L'utilisateur ouvre une console de supervision qui
+# ne supervise rien, et doit deviner qu'il faut commencer par créer une commande.
+#
+# ⚠️ Créer l'hôte ne suffit pas. Un hôte sans commande de contrôle entre en base
+# de supervision avec l'état 4 — « pending » — et n'est JAMAIS contrôlé :
+# last_check reste à 0, aucun résultat. C'est un faux vivant, pire qu'une page
+# vide, parce qu'il ressemble à une supervision qui marche.
+# Mesuré le 13/08/2026 : avec la commande, l'hôte passe à l'état 0 (UP) avec un
+# last_check réel en moins d'une minute.
+CLI="/usr/share/centreon/bin/centreon -u admin -p ${CENTREON_ADMIN_PASSWORD}"
+
+log "création du premier hôte supervisé (le serveur lui-même)"
+$CLI -o CMD -a ADD \
+  -v 'caleope-check-ping;check;$USER1$/check_ping -H $HOSTADDRESS$ -w 3000,80% -c 5000,100% -p 3' \
+  >/dev/null 2>&1
+$CLI -o HOST -a ADD -v 'Central-Caleope;Serveur Caleope;127.0.0.1;;Central;' >/dev/null 2>&1
+# ⚠️ LE RÉGLAGE QUI DÉCIDE DE TOUT : « check_interval ». Sans lui, l'hôte est
+# créé, exporté, présent dans hosts.cfg — et le moteur ne le planifie JAMAIS.
+# Il reste à l'état 4 (« pending »), last_check à 0, sans le moindre résultat.
+# Une console de supervision qui affiche un hôte jamais contrôlé est pire qu'une
+# console vide : elle a l'air de marcher.
+#
+# Le nom du paramètre se cherche : le CLAPI de la 24.10 refuse
+# « normal_check_interval » (« Please check that your parameters are valid »)
+# et accepte « check_interval ». Vérifié en base : host_check_interval = 5.
+for reglage in 'check_command;caleope-check-ping' 'check_period;24x7' \
+               'max_check_attempts;3' 'check_interval;1' 'retry_check_interval;1' \
+               'active_checks_enabled;1' 'notifications_enabled;0'; do
+  $CLI -o HOST -a setparam -v "Central-Caleope;${reglage}" >/dev/null 2>&1
+done
+$CLI -a APPLYCFG -v 1 2>&1 | grep -E 'Total Errors|reload signal' | sed 's/^/  /'
+
+# On VÉRIFIE que l'hôte est contrôlé, pas seulement inscrit. La table de
+# supervision est interrogée par l'API : ce script n'a pas de client mysql.
+log "vérification : le premier hôte est-il réellement contrôlé ?"
+etat_hote() {
+  curl -s "${BASE}/api/latest/monitoring/hosts?search=%7B%22name%22:%22Central-Caleope%22%7D" \
+    -H "X-AUTH-TOKEN: ${jeton}" \
+    | python3 -c 'import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for h in (d.get("result") or []):
+    print(h.get("state"), h.get("last_check") or 0, (h.get("output") or "").strip()[:60], sep="|")
+' 2>/dev/null | head -1
+}
+controle=""
+for _ in $(seq 1 48); do
+  ligne=$(etat_hote)
+  lc=$(echo "$ligne" | cut -d'|' -f2)
+  case "$lc" in ''|0|None) sleep 5;; *) controle="$ligne"; break;; esac
+done
+if [ -n "$controle" ]; then
+  log "  ✓ Central-Caleope contrôlé — état ${controle%%|*}, résultat « ${controle##*|} »"
+else
+  log "  ⚠ Central-Caleope créé mais pas encore contrôlé après 4 min."
+  log "    L'interface l'affichera « en attente ». Voir Configuration ▸ Hôtes."
+fi
+
 # Le script officiel laisse les mots de passe en clair dans ce fichier.
 rm -f /etc/centreon/generated.tobesecured
 
