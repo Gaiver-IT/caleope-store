@@ -28,11 +28,40 @@ mkdir -p "${CALEOPE_BASE_DIR}/app-data/azuracast/acme"
 chmod -R 777 "${CALEOPE_BASE_DIR}/app-data/azuracast"
 echo "  ✓ Dossiers créés"
 
-# ── Génération des secrets ────────────────────────────────────────────
-MYSQL_ROOT_PASSWORD=$(openssl rand -hex 24)
-MYSQL_PASSWORD=$(openssl rand -hex 20)
+# ── Secrets : engendrés UNE FOIS, jamais réécrits ─────────────────────
+#
+# ⚠️ CE BLOC APPELAIT `openssl rand` SANS AUCUNE GARDE, et le fichier
+# secrets.env est réécrit en entier plus bas. Conséquence : un
+# `caleope install azuracast --force` — c'est-à-dire exactement le geste d'une
+# montée de version — engendrait de NOUVEAUX mots de passe MySQL pendant que la
+# base, elle, gardait les anciens. AzuraCast ne pouvait plus joindre sa propre
+# base de données : la radio tombe, et rien n'indique pourquoi.
+#
+# C'est la troisième fois que ce motif mord dans le magasin (jeton Discord vidé
+# le 14/07 puis le 09/08). La règle : paramètre fourni > valeur DÉJÀ EN PLACE >
+# valeur engendrée.
+_SECRETS_EXISTANT="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}/secrets.env"
+_prev() {
+    [ -f "${_SECRETS_EXISTANT}" ] && grep "^$1=" "${_SECRETS_EXISTANT}" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+_ou_engendre() { # $1=clé  $2=commande d'engendrement
+    local cur; cur="$(_prev "$1")"
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+MYSQL_ROOT_PASSWORD=$(_ou_engendre MYSQL_ROOT_PASSWORD "openssl rand -hex 24")
+MYSQL_PASSWORD=$(_ou_engendre MYSQL_PASSWORD "openssl rand -hex 20")
 ADMIN_EMAIL="admin@azuracast.local"
-ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-16)
+ADMIN_PASSWORD=$(_ou_engendre AZURACAST_ADMIN_PASSWORD "openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-16")
+
+# Le canal d'image se conserve lui aussi : si l'utilisateur a figé une version,
+# une réinstallation ne doit pas la lui reprendre.
+AZ_VERSION=$(_ou_engendre AZURACAST_VERSION "echo stable")
+
+if [ -n "$(_prev MYSQL_ROOT_PASSWORD)" ]; then
+    echo "  ✓ Secrets existants conservés (base de données préservée)"
+    echo "  ✓ Canal d'image conservé : ${AZ_VERSION}"
+fi
 
 # ── Mode d'accès ─────────────────────────────────────────────────────
 echo ""
@@ -127,7 +156,15 @@ cat > "${CONFIG_DIR}/secrets.env" <<EOF
 
 # Environnement
 APPLICATION_ENV=production
-AZURACAST_VERSION=latest
+# ⚠️ « latest » n'est PAS la dernière version stable d'AzuraCast : c'est la
+# branche de développement. Mesuré le 13/08/2026 sur les étiquettes de l'image :
+#     latest  → org.opencontainers.image.version = « main »
+#     stable  → « stable », révision 62a30e53 — identique au tag 0.23.8
+# Le paquet installait donc du code non publié sur une appliance exposée. On
+# suit « stable » : il porte la dernière version publiée ET reçoit les
+# correctifs de sécurité sans qu'on ait à repasser derrière.
+# Pour figer une version précise : remplacer par 0.23.8 (ou plus récent).
+AZURACAST_VERSION=${AZ_VERSION}
 
 # Ports internes AzuraCast (côté container — ne pas modifier)
 AZURACAST_HTTP_PORT=80
