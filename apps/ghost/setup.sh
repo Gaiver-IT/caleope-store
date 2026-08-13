@@ -15,9 +15,25 @@ ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 ADMIN_NAME="${CALEOPE_PARAM_ADMIN_NAME:-Admin}"
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
-DB_ROOT_PASS=$(openssl rand -hex 24)
-DB_PASS=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+# ⚠️ MESURÉ AU BANC LE 13/08/2026 : ces trois valeurs étaient engendrées à
+# chaque passage, et secrets.env réécrit en entier. Une montée de version passe
+# par « caleope install ghost --force », donc par ce script — MySQL gardait
+# l'ancien mot de passe et Ghost tombait sur
+#     ER_ACCESS_DENIED_ERROR ... 'DatabaseError', level: 'critical'
+# Le témoin déposé en base était devenu inatteignable.
+#
+# Ce n'était NI MySQL 8.4 NI Ghost 6 : monica, monté 8.0 → 8.4 le même jour
+# avec le même moteur, est passé sans encombre. Le seul écart était ici.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    [ -f "${_SECRETS}" ] && cur=$(grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+DB_ROOT_PASS=$(_garde MYSQL_ROOT_PASSWORD "openssl rand -hex 24")
+DB_PASS=$(_garde      MYSQL_PASSWORD      "openssl rand -hex 24")
+ADMIN_PASS=$(_garde   GHOST_ADMIN_PASS    "openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16")
+[ -f "${_SECRETS}" ] && echo "  ✓ Secrets existants conservés (base préservée)"
 
 # ── SMTP (global Caleope) ────────────────────────────────────────────────────
 SMTP_HOST="${CALEOPE_SMTP_HOST:-}"
