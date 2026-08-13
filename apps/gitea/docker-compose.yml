@@ -26,6 +26,13 @@ services:
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "${CALEOPE_PORT_WEB}:3000"
+      # ⚠️ Le port SSH était déclaré dans app.json (host 2222, firewall: true),
+      # le paquet configure GITEA__server__SSH_PORT=2222 et les notes
+      # d'installation invitent à cloner en « ssh://git@…:2222 » — mais rien ne
+      # publiait ce port. Le git-par-SSH ne pouvait donc PAS fonctionner : la
+      # connexion tombait sur un port fermé. Constaté au banc le 13/08/2026 en
+      # cherchant des ports déclarés que le compose n'ouvre jamais.
+      - "${CALEOPE_PORT_SSH}:22"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.gitea.rule=Host(`{{.Domain}}`)"

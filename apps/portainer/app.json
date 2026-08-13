@@ -10,24 +10,12 @@
     "docker_socket": true,
     "privileged": false
   },
-  "network": {
-    "public": true,
-    "internal": false
-  },
+  "network": { "public": true, "internal": false },
   "ports": [
-    {
-      "name": "web",
-      "container": 9000,
-      "dynamic": true
-    }
+    { "name": "web", "container": 9000, "dynamic": true }
   ],
   "volumes": [
-    {
-      "source": "app-data/portainer/data",
-      "target": "/data"
-    }
+    { "source": "app-data/portainer/data", "target": "/data" }
   ],
-  "backup": {
-    "enabled": true
-  }
+  "backup": { "enabled": true }
 }
