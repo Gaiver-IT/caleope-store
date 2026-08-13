@@ -65,8 +65,25 @@ fi
 done
 
 if [ -z "${FORGE}" ]; then
-    echo "  ⚠ Aucune forge (Gitea/Forgejo) exploitable — installe-la AVANT Woodpecker."
-    echo "    Woodpecker démarrera mais l'authentification ne marchera pas sans forge."
+    # ⚠️ Ce message disait « Woodpecker démarrera mais l'authentification ne
+    # marchera pas ». C'est FAUX, et mesuré au banc d'essai le 13/08/2026 :
+    # sans forge, le serveur ne démarre pas du tout. Il sort en erreur
+    # « can't setup globals: could not setup service manager: forge not
+    # configured », supervisor le relance, il retombe — boucle infinie, et
+    # l'utilisateur se retrouve avec une app installée qui redémarre sans fin.
+    #
+    # Un échec franc vaut mieux qu'une installation qui ne peut pas marcher.
+    echo "  ✗ Aucune forge (Gitea ou Forgejo) trouvée sur ce serveur."
+    echo
+    echo "    Woodpecker s'authentifie UNIQUEMENT via l'OAuth d'une forge : sans"
+    echo "    elle, le serveur refuse de démarrer et redémarre en boucle."
+    echo
+    echo "    Installe d'abord une forge, puis relance :"
+    echo "        caleope install gitea      (ou : caleope install forgejo)"
+    echo "        caleope install woodpecker"
+    echo
+    echo "    L'application OAuth sera créée automatiquement dans la forge."
+    exit 1
 fi
 
 # ── secrets.env ──────────────────────────────────────────────────────────────
@@ -92,7 +109,6 @@ chmod 600 "${_SECRETS}"
 # Libellés précalculés (pas de ${x:-...} avec parenthèses/apostrophe dans le
 # heredoc : bash le prend pour une substitution mal fermée → échec).
 FORGE_LABEL="${FORGE}"
-[ -z "${FORGE_LABEL}" ] && FORGE_LABEL="aucune - installe Gitea/Forgejo d abord"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<INFO
 
@@ -106,4 +122,4 @@ cat > "${CONFIG_DIR}/post-install.txt" <<INFO
   └──────────────────────────────────────────────────────────────────┘
 INFO
 
-echo "✓ Woodpecker CI configuré (forge: ${FORGE:-aucune})"
+echo "✓ Woodpecker CI configuré (forge : ${FORGE})"

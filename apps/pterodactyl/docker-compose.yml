@@ -32,6 +32,14 @@ services:
       - {{.BaseDir}}/app-data/pterodactyl/panel:/app/var/
       - {{.BaseDir}}/app-data/pterodactyl/logs:/app/storage/logs
       - {{.BaseDir}}/app-data/pterodactyl/nginx:/etc/nginx/http.d
+      # ⚠️ L'image amont du panel embarque désormais le client MariaDB 11.8, qui
+      # exige TLS par défaut. Le serveur `mariadb:10.11` d'à côté n'en propose
+      # pas : le chargement du schéma Laravel échoue sur « TLS/SSL error: SSL is
+      # required, but the server does not support it », les migrations ne
+      # passent pas, et le panel sert un 500 pour toujours. Constaté au banc le
+      # 13/08/2026 — le paquet n'avait pas bougé, c'est l'image qui a changé.
+      # Ce fichier d'options ne concerne QUE les clients de ce conteneur.
+      - {{.BaseDir}}/app-config/{{.AppID}}/mysql-client.cnf:/etc/my.cnf:ro
     ports:
       {{- range .Ports}}
       {{- if eq .Name "web"}}

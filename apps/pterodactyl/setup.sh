@@ -210,4 +210,18 @@ cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╚══════════════════════════════════════════════════════════════╝
 EOF
 
+# ── Client MySQL du panel : ne pas exiger TLS ────────────────────────────────
+# L'image amont du panel embarque maintenant le client MariaDB 11.8, qui active
+# --ssl par défaut. Le serveur `mariadb:10.11` d'à côté ne propose pas de TLS :
+# le chargement du schéma Laravel meurt sur
+#   ERROR 2026 (HY000): TLS/SSL error: SSL is required, but the server does not support it
+# les migrations ne passent pas, et le panel sert un 500 définitif. Le paquet
+# n'avait pas bougé — c'est l'image amont qui a changé de base.
+# Le fichier n'est lu que par les clients de CE conteneur (aucun serveur n'y tourne).
+cat > "${CONFIG_DIR}/mysql-client.cnf" <<'CNF'
+[client]
+skip-ssl
+CNF
+chmod 644 "${CONFIG_DIR}/mysql-client.cnf"
+
 echo "✓ Pterodactyl préparé (panel + wings)"
