@@ -13,12 +13,35 @@ mkdir -p "${DATA_DIR}/"{data,db}
 ADMIN_USER="${CALEOPE_PARAM_ADMIN_USER:-git-admin}"
 ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 
-# ── Secrets ─────────────────────────────────────────────────────────────────
-DB_PASS=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
-SECRET_KEY=$(openssl rand -hex 32)
-JWT_SECRET=$(openssl rand -hex 32)
-INTERNAL_TOKEN=$(openssl rand -hex 32)
+# ── Secrets : engendrés UNE FOIS, jamais réécrits ───────────────────────────
+#
+# ⚠️ MESURÉ AU BANC LE 13/08/2026. Ces cinq valeurs étaient engendrées à chaque
+# passage, et secrets.env réécrit en entier juste après. Or une montée de
+# version passe par « caleope install gitea --force », donc par ce script :
+# Postgres gardait l'ancien mot de passe, le nouveau ne correspondait plus, et
+# Forgejo tournait en boucle sur
+#     ORM engine initialization attempt #N/10 failed.
+#     Error: failed to connect to `user=gitea database=gitea`
+# Les données étaient intactes — l'app ne pouvait simplement plus les atteindre.
+# Même structure que forgejo, où la panne a été mesurée : ici le défaut est
+# identique ligne pour ligne.
+#
+# SECRET_KEY, JWT_SECRET et INTERNAL_TOKEN comptent autant : les régénérer
+# invalide sessions, jetons d'API et clés de dépôt.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    [ -f "${_SECRETS}" ] && cur=$(grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+DB_PASS=$(_garde        POSTGRES_PASSWORD              "openssl rand -hex 24")
+ADMIN_PASS=$(_garde     GITEA_ADMIN_PASS               "openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16")
+SECRET_KEY=$(_garde     GITEA__security__SECRET_KEY    "openssl rand -hex 32")
+JWT_SECRET=$(_garde     GITEA__oauth2__JWT_SECRET      "openssl rand -hex 32")
+INTERNAL_TOKEN=$(_garde GITEA__security__INTERNAL_TOKEN "openssl rand -hex 32")
+
+[ -f "${_SECRETS}" ] && echo "  ✓ Secrets existants conservés (base et sessions préservées)"
 
 # ── SMTP (global Caleope) ────────────────────────────────────────────────────
 SMTP_HOST="${CALEOPE_SMTP_HOST:-}"
