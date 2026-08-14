@@ -30,9 +30,22 @@ mkdir -p "${DATA_DIR}/"{library,db,model-cache}
 # setup.sh tourne AVANT « docker compose up » et peut modifier le compose
 # engendré : lors d'une montée, l'ancienne base est donc encore interrogeable.
 _IMG_TRANSITION="ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0"
-_COMPOSE="${CALEOPE_BASE_DIR}/apps-installed/${CALEOPE_APP_ID}/docker-compose.yml"
+# ⚠️ Le fichier engendré s'appelle « compose.yml », pas « docker-compose.yml » —
+# se tromper de nom ne casse rien de visible, ça saute juste tout ce bloc en
+# silence, et les bases héritées partent au cassage. On prend le chemin que le
+# daemon nous donne (CALEOPE_APP_DIR) et on essaie les deux noms.
+_COMPOSE=""
+for _f in "${CALEOPE_APP_DIR:-${CALEOPE_BASE_DIR}/apps-installed/${CALEOPE_APP_ID}}/compose.yml" \
+          "${CALEOPE_APP_DIR:-${CALEOPE_BASE_DIR}/apps-installed/${CALEOPE_APP_ID}}/docker-compose.yml"; do
+    [ -f "${_f}" ] && { _COMPOSE="${_f}"; break; }
+done
 
-if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ -f "${_COMPOSE}" ]; then
+if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ -z "${_COMPOSE}" ]; then
+    echo "  ⚠ Compose engendré introuvable : le contrôle pgvecto.rs n'a pas pu"
+    echo "    s'exécuter. Vérifiez la base avant de redémarrer l'app."
+fi
+
+if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ -n "${_COMPOSE}" ]; then
     # Le catalogue : 0 = migrée, 1 = encore sur pgvecto.rs, autre = pas de réponse.
     _SQL="select 'CALEOPE_VECTORS_'||count(*) from pg_extension where extname='vectors';"
     _REP=$(printf '%s\n' "${_SQL}" \
