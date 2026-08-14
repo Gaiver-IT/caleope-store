@@ -12,13 +12,50 @@ ADMIN_USER="${CALEOPE_PARAM_ADMIN_USER:-admin}"
 ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 
 # Génération des secrets
-DB_PASS=$(openssl rand -hex 20)
-DB_ROOT=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
-AUTH_KEY=$(openssl rand -hex 32)
-SECURE_AUTH_KEY=$(openssl rand -hex 32)
-LOGGED_IN_KEY=$(openssl rand -hex 32)
-NONCE_KEY=$(openssl rand -hex 32)
+# ⚠️ POURQUOI ce garde-fou : une montée de version passe par
+# « caleope install wordpress --force », donc par CE script. Si on ré-engendre
+# les mots de passe à chaque passage, MariaDB garde l'ancien (son volume
+# app-data/wordpress/db survit à la montée) pendant que WordPress présente le
+# nouveau -> connexion BDD refusée -> HTTP 500, l'app coupée de ses données.
+# Idem pour les sels : les changer invalide toutes les sessions/cookies.
+# On relit donc ce qui est DÉJÀ dans secrets.env et on ne tire au sort que ce
+# qui manque vraiment (= première installation).
+_SECRETS="${CONFIG_DIR}/secrets.env"
+
+_garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    if [ -f "${_SECRETS}" ]; then
+        # « || true » obligatoire : sans lui, un grep sans résultat (clé absente
+        # d'un ancien secrets.env) ferait SORTIR le script à cause du
+        # « set -euo pipefail » de l'en-tête.
+        cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    fi
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+# Les 4 sels n'ont PAS de clé à eux dans secrets.env : ils sont noyés dans la
+# ligne WORDPRESS_CONFIG_EXTRA sous la forme define('AUTH_KEY','...'). On les
+# ré-extrait un par un plutôt que de figer la ligne entière — ainsi WP_HOME et
+# WP_SITEURL continuent de suivre ${CALEOPE_DOMAIN} s'il change (comme un port
+# réalloué par le daemon, un domaine n'est pas un secret et doit rester mobile).
+_garde_sel() { # $1 = nom de la constante PHP dans WORDPRESS_CONFIG_EXTRA, $2 = engendrement
+    local cur=""
+    if [ -f "${_SECRETS}" ]; then
+        cur=$(grep "^WORDPRESS_CONFIG_EXTRA=" "${_SECRETS}" 2>/dev/null | head -1 \
+              | sed -n "s/.*define('$1','\([^']*\)').*/\1/p" || true)
+    fi
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+# DB_PASS alimente À LA FOIS MARIADB_PASSWORD et WORDPRESS_DB_PASSWORD : relire
+# la clé côté base (MARIADB_PASSWORD) suffit, les deux restent alignées.
+DB_PASS=$(_garde MARIADB_PASSWORD "openssl rand -hex 20")
+DB_ROOT=$(_garde MARIADB_ROOT_PASSWORD "openssl rand -hex 24")
+ADMIN_PASS=$(_garde WP_ADMIN_PASSWORD "openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16")
+AUTH_KEY=$(_garde_sel AUTH_KEY "openssl rand -hex 32")
+SECURE_AUTH_KEY=$(_garde_sel SECURE_AUTH_KEY "openssl rand -hex 32")
+LOGGED_IN_KEY=$(_garde_sel LOGGED_IN_KEY "openssl rand -hex 32")
+NONCE_KEY=$(_garde_sel NONCE_KEY "openssl rand -hex 32")
 
 # WORDPRESS_CONFIG_EXTRA — deux contraintes (voir la ligne dans le heredoc) :
 #  1. TOUT sur UNE ligne : un env file ne supporte pas le multi-lignes (docker

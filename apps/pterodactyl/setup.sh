@@ -17,11 +17,34 @@ WINGS_PORT="${CALEOPE_PORT_WINGS:-8080}"
 SFTP_PORT="${CALEOPE_PORT_SFTP:-2022}"
 WEB_PORT="${CALEOPE_PORT_WEB:-80}"
 
-# Génération des secrets
-DB_PASS=$(openssl rand -hex 20)
-DB_ROOT=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
-APP_KEY="base64:$(openssl rand -base64 32)"
+# ── Préservation des secrets déjà en place ───────────────────────────────────
+# Une montée de version passe par « caleope install <app> --force », donc par ce
+# script. Si on ré-engendre les secrets à chaque passage, la base de données
+# garde l'ancien mot de passe pendant que le panel en présente un neuf : l'app
+# se coupe de ses propres données. Même chose pour APP_KEY, qui est la clé de
+# chiffrement Laravel — la changer rend illisible tout ce qui est déjà chiffré
+# en base (jetons API, secrets 2FA, données des nodes).
+# On relit donc ce qui est déjà écrit dans secrets.env et on ne tire une valeur
+# neuve QUE si la clé est absente (= première installation).
+# ⚠ Les ports (PTERO_WINGS_PORT, PTERO_SFTP_PORT) ne sont volontairement PAS
+#   préservés : ils sont alloués par le daemon et doivent pouvoir changer.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() {  # $1 = clé telle qu'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    if [ -f "${_SECRETS}" ]; then
+        cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    fi
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+# Génération des secrets (repris à l'identique si l'app est déjà installée)
+# DB_PASS alimente deux clés du même fichier : MARIADB_PASSWORD (le mot de passe
+# que MariaDB a réellement créé à son premier démarrage) et DB_PASSWORD (celui
+# que présente le panel). On relit la clé côté serveur, c'est elle qui fait foi.
+DB_PASS=$(_garde MARIADB_PASSWORD "openssl rand -hex 20")
+DB_ROOT=$(_garde MARIADB_ROOT_PASSWORD "openssl rand -hex 24")
+ADMIN_PASS=$(_garde PTERO_ADMIN_PASS "openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16")
+APP_KEY=$(_garde APP_KEY 'printf "base64:%s" "$(openssl rand -base64 32)"')
 
 cat > "${CONFIG_DIR}/secrets.env" <<EOF
 # MariaDB

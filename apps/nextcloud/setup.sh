@@ -17,7 +17,7 @@ mkdir -p "${CALEOPE_BASE_DIR}/app-config/nextcloud"
 # Même motif que `_keep` dans authentik / jellyfin / azuracast-discord-bot,
 # posé après l'incident du 14/07 où un token Discord avait été vidé ainsi.
 _SECRETS="${CALEOPE_BASE_DIR}/app-config/nextcloud/secrets.env"
-_prev() { [ -f "${_SECRETS}" ] && grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+_prev() { [ -f "${_SECRETS}" ] && grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true; }
 
 DB_PASS=$(_prev MYSQL_PASSWORD)
 [ -n "${DB_PASS}" ] || DB_PASS=$(openssl rand -hex 20)

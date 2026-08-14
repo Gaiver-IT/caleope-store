@@ -27,7 +27,7 @@ ADMIN_NAME="${CALEOPE_PARAM_ADMIN_NAME:-Admin}"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 _garde() { # $1 = clé dans secrets.env, $2 = commande d'engendrement
     local cur=""
-    [ -f "${_SECRETS}" ] && cur=$(grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2-)
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
     if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
 }
 DB_ROOT_PASS=$(_garde MYSQL_ROOT_PASSWORD "openssl rand -hex 24")

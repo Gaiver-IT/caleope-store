@@ -126,8 +126,28 @@ chown -R 472:472 "${APP_DATA_DIR}/grafana"
 # Prometheus tourne en tant qu'UID 65534 (nobody)
 chown -R 65534:65534 "${APP_DATA_DIR}/prometheus"
 
+# ── Préserver les secrets déjà en place ──
+# Une montée de version passe par « caleope install <app> --force », donc par ce
+# script : si on regénère le mot de passe admin, la base Grafana garde l'ancien
+# et l'app se coupe de ses données (le chef ne peut plus se connecter).
+# On relit donc la valeur déjà écrite dans secrets.env AVANT de le réécrire ;
+# on n'engendre un secret qu'à la toute première installation.
+# ⚠ Le 1er argument de _garde est la clé telle qu'elle est ÉCRITE dans
+# secrets.env, pas le nom de la variable shell.
+_SECRETS="${APP_CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé DANS secrets.env, $2 = commande d'engendrement
+    local cur=""
+    # « || true » : sans lui, une clé absente fait échouer le pipe (pipefail)
+    # et « set -e » tuerait l'installation. Même précaution que les lectures
+    # de secrets Authentik plus bas.
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true) || true
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # ── Générer les credentials Grafana ──
-GRAFANA_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=')
+# GRAFANA_ADMIN_PASSWORD et GF_SECURITY_ADMIN_PASSWORD portent la MÊME valeur
+# (cette variable) : garder la clé GRAFANA_ADMIN_PASSWORD suffit pour les deux.
+GRAFANA_PASSWORD=$(_garde GRAFANA_ADMIN_PASSWORD "openssl rand -base64 16 | tr -d '/+='")
 
 cat > "${APP_CONFIG_DIR}/secrets.env" << EOF
 GRAFANA_ADMIN_USER=admin

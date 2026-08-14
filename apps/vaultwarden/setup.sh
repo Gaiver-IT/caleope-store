@@ -10,15 +10,36 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/data"
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
+# ⚠️ Une montée de version passe par « caleope install <app> --force », donc par
+# ce script, qui réécrit secrets.env EN ENTIER. Si l'on ré-engendre le jeton
+# admin à chaque passage, le jeton communiqué à l'utilisateur (et le hachage
+# argon2 qui lui correspond) sont perdus → panneau d'administration inaccessible.
+# → on relit d'abord ce qui existe déjà dans secrets.env, et on ne fabrique que
+#   ce qui manque réellement (première installation).
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    # « || true » : sous « set -euo pipefail », un grep sans correspondance
+    # (clé absente du fichier) ferait sortir tout le script.
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # Admin token : argon2 hash requis depuis Vaultwarden 1.28
 # Fallback vers token hex si argon2 non disponible sur l'hôte
-ADMIN_TOKEN_PLAIN=$(openssl rand -hex 32)
-if command -v argon2 >/dev/null 2>&1; then
-    SALT=$(openssl rand -hex 8)
-    ADMIN_TOKEN_HASH=$(echo -n "${ADMIN_TOKEN_PLAIN}" | argon2 "${SALT}" -e -id -k 65536 -t 3 -p 4 2>/dev/null || echo "")
-else
-    ADMIN_TOKEN_HASH="${ADMIN_TOKEN_PLAIN}"
-fi
+_engendrer_admin_hash() { # appelé UNIQUEMENT si ADMIN_TOKEN n'existe pas encore
+    if command -v argon2 >/dev/null 2>&1; then
+        SALT=$(openssl rand -hex 8)
+        echo -n "${ADMIN_TOKEN_PLAIN}" | argon2 "${SALT}" -e -id -k 65536 -t 3 -p 4 2>/dev/null || echo ""
+    else
+        printf '%s' "${ADMIN_TOKEN_PLAIN}"
+    fi
+}
+ADMIN_TOKEN_PLAIN=$(_garde _ADMIN_TOKEN_PLAIN "openssl rand -hex 32")
+# Le hachage est salé : le re-calculer donnerait une chaîne différente à chaque
+# passage. On conserve donc ADMIN_TOKEN tel quel pour qu'il reste celui qui
+# correspond au jeton brut ci-dessus.
+ADMIN_TOKEN_HASH=$(_garde ADMIN_TOKEN _engendrer_admin_hash)
 
 # ── SMTP (global Caleope) ────────────────────────────────────────────────────
 SMTP_HOST="${CALEOPE_SMTP_HOST:-}"

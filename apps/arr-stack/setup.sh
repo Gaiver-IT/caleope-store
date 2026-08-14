@@ -81,13 +81,33 @@ fi
 PUID=$(id -u)
 PGID=$(id -g)
 
+# ── Préservation des secrets existants ────────────────────────────────
+# POURQUOI : une montée de version passe par « caleope install arr-stack --force »,
+# donc par CE script. S'il régénère les clés API à chaque passage, il réécrit
+# secrets.env ET config.xml/config.yaml avec des valeurs neuves, alors que les
+# apps déjà appairées (Prowlarr → Radarr/Sonarr/Lidarr, Bazarr → *arr,
+# Jellyseerr → Jellyfin, *arr → SABnzbd) gardent l'ancienne clé enregistrée
+# dans LEUR base : les applications ne se parlent plus après la montée.
+# On relit donc la valeur déjà écrite dans secrets.env quand elle existe, et on
+# ne tire une valeur neuve qu'à la toute première installation.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé DANS secrets.env (pas le nom de la variable shell), $2 = commande d'engendrement
+    local cur=""
+    # « || true » obligatoire : sous « set -o pipefail », un grep sans
+    # correspondance (ou un SIGPIPE de head) ferait avorter tout le script.
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # ── Générer les secrets ───────────────────────────────────────────────
-API_PROWLARR=$(openssl rand -hex 16)
-API_RADARR=$(openssl rand -hex 16)
-API_SONARR=$(openssl rand -hex 16)
-API_LIDARR=$(openssl rand -hex 16)
-API_SABNZBD=$(openssl rand -hex 16)
-BAZARR_API_KEY=$(openssl rand -hex 16)
+# NB : le 1er argument de _garde est la clé telle qu'elle est ÉCRITE dans
+# secrets.env (ARR_API_*), pas le nom de la variable shell qui la porte.
+API_PROWLARR=$(_garde ARR_API_PROWLARR "openssl rand -hex 16")
+API_RADARR=$(_garde ARR_API_RADARR "openssl rand -hex 16")
+API_SONARR=$(_garde ARR_API_SONARR "openssl rand -hex 16")
+API_LIDARR=$(_garde ARR_API_LIDARR "openssl rand -hex 16")
+API_SABNZBD=$(_garde ARR_API_SABNZBD "openssl rand -hex 16")
+BAZARR_API_KEY=$(_garde BAZARR_API_KEY "openssl rand -hex 16")
 
 # ── Langue préférée ───────────────────────────────────────────────────
 # Utilisée pour l'UI et les préférences de téléchargement (audio, sous-titres)
@@ -160,7 +180,9 @@ if [[ -n "${_JELLYFIN_MODE}" ]]; then
     if [[ "${_JELLYFIN_MODE}" == "embedded" ]]; then
         JELLYFIN_EMBEDDED=true
         JELLYFIN_INT_URL="http://jellyfin:8096"
-        JELLYFIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
+        # Préservé : c'est le compte admin déjà créé dans Jellyfin et déjà
+        # enregistré côté Jellyseerr — le régénérer coupe la liaison.
+        JELLYFIN_PASSWORD=$(_garde ARR_JELLYFIN_PASSWORD "openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14")
         echo "  ✓ Jellyfin embarqué dans la stack (mode API)"
         echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
     elif [[ "${_JELLYFIN_MODE}" == "external" ]]; then
@@ -257,7 +279,8 @@ else
     if [[ "${_JF_INSTALL,,}" != "n" && "${_JF_INSTALL,,}" != "non" ]]; then
         JELLYFIN_EMBEDDED=true
         JELLYFIN_INT_URL="http://jellyfin:8096"
-        JELLYFIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14)
+        # Préservé : idem branche « mode API » ci-dessus (compte admin déjà créé).
+        JELLYFIN_PASSWORD=$(_garde ARR_JELLYFIN_PASSWORD "openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | cut -c1-14")
         echo "  ✓ Jellyfin sera installé dans la stack"
         echo "    Compte admin : ${JELLYFIN_USER} / ${JELLYFIN_PASSWORD}"
     else

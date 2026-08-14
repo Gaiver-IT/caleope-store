@@ -14,9 +14,23 @@ mkdir -p "${CALEOPE_BASE_DIR}/data/traefik/certs"
     touch "${CALEOPE_BASE_DIR}/data/traefik/certs/authentik.crt"
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
-DB_PASS=$(openssl rand -hex 24)
-DB_ROOT_PASS=$(openssl rand -hex 24)
-ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
+# Une montée de version passe par « caleope install glpi --force », donc par ce
+# script. Si on réengendre les mots de passe à chaque passage, MariaDB garde
+# l'ancien (son volume app-data/glpi/db n'est PAS réinitialisé) tandis que GLPI
+# présente le nouveau : l'app se coupe de ses données. On relit donc les valeurs
+# déjà écrites dans secrets.env et on n'engendre que ce qui manque (1re install).
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
+# MYSQL_PASSWORD et MARIADB_PASSWORD portent la MÊME valeur (DB_PASS) dans
+# secrets.env : relire MYSQL_PASSWORD suffit à préserver les deux.
+DB_PASS=$(_garde MYSQL_PASSWORD "openssl rand -hex 24")
+DB_ROOT_PASS=$(_garde MYSQL_ROOT_PASSWORD "openssl rand -hex 24")
+ADMIN_PASS=$(_garde GLPI_ADMIN_PASSWORD "openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16")
 
 BASE_DOMAIN=$(grep "^CALEOPE_DOMAIN=" "${CALEOPE_BASE_DIR}/caleope.conf" | cut -d= -f2) || true
 AUTHENTIK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)

@@ -42,7 +42,7 @@ echo "  ✓ Dossiers créés"
 # valeur engendrée.
 _SECRETS_EXISTANT="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}/secrets.env"
 _prev() {
-    [ -f "${_SECRETS_EXISTANT}" ] && grep "^$1=" "${_SECRETS_EXISTANT}" 2>/dev/null | head -1 | cut -d= -f2- || true
+    [ -f "${_SECRETS_EXISTANT}" ] && grep -m1 "^$1=" "${_SECRETS_EXISTANT}" 2>/dev/null | cut -d= -f2- || true
 }
 _ou_engendre() { # $1=clé  $2=commande d'engendrement
     local cur; cur="$(_prev "$1")"

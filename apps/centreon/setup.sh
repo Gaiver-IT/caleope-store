@@ -13,7 +13,7 @@ mkdir -p "${DATA_DIR}"/{db,lib,broker,engine}
 # le mot de passe à chaque mise à jour d'image — et ici le dégât est pire
 # qu'ailleurs : la base garde l'ancien, plus personne ne peut se connecter.
 SECRETS="${CONFIG_DIR}/secrets.env"
-_prev() { [ -f "${SECRETS}" ] && grep "^$1=" "${SECRETS}" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+_prev() { [ -f "${SECRETS}" ] && grep -m1 "^$1=" "${SECRETS}" 2>/dev/null | cut -d= -f2- || true; }
 
 # Centreon exige 12 caractères minimum avec majuscule, minuscule, chiffre et
 # caractère spécial.

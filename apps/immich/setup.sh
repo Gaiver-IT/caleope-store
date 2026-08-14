@@ -9,10 +9,27 @@ DATA_DIR="${CALEOPE_BASE_DIR}/app-data/immich"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{library,db,model-cache}
 
+# ── Préservation des secrets ────────────────────────────────────────────────
+# POURQUOI : une montée de version passe par « caleope install immich --force »,
+# donc par ce script. Si on réengendre les mots de passe à chaque passage, la
+# base PostgreSQL garde l'ancien mot de passe pendant qu'Immich présente le
+# nouveau : l'app se coupe de ses propres données (http 000, erreurs d'auth).
+# On relit donc la valeur déjà écrite dans secrets.env quand elle existe, et on
+# n'engendre que lors de la toute première installation.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    # « || true » : sans lui, un grep sans résultat casse le script (set -o pipefail)
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # ── Secrets ─────────────────────────────────────────────────────────────────
-DB_PASS=$(openssl rand -hex 24)
+# DB_PASS alimente à la fois POSTGRES_PASSWORD et DB_PASSWORD (même valeur) :
+# le relire depuis POSTGRES_PASSWORD préserve donc les deux clés.
+DB_PASS=$(_garde POSTGRES_PASSWORD "openssl rand -hex 24")
 ADMIN_EMAIL="admin@${CALEOPE_DOMAIN}"
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 20)
+ADMIN_PASS=$(_garde IMMICH_ADMIN_PASS "openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 20")
 ADMIN_NAME="Admin"
 
 # ── SMTP (global Caleope) ────────────────────────────────────────────────────

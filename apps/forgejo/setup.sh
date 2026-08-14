@@ -30,7 +30,7 @@ ADMIN_EMAIL="${CALEOPE_PARAM_ADMIN_EMAIL:-admin@${CALEOPE_DOMAIN}}"
 _SECRETS="${CONFIG_DIR}/secrets.env"
 _garde() { # $1 = clé dans secrets.env, $2 = commande d'engendrement
     local cur=""
-    [ -f "${_SECRETS}" ] && cur=$(grep "^$1=" "${_SECRETS}" 2>/dev/null | head -1 | cut -d= -f2-)
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
     if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
 }
 

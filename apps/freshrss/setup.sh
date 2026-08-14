@@ -7,6 +7,20 @@ _SECRETS="${CONFIG_DIR}/secrets.env"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${CALEOPE_BASE_DIR}/app-data/freshrss"/{data,extensions}
 
+# Une montée de version passe par « caleope install freshrss --force », donc par
+# ce script : tout secret réengendré ici est réécrit dans secrets.env alors que
+# l'app (ou le fournisseur SSO) garde encore l'ancien → elle se coupe de ses
+# données. On relit donc la valeur déjà en place et on ne l'engendre que la
+# première fois.
+# $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement.
+_garde() {
+    local cur=""
+    if [ -f "${_SECRETS}" ]; then
+        cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true) || cur=""
+    fi
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 FRESHRSS_ADMIN_USER=""
 FRESHRSS_ADMIN_PASS=""
 if [ -f "${_SECRETS}" ]; then
@@ -21,7 +35,10 @@ fi
 
 # OIDC_CLIENT_CRYPTO_KEY et OIDC_REMOTE_USER_CLAIM sont requis par le config Apache
 # même quand OIDC_ENABLED=0 — Apache les évalue au parse et échoue s'ils sont absents.
-OIDC_CRYPTO_KEY=$(openssl rand -hex 32)
+# Cette clé chiffre les cookies/sessions mod_auth_openidc : la réengendrer à chaque
+# --force invalide les sessions SSO en cours et casse la connexion Authentik → on garde
+# celle déjà écrite dans secrets.env si elle existe.
+OIDC_CRYPTO_KEY=$(_garde OIDC_CLIENT_CRYPTO_KEY "openssl rand -hex 32")
 
 cat > "${_SECRETS}" <<ENV
 FRESHRSS_ADMIN_USER=${FRESHRSS_ADMIN_USER}

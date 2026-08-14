@@ -9,11 +9,29 @@ DATA_DIR="${CALEOPE_BASE_DIR}/app-data/pterodactyl-panel"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{var,logs,db}
 
+# ── Préservation des secrets ─────────────────────────────────────────────────
+# Une montée de version passe par « caleope install <app> --force », donc par CE
+# script. Si on regénère les secrets à chaque passage, MariaDB garde l'ancien mot
+# de passe pendant que le panel en présente un nouveau : l'app se coupe de ses
+# données. Pire pour APP_KEY (clé de chiffrement Laravel) : la changer rend
+# illisibles les jetons déjà chiffrés en base (clés API, 2FA).
+# → on relit secrets.env quand il existe, on n'engendre que ce qui manque.
+# NB : on ne préserve QUE les secrets. Rien d'autre (ports, URL, domaine...),
+#      qui doit rester libre d'évoluer d'une version à l'autre.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé DANS secrets.env, $2 = commande d'engendrement
+    local cur=""
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # ── Secrets ─────────────────────────────────────────────────────────────────
-DB_PASS=$(openssl rand -hex 24)
-DB_ROOT_PASS=$(openssl rand -hex 24)
-APP_KEY="base64:$(openssl rand -base64 32)"
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+# DB_PASS alimente DEUX clés (MYSQL_PASSWORD côté MariaDB, DB_PASSWORD côté
+# panel) avec la même valeur : relire l'une suffit à préserver les deux.
+DB_PASS=$(_garde MYSQL_PASSWORD "openssl rand -hex 24")
+DB_ROOT_PASS=$(_garde MYSQL_ROOT_PASSWORD "openssl rand -hex 24")
+APP_KEY=$(_garde APP_KEY 'echo "base64:$(openssl rand -base64 32)"')
+ADMIN_PASS=$(_garde PTERODACTYL_ADMIN_PASS "openssl rand -base64 16 | tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16")
 # Email admin par défaut : admin@<domaine>
 ADMIN_EMAIL="admin@${CALEOPE_DOMAIN}"
 

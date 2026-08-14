@@ -28,8 +28,28 @@ labels:
   type: syslog
 EOF
 
+# ── Préservation des secrets d'une installation à l'autre ───────────────────
+# POURQUOI : une montée de version passe par « caleope install crowdsec --force »,
+# donc par CE script. Si la clé du bouncer est regénérée, CrowdSec conserve en
+# base celle enregistrée au premier démarrage tandis que le bouncer Traefik en
+# présente une nouvelle : l'authentification échoue et le filtrage s'arrête EN
+# SILENCE (plus aucune IP bloquée, aucune erreur visible côté utilisateur).
+# On relit donc la valeur déjà écrite dans secrets.env quand elle existe.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    # « || true » : sans correspondance grep sort en 1, ce que « set -euo pipefail »
+    # (ligne 3) transformerait en arrêt du script.
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+
 # ── Clé API pour le bouncer (générée ici, injectée via secrets.env) ──────────
-BOUNCER_KEY=$(openssl rand -hex 32)
+# Une seule variable alimente les DEUX clés du fichier (CROWDSEC_BOUNCER_API_KEY
+# côté bouncer et BOUNCER_KEY_traefik_bouncer côté CrowdSec) : elles doivent
+# rester identiques, donc les préserver ensemble via une seule relecture.
+# Repli sur BOUNCER_KEY_traefik_bouncer si jamais seule celle-là est présente.
+BOUNCER_KEY=$(_garde CROWDSEC_BOUNCER_API_KEY "_garde BOUNCER_KEY_traefik_bouncer 'openssl rand -hex 32'")
 
 cat > "${CONFIG_DIR}/secrets.env" << EOF
 # Clé d'API du bouncer Traefik (doit correspondre à BOUNCER_KEY_traefik_bouncer dans crowdsec)
