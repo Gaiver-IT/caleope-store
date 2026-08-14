@@ -14,7 +14,25 @@ WG_HOST="${CALEOPE_PARAM_WG_HOST:-${CALEOPE_DOMAIN}}"
 WG_DEFAULT_DNS="${CALEOPE_PARAM_WG_DEFAULT_DNS:-1.1.1.1}"
 
 # ── Mot de passe admin (hashé bcrypt — wg-easy v14+ exige PASSWORD_HASH) ──────
-ADMIN_PASS=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 16)
+#
+# ⚠️ MESURÉ AU BANC LE 14/08/2026 : ce mot de passe était engendré à chaque
+# passage et secrets.env réécrit en entier. Une montée de version passe par
+# « caleope install wg-easy --force », donc par ce script : l'utilisateur
+# perdait l'accès à l'administration de son VPN à chaque mise à jour, sans
+# avertissement — le nouveau mot de passe s'affiche, l'ancien ne marche plus.
+#
+# Ce paquet avait échappé au premier recensement : son port 51820 est FIXE, le
+# --force était donc refusé par le contrôle de conflits de ports (bug corrigé
+# depuis), et l'essai n'avait jamais tourné. Il ressortait « stable » sans avoir
+# été mesuré. Une mesure qui n'a pas eu lieu n'est pas un résultat.
+_SECRETS="${CONFIG_DIR}/secrets.env"
+_garde() { # $1 = clé dans secrets.env, $2 = commande d'engendrement
+    local cur=""
+    [ -f "${_SECRETS}" ] && cur=$(grep -m1 "^$1=" "${_SECRETS}" 2>/dev/null | cut -d= -f2- || true)
+    if [ -n "${cur}" ]; then printf '%s' "${cur}"; else eval "$2"; fi
+}
+ADMIN_PASS=$(_garde WG_ADMIN_PASSWORD "openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 16")
+[ -f "${_SECRETS}" ] && echo "  ✓ Mot de passe d'administration conservé"
 # wgpw sort : PASSWORD_HASH='$2a$12$...' — les guillemets simples évitent l'interpolation
 # Docker Compose env_file respecte les valeurs entre guillemets simples ($VAR non interpolé)
 ADMIN_HASH_LINE=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep "^PASSWORD_HASH=" || echo "")
