@@ -9,53 +9,64 @@ DATA_DIR="${CALEOPE_BASE_DIR}/app-data/immich"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{library,db,model-cache}
 
-# ── Contrôle amont : la base ne doit plus porter pgvecto.rs ──────────────────
-# POURQUOI : l'image de base ne fournit plus l'extension « vectors ». Immich l'a
-# abandonnée en v3.0.0 et migre les bases vers VectorChord au démarrage, via
-# l'image de transition 14-vectorchord0.4.3-pgvectors0.2.0. Une base restée sur
-# pgvecto.rs ne perd RIEN si on démarre sans la bibliothèque, mais Immich ne
-# sait plus lire ses vecteurs : l'app tombe. On refuse donc AVANT de toucher à
-# quoi que ce soit, plutôt que de laisser l'utilisateur devant une app morte.
+# ── Choix de l'image de base : migration en deux temps, automatique ─────────
+# POURQUOI : l'image de base ne fournit plus l'extension « vectors ». Immich a
+# abandonné pgvecto.rs en v3.0.0 et migre les bases vers VectorChord au premier
+# démarrage — mais seulement sur l'image de TRANSITION, qui embarque les deux.
+# Une base restée sur pgvecto.rs ne perd rien si on démarre sans la
+# bibliothèque, mais Immich ne sait plus lire ses vecteurs : l'app tombe.
+#
+# On ne REFUSE pas pour autant : un setup.sh qui sort en erreur déclenche le
+# rollback du daemon, qui arrête les conteneurs, EFFACE apps-installed/immich/
+# et désinscrit l'app. Refuser coûterait donc à l'utilisateur l'app qui
+# marchait. On épingle plutôt l'image de transition : Immich migre tout seul au
+# démarrage, et la montée suivante atterrit sur l'image cible.
 #
 # ⚠️ Seul le catalogue tranche : ni le répertoire « pg_vectors » de PGDATA ni
 # shared_preload_libraries ne distinguent une base migrée d'une base qui ne
-# l'est pas — vérifié sur deux instances déjà migrées, les deux portent encore
-# un pg_vectors non vide. Un garde-fou fondé là-dessus refuserait TOUT.
+# l'est pas — mesuré sur deux instances déjà migrées, les deux portent encore
+# un pg_vectors non vide. Un contrôle sur disque se tromperait à tous les coups.
 #
-# setup.sh tourne avant « docker compose up » : lors d'une montée de version,
-# l'ancienne base est donc encore en marche et interrogeable.
-if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ "${CALEOPE_IMMICH_FORCE_VECTEUR:-}" != "1" ]; then
+# setup.sh tourne AVANT « docker compose up » et peut modifier le compose
+# engendré : lors d'une montée, l'ancienne base est donc encore interrogeable.
+_IMG_TRANSITION="ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0"
+_COMPOSE="${CALEOPE_BASE_DIR}/apps-installed/${CALEOPE_APP_ID}/docker-compose.yml"
+
+if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ -f "${_COMPOSE}" ]; then
+    # Le catalogue : 0 = migrée, 1 = encore sur pgvecto.rs, autre = pas de réponse.
     _SQL="select 'CALEOPE_VECTORS_'||count(*) from pg_extension where extname='vectors';"
     _REP=$(printf '%s\n' "${_SQL}" \
         | docker exec -i immich-db psql -U immich -t -A immich 2>/dev/null \
         | tr -d '[:space:]' || true)
+    # L'image RÉELLEMENT en service : on ne redescend jamais une base déjà
+    # passée en VectorChord 1.x sous une bibliothèque 0.4 qui ne saurait la lire.
+    _IMG_ACTUELLE=$(docker inspect immich-db --format '{{.Config.Image}}' 2>/dev/null || true)
 
+    _EPINGLER=""
     case "${_REP}" in
         CALEOPE_VECTORS_0)
-            echo "  ✓ Base déjà sur VectorChord (pgvecto.rs absent)." ;;
+            echo "  ✓ Base déjà sur VectorChord — image cible conservée." ;;
         CALEOPE_VECTORS_*)
-            echo "✗ Cette base photo utilise encore pgvecto.rs, que la nouvelle image de" >&2
-            echo "  base ne fournit plus. Montée refusée : rien n'a été modifié." >&2
-            echo "" >&2
-            echo "  Marche à suivre — migrer d'abord avec l'image de transition :" >&2
-            echo "    1. sauvegarder :  caleope backup immich" >&2
-            echo "    2. dans ${CONFIG_DIR%/*/*}/apps-installed/immich/docker-compose.yml," >&2
-            echo "       mettre l'image immich-db à :" >&2
-            echo "         ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0" >&2
-            echo "    3. docker compose up -d, puis attendre « Reindexing » dans les" >&2
-            echo "       journaux d'immich-server (la migration est automatique)" >&2
-            echo "    4. relancer : caleope install immich --force" >&2
-            exit 1 ;;
+            echo "  ⚠ Cette base photo utilise encore pgvecto.rs."
+            echo "    → image de transition conservée : Immich va migrer la base au"
+            echo "      démarrage (« Reindexing » dans les journaux). Relancez la"
+            echo "      montée ensuite pour passer sur VectorChord 1.1."
+            _EPINGLER="${_IMG_TRANSITION}" ;;
         *)
-            echo "✗ Impossible de lire l'état de la base photo : le conteneur immich-db" >&2
-            echo "  ne répond pas. Sans cette lecture je ne peux pas garantir que la" >&2
-            echo "  montée est sûre. Montée refusée : rien n'a été modifié." >&2
-            echo "" >&2
-            echo "  Démarrer l'app puis relancer :  caleope start immich" >&2
-            echo "  (si la base est déjà sur VectorChord et que vous en êtes certain :" >&2
-            echo "   CALEOPE_IMMICH_FORCE_VECTEUR=1 caleope install immich --force)" >&2
-            exit 1 ;;
+            case "${_IMG_ACTUELLE}" in
+                *vectorchord1*)
+                    echo "  ⚠ Base injoignable, mais déjà en VectorChord 1.x — image cible conservée." ;;
+                *)
+                    echo "  ⚠ Base injoignable : impossible de savoir si elle porte encore"
+                    echo "    pgvecto.rs. On ne change donc rien à la base de données."
+                    _EPINGLER="${_IMG_TRANSITION}" ;;
+            esac ;;
     esac
+
+    if [ -n "${_EPINGLER}" ]; then
+        sed -i "s|image: ghcr.io/immich-app/postgres:.*|image: ${_EPINGLER}|" "${_COMPOSE}"
+        echo "    image de base épinglée : ${_EPINGLER}"
+    fi
 fi
 
 # ── Préservation des secrets ────────────────────────────────────────────────
