@@ -35,7 +35,19 @@ ADMIN_PASS=$(_garde WG_ADMIN_PASSWORD "openssl rand -base64 16 | tr -dc 'A-Za-z0
 [ -f "${_SECRETS}" ] && echo "  ✓ Mot de passe d'administration conservé"
 # wgpw sort : PASSWORD_HASH='$2a$12$...' — les guillemets simples évitent l'interpolation
 # Docker Compose env_file respecte les valeurs entre guillemets simples ($VAR non interpolé)
-ADMIN_HASH_LINE=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep "^PASSWORD_HASH=" || echo "")
+#
+# Le hash existant est réutilisé tel quel. Ce n'est PAS une question de
+# correction — bcrypt resale à chaque calcul, donc un hash recalculé depuis le
+# même mot de passe reste valable — mais de sobriété : sans ça, chaque
+# réinstallation relance un « docker run » (ou un pip install bcrypt) pour
+# aboutir à un hash équivalent, et fait bouger le fichier de secrets pour rien.
+_HASH_EXISTANT=""
+[ -f "${_SECRETS}" ] && _HASH_EXISTANT=$(grep -m1 "^PASSWORD_HASH=" "${_SECRETS}" 2>/dev/null || true)
+if [ -n "${_HASH_EXISTANT}" ]; then
+    ADMIN_HASH_LINE="${_HASH_EXISTANT}"
+else
+    ADMIN_HASH_LINE=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "${ADMIN_PASS}" 2>/dev/null | grep "^PASSWORD_HASH=" || echo "")
+fi
 if [ -z "${ADMIN_HASH_LINE}" ]; then
     # Fallback 1: Python bcrypt
     HASH_VAL=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${ADMIN_PASS}', bcrypt.gensalt(12)).decode())" 2>/dev/null || echo "")
