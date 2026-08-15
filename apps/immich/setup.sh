@@ -55,12 +55,29 @@ if [ -f "${DATA_DIR}/db/PG_VERSION" ] && [ -n "${_COMPOSE}" ]; then
     # passée en VectorChord 1.x sous une bibliothèque 0.4 qui ne saurait la lire.
     _IMG_ACTUELLE=$(docker inspect immich-db --format '{{.Config.Image}}' 2>/dev/null || true)
 
+    # Une base migrée peut garder une entrée « vectors » qui ne sert plus à rien.
+    # On ne la laisse pas traîner : un pg_dump la ré-émettrait en « CREATE
+    # EXTENSION vectors », irrestaurable sur une image qui ne la fournit plus.
+    # Le retrait se fait SANS CASCADE : c'est PostgreSQL qui tranche, et il
+    # refuse tout seul dès qu'une colonne ou un index en dépend encore — donc
+    # une vraie bibliothèque héritée ne peut pas être amputée par cette ligne.
+    if [ "${_REP}" != "CALEOPE_VECTORS_0" ] && [ -n "${_REP}" ]; then
+        case "${_REP}" in
+            CALEOPE_VECTORS_*)
+                if printf 'drop extension vectors;\n' \
+                     | docker exec -i immich-db psql -U immich -v ON_ERROR_STOP=1 immich >/dev/null 2>&1; then
+                    echo "  ✓ Entrée pgvecto.rs retirée : plus aucune donnée n'en dépendait."
+                    _REP="CALEOPE_VECTORS_0"
+                fi ;;
+        esac
+    fi
+
     _EPINGLER=""
     case "${_REP}" in
         CALEOPE_VECTORS_0)
             echo "  ✓ Base déjà sur VectorChord — image cible conservée." ;;
         CALEOPE_VECTORS_*)
-            echo "  ⚠ Cette base photo utilise encore pgvecto.rs."
+            echo "  ⚠ Cette base photo porte encore des données pgvecto.rs."
             echo "    → image de transition conservée : Immich va migrer la base au"
             echo "      démarrage (« Reindexing » dans les journaux). Relancez la"
             echo "      montée ensuite pour passer sur VectorChord 1.1."
