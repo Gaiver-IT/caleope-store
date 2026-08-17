@@ -9,6 +9,18 @@ DATA_DIR="${CALEOPE_BASE_DIR}/app-data/immich"
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${DATA_DIR}/"{library,db,model-cache,thumbs-local}
 
+# ── Témoin de montage attendu par Immich ────────────────────────────────────
+# Immich dépose un fichier « .immich » dans CHAQUE dossier qu'il monte et
+# REFUSE de démarrer s'il n'arrive pas à le relire — mesuré sur le banc, le
+# serveur repartait en boucle sur « Failed to read
+# /usr/src/app/upload/thumbs/.immich ». Un dossier de miniatures local tout
+# neuf n'en a pas : on l'écrit nous-mêmes, au même format qu'Immich (un
+# horodatage en millisecondes). On ne touche JAMAIS un témoin existant : il
+# appartient à Immich.
+if [ ! -f "${DATA_DIR}/thumbs-local/.immich" ]; then
+    printf '%s' "$(date +%s%3N)" > "${DATA_DIR}/thumbs-local/.immich"
+fi
+
 # ── Choix de l'image de base : migration en deux temps, automatique ─────────
 # POURQUOI : l'image de base ne fournit plus l'extension « vectors ». Immich a
 # abandonné pgvecto.rs en v3.0.0 et migre les bases vers VectorChord au premier
