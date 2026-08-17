@@ -7,7 +7,7 @@ CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
 DATA_DIR="${CALEOPE_BASE_DIR}/app-data/immich"
 
 mkdir -p "${CONFIG_DIR}"
-mkdir -p "${DATA_DIR}/"{library,db,model-cache}
+mkdir -p "${DATA_DIR}/"{library,db,model-cache,thumbs-local}
 
 # ── Choix de l'image de base : migration en deux temps, automatique ─────────
 # POURQUOI : l'image de base ne fournit plus l'extension « vectors ». Immich a

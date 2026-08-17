@@ -11,6 +11,16 @@ services:
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
       - {{.BaseDir}}/app-data/immich/library:/usr/src/app/upload
+      # Miniatures sur le DISQUE LOCAL, même quand la bibliothèque est sur un
+      # stockage réseau. Une galerie affiche des dizaines de vignettes par
+      # écran : à 72 ms la lecture sur NFS (mesuré sur une vraie bibliothèque,
+      # contre 14 ms en local), un écran de 50 coûte 3,6 s de lecture pure et la
+      # navigation devient poussive. Les originaux, eux, restent sur le grand
+      # volume : on ne les ouvre qu'un par un.
+      # ⚠️ Sur une bibliothèque existante, RECOPIER les miniatures dans
+      # app-data/immich/thumbs-local AVANT d'appliquer, sinon Immich les
+      # considère absentes et les regénère toutes.
+      - {{.BaseDir}}/app-data/immich/thumbs-local:/usr/src/app/upload/thumbs
       - /etc/localtime:/etc/localtime:ro
     {{- range .Ports}}
     ports:

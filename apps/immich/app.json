@@ -14,6 +14,7 @@
   "ports": [{ "name": "web", "container": 2283, "dynamic": true }],
   "volumes": [
     { "source": "app-data/immich/library", "target": "/usr/src/app/upload", "nas": true },
+    { "source": "app-data/immich/thumbs-local", "target": "/usr/src/app/upload/thumbs" },
     { "source": "app-data/immich/db", "target": "/var/lib/postgresql/data" }
   ],
   "backup": { "enabled": true },
