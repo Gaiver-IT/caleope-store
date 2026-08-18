@@ -1,0 +1,11 @@
+{
+  "id": "poste-nomade",
+  "name": "Poste nomade",
+  "icon": "ti-devices-2",
+  "description": "Retrouver ses mots de passe, ses fichiers et ses réglages en passant d'un Mac à un Ubuntu à un Windows. Coffre-fort partagé, synchronisation continue de dossiers, et dépôt Git pour les configurations et la liste des logiciels de chaque machine.",
+  "apps": [
+    "vaultwarden",
+    "syncthing",
+    "forgejo"
+  ]
+}
