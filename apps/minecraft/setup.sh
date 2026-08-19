@@ -81,15 +81,8 @@ if [ "${_JAVA}" != "25" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
     echo "  ✓ Variante Java ${_JAVA}"
 fi
 
-# ── Port du jeu ─────────────────────────────────────────────────────────────
-# Il est écrit en dur dans le compose (25565, celui que tout le monde connaît).
-# Si l'utilisateur en a choisi un autre, on patche le compose engendré — le
-# daemon nous laisse volontairement le modifier avant le démarrage.
-_PORT="${CALEOPE_PARAM_MC_PORT:-25565}"
-if [ "${_PORT}" != "25565" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
-    sed -i "s|\"25565:25565/tcp\"|\"${_PORT}:25565/tcp\"|" "${CALEOPE_APP_DIR}/compose.yml"
-    echo "  ✓ Port du jeu : ${_PORT}"
-fi
+# Le port du jeu n'est plus patché ici : le daemon l'applique depuis MC_PORT
+# AVANT le contrôle de conflit, donc bien avant que ce script tourne.
 
 echo "  ✓ Serveur ${TYPE} ${VERSION}, ${MEMOIRE} de mémoire."
 [ -n "${MODRINTH}" ] && echo "  ✓ Mods Modrinth demandés : ${MODRINTH}"

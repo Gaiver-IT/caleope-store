@@ -20,7 +20,8 @@
       "container": 25565,
       "dynamic": false,
       "protocol": "tcp",
-      "firewall": true
+      "firewall": true,
+      "param": "MC_PORT"
     },
     {
       "name": "rcon",
