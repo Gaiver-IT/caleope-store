@@ -1,0 +1,23 @@
+{
+  "id": "minecraft",
+  "name": "Minecraft",
+  "category": "gaming",
+  "channel": "alpha",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": true },
+  "ports": [
+    { "name": "jeu",  "container": 25565, "dynamic": false, "protocol": "tcp", "firewall": true },
+    { "name": "rcon", "container": 25575, "dynamic": true,  "protocol": "tcp" }
+  ],
+  "volumes": [
+    { "source": "app-data/minecraft/data", "target": "/data" }
+  ],
+  "backup": { "enabled": true },
+  "secure_headers": false
+}
