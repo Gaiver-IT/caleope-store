@@ -7,7 +7,12 @@ services:
     # C'est exactement ce qu'on veut ici : Caleope ne stocke AUCUN binaire de jeu
     # ni aucun mod. Les sources restent chez leurs auteurs, le disque du serveur
     # ne porte que le monde et la configuration.
-    image: itzg/minecraft-server:java21
+    # ⚠️ La variante Java doit suivre la version de Minecraft, sinon le serveur
+    # refuse de démarrer et repart en boucle. Mesuré sur le banc avec java21 :
+    #   « Minecraft 26.1 and newer requires running the server with Java 25 »
+    # On prend donc la variante la plus récente : un JRE récent fait tourner les
+    # versions plus anciennes, l'inverse n'est pas vrai.
+    image: itzg/minecraft-server:java25
     container_name: minecraft
     restart: unless-stopped
     tty: true

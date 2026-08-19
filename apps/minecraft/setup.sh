@@ -69,6 +69,15 @@ OPS="${CALEOPE_PARAM_MC_OPS:-}"
 } > "${_SECRETS}"
 chmod 600 "${_SECRETS}"
 
+# ── Variante Java ───────────────────────────────────────────────────────────
+# Le compose épingle java25. Si l'utilisateur a besoin d'une variante plus
+# ancienne pour un vieux serveur, on patche l'image engendrée.
+_JAVA="${CALEOPE_PARAM_MC_JAVA:-25}"
+if [ "${_JAVA}" != "25" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
+    sed -i "s|itzg/minecraft-server:java25|itzg/minecraft-server:java${_JAVA}|" "${CALEOPE_APP_DIR}/compose.yml"
+    echo "  ✓ Variante Java ${_JAVA}"
+fi
+
 # ── Port du jeu ─────────────────────────────────────────────────────────────
 # Il est écrit en dur dans le compose (25565, celui que tout le monde connaît).
 # Si l'utilisateur en a choisi un autre, on patche le compose engendré — le
