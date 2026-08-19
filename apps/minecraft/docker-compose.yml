@@ -18,13 +18,13 @@ services:
     volumes:
       - {{.BaseDir}}/app-data/minecraft/data:/data
       - /etc/localtime:/etc/localtime:ro
-    # ⚠️ « ports: » UNE seule fois, la boucle ne produit que les entrées : avec
-    # deux ports, un « ports: » à l'intérieur de la boucle donne deux clés du
-    # même nom et le compose devient illisible (« mapping key already defined »).
+    # Le port du JEU est fixe et écrit en clair : c'est celui que les joueurs
+    # tapent, il ne peut pas changer d'une réinstallation à l'autre. La console
+    # RCON, elle, n'est vue que par Caleope : le daemon lui attribue un port
+    # libre, comme pour n'importe quelle interface d'administration.
     ports:
-      {{- range .Ports}}
-      - "{{.Host}}:{{.Container}}"
-      {{- end}}
+      - "25565:25565/tcp"
+      - "${CALEOPE_PORT_RCON}:25575"
     # Un serveur qui démarre met plusieurs minutes la première fois : il
     # télécharge le moteur, les mods, puis engendre le monde. Sans cette
     # patience, le superviseur le déclarerait malade avant qu'il ait fini.

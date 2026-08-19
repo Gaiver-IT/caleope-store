@@ -69,6 +69,16 @@ OPS="${CALEOPE_PARAM_MC_OPS:-}"
 } > "${_SECRETS}"
 chmod 600 "${_SECRETS}"
 
+# ── Port du jeu ─────────────────────────────────────────────────────────────
+# Il est écrit en dur dans le compose (25565, celui que tout le monde connaît).
+# Si l'utilisateur en a choisi un autre, on patche le compose engendré — le
+# daemon nous laisse volontairement le modifier avant le démarrage.
+_PORT="${CALEOPE_PARAM_MC_PORT:-25565}"
+if [ "${_PORT}" != "25565" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
+    sed -i "s|\"25565:25565/tcp\"|\"${_PORT}:25565/tcp\"|" "${CALEOPE_APP_DIR}/compose.yml"
+    echo "  ✓ Port du jeu : ${_PORT}"
+fi
+
 echo "  ✓ Serveur ${TYPE} ${VERSION}, ${MEMOIRE} de mémoire."
 [ -n "${MODRINTH}" ] && echo "  ✓ Mods Modrinth demandés : ${MODRINTH}"
 echo "  ℹ Le premier démarrage télécharge le moteur et engendre le monde :"
