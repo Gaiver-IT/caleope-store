@@ -18,10 +18,13 @@ services:
     volumes:
       - {{.BaseDir}}/app-data/minecraft/data:/data
       - /etc/localtime:/etc/localtime:ro
-    {{- range .Ports}}
+    # ⚠️ « ports: » UNE seule fois, la boucle ne produit que les entrées : avec
+    # deux ports, un « ports: » à l'intérieur de la boucle donne deux clés du
+    # même nom et le compose devient illisible (« mapping key already defined »).
     ports:
+      {{- range .Ports}}
       - "{{.Host}}:{{.Container}}"
-    {{- end}}
+      {{- end}}
     # Un serveur qui démarre met plusieurs minutes la première fois : il
     # télécharge le moteur, les mods, puis engendre le monde. Sans cette
     # patience, le superviseur le déclarerait malade avant qu'il ait fini.
