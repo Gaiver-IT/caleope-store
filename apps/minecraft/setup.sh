@@ -49,6 +49,18 @@ TYPE="${CALEOPE_PARAM_MC_TYPE:-PAPER}"
 VERSION="${CALEOPE_PARAM_MC_VERSION:-LATEST}"
 MEMOIRE="${CALEOPE_PARAM_MC_MEMOIRE:-2G}"
 MODRINTH="${CALEOPE_PARAM_MC_MODRINTH:-}"
+
+# ── Mods ajoutés depuis l'interface ─────────────────────────────────────────
+# Ils vivent dans app-config/<app>/mods.txt, PAS dans secrets.env que ce script
+# réécrit à chaque passage : sans ça, une montée de version effacerait en
+# silence tous les mods ajoutés depuis Caleope.
+_MODS_UI="${CONFIG_DIR}/mods.txt"
+if [ -f "${_MODS_UI}" ]; then
+    _LISTE=$(grep -vE '^\s*(#|$)' "${_MODS_UI}" | paste -sd, - || true)
+    if [ -n "${_LISTE}" ]; then
+        if [ -n "${MODRINTH}" ]; then MODRINTH="${MODRINTH},${_LISTE}"; else MODRINTH="${_LISTE}"; fi
+    fi
+fi
 OPS="${CALEOPE_PARAM_MC_OPS:-}"
 
 {
