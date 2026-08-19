@@ -32,17 +32,16 @@ _garde() { # $1 = clé TELLE QU'ÉCRITE dans secrets.env, $2 = commande d'engend
 }
 RCON_PASS=$(_garde RCON_PASSWORD "openssl rand -hex 16")
 
-cat > "${_SECRETS}" << EOF
-# Console d'administration (RCON) — utilisée par l'interface Caleope.
-RCON_PASSWORD=${RCON_PASS}
-CFG_CURSEFORGE_API_KEY=${CALEOPE_PARAM_MC_CURSEFORGE_KEY:-}
-EOF
-chmod 600 "${_SECRETS}"
-
 # ── Configuration du serveur ────────────────────────────────────────────────
-# Tout passe par des variables : l'image engendre server.properties à partir
-# d'elles. On n'écrit donc PAS ce fichier nous-mêmes — il serait réécrit au
-# démarrage suivant, et les réglages faits depuis l'interface disparaîtraient.
+# ⚠️ TOUT passe par secrets.env, et surtout PAS par app.env : le daemon
+# RECONSTRUIT app.env après setup.sh (étape 7.5), donc ce qu'on y ajoute ici
+# disparaît avant le démarrage. Mesuré : le conteneur recevait « EULA= » vide et
+# « TYPE=VANILLA », puis repartait en boucle en réclamant l'acceptation du
+# contrat qu'on venait pourtant de cocher.
+#
+# On n'écrit pas non plus server.properties nous-mêmes : l'image l'engendre à
+# partir de ces variables, et le réécrire ferait disparaître au démarrage
+# suivant les réglages faits depuis l'interface.
 TYPE="${CALEOPE_PARAM_MC_TYPE:-PAPER}"
 VERSION="${CALEOPE_PARAM_MC_VERSION:-LATEST}"
 MEMOIRE="${CALEOPE_PARAM_MC_MEMOIRE:-2G}"
@@ -50,23 +49,25 @@ MODRINTH="${CALEOPE_PARAM_MC_MODRINTH:-}"
 OPS="${CALEOPE_PARAM_MC_OPS:-}"
 
 {
+    echo "# Console d'administration (RCON) — utilisée par l'interface Caleope."
+    echo "RCON_PASSWORD=${RCON_PASS}"
+    echo "ENABLE_RCON=true"
+    echo "RCON_PORT=25575"
+    echo ""
+    echo "# Moteur et version"
     echo "EULA=TRUE"
     echo "TYPE=${TYPE}"
     echo "VERSION=${VERSION}"
     echo "MEMORY=${MEMOIRE}"
-    echo "ENABLE_RCON=true"
-    echo "RCON_PORT=25575"
-    # Les mods sont tirés de Modrinth AU DÉMARRAGE, pas empaquetés ici.
-    [ -n "${MODRINTH}" ] && echo "MODRINTH_PROJECTS=${MODRINTH}"
-    [ -n "${OPS}" ] && echo "OPS=${OPS}"
+    echo "TZ=${TZ:-Europe/Paris}"
     # Sans ça, une mise à jour de mod laisse l'ancienne version à côté de la
     # nouvelle : le serveur charge les deux et refuse de démarrer.
     echo "REMOVE_OLD_MODS=true"
-    echo "TZ=${TZ:-Europe/Paris}"
-} > "${CONFIG_DIR}/jeu.env"
-
-# Le compose lit app.env ; on y ajoute nos variables sans écraser le reste.
-grep -q "^EULA=" "${CALEOPE_APP_DIR}/app.env" 2>/dev/null || cat "${CONFIG_DIR}/jeu.env" >> "${CALEOPE_APP_DIR}/app.env"
+    [ -n "${MODRINTH}" ] && echo "MODRINTH_PROJECTS=${MODRINTH}"
+    [ -n "${OPS}" ] && echo "OPS=${OPS}"
+    [ -n "${CALEOPE_PARAM_MC_CURSEFORGE_KEY:-}" ] && echo "CF_API_KEY=${CALEOPE_PARAM_MC_CURSEFORGE_KEY}"
+} > "${_SECRETS}"
+chmod 600 "${_SECRETS}"
 
 echo "  ✓ Serveur ${TYPE} ${VERSION}, ${MEMOIRE} de mémoire."
 [ -n "${MODRINTH}" ] && echo "  ✓ Mods Modrinth demandés : ${MODRINTH}"
