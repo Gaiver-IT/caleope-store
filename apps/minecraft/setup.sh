@@ -4,7 +4,10 @@ set -euo pipefail
 echo "→ Préparation du serveur Minecraft..."
 
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
-DATA_DIR="${CALEOPE_BASE_DIR}/app-data/minecraft"
+# ⚠️ Les données suivent l'INSTANCE, pas le nom du paquet : « minecraft » et
+# « minecraft@homestead » doivent avoir deux mondes distincts. Utiliser le nom
+# du paquet ici ferait écrire les deux serveurs au même endroit.
+DATA_DIR="${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}"
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}/data"
 
 # ── Le contrat de licence ───────────────────────────────────────────────────
