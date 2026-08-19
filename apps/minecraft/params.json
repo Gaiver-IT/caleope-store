@@ -1,0 +1,67 @@
+[
+  {
+    "key":         "MC_TYPE",
+    "label":       "Moteur du serveur",
+    "description": "PAPER pour un serveur à plugins (le plus courant, performant). FABRIC ou FORGE pour un serveur à mods. VANILLA pour du Minecraft d'origine, sans rien. Le moteur détermine ce que l'on peut installer ensuite : un plugin Paper ne fonctionne PAS sur Fabric, et inversement.",
+    "type":        "select",
+    "options":     ["PAPER", "FABRIC", "FORGE", "NEOFORGE", "VANILLA", "PURPUR"],
+    "required":    true,
+    "default":     "PAPER"
+  },
+  {
+    "key":         "MC_VERSION",
+    "label":       "Version de Minecraft",
+    "description": "Par exemple 1.21.4. « LATEST » prend la dernière parue — pratique pour démarrer, risqué ensuite : les mods suivent rarement le jour même.",
+    "type":        "string",
+    "required":    true,
+    "default":     "LATEST"
+  },
+  {
+    "key":         "MC_MEMOIRE",
+    "label":       "Mémoire allouée",
+    "description": "Par exemple 4G. C'est de la RAM RÉSERVÉE au serveur : la mettre trop haut prive les autres applications de la machine. Un serveur à plugins tient dans 2G ; un gros pack de mods en demande 6 à 8.",
+    "type":        "string",
+    "required":    true,
+    "default":     "2G"
+  },
+  {
+    "key":         "MC_PORT",
+    "label":       "Port du jeu",
+    "description": "Le port que les joueurs indiquent. 25565 est celui par défaut de Minecraft : le changer oblige chaque joueur à écrire « adresse:port ».",
+    "type":        "string",
+    "required":    true,
+    "default":     "25565"
+  },
+  {
+    "key":         "MC_MODRINTH",
+    "label":       "Mods et plugins Modrinth",
+    "description": "Identifiants ou adresses de projets Modrinth, séparés par des virgules — par exemple « fabric-api,lithium ». Ils sont téléchargés DEPUIS MODRINTH au démarrage, et jamais stockés dans Caleope. Laisser vide si tu préfères les déposer à la main.",
+    "type":        "string",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "MC_CURSEFORGE_KEY",
+    "label":       "Clé d'API CurseForge",
+    "description": "CurseForge exige une clé personnelle pour télécharger, contrairement à Modrinth. Sans elle, seuls Modrinth et le dépôt manuel fonctionnent. Elle se demande gratuitement sur le portail développeur de CurseForge.",
+    "type":        "secret",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "MC_OPS",
+    "label":       "Administrateurs du jeu",
+    "description": "Pseudonymes Minecraft séparés par des virgules. Ces joueurs auront les commandes d'opérateur dès le premier démarrage.",
+    "type":        "string",
+    "required":    false,
+    "default":     ""
+  },
+  {
+    "key":         "MC_EULA",
+    "label":       "Accepter le contrat de licence Mojang",
+    "description": "Le serveur refuse de démarrer sans cette acceptation — c'est une exigence de Mojang, pas de Caleope. En cochant, tu déclares accepter https://aka.ms/MinecraftEULA.",
+    "type":        "boolean",
+    "required":    true,
+    "default":     "false"
+  }
+]

@@ -1,0 +1,38 @@
+services:
+  minecraft:
+    # Image de référence du monde Minecraft auto-hébergé. Elle télécharge
+    # elle-même le serveur choisi (Paper, Fabric, Forge…) ET les mods depuis
+    # Modrinth ou CurseForge à chaque démarrage.
+    #
+    # C'est exactement ce qu'on veut ici : Caleope ne stocke AUCUN binaire de jeu
+    # ni aucun mod. Les sources restent chez leurs auteurs, le disque du serveur
+    # ne porte que le monde et la configuration.
+    image: itzg/minecraft-server:java21
+    container_name: minecraft
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    env_file:
+      - app.env
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/minecraft/data:/data
+      - /etc/localtime:/etc/localtime:ro
+    {{- range .Ports}}
+    ports:
+      - "{{.Host}}:{{.Container}}"
+    {{- end}}
+    # Un serveur qui démarre met plusieurs minutes la première fois : il
+    # télécharge le moteur, les mods, puis engendre le monde. Sans cette
+    # patience, le superviseur le déclarerait malade avant qu'il ait fini.
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      start_period: 10m
+      interval: 30s
+      retries: 20
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-internal:
+    external: true
