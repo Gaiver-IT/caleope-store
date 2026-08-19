@@ -13,7 +13,10 @@ services:
     # On prend donc la variante la plus récente : un JRE récent fait tourner les
     # versions plus anciennes, l'inverse n'est pas vrai.
     image: itzg/minecraft-server:java25
-    container_name: minecraft
+    # ⚠️ Nom et chemins dérivés de l'INSTANCE, jamais codés en dur : deux
+    # serveurs installés côte à côte partageraient sinon le même conteneur et
+    # surtout le même monde. {{.NomDocker}} remplace le « @ » que Docker refuse.
+    container_name: {{.NomDocker}}
     restart: unless-stopped
     tty: true
     stdin_open: true
@@ -21,14 +24,15 @@ services:
       - app.env
       - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
     volumes:
-      - {{.BaseDir}}/app-data/minecraft/data:/data
+      - {{.BaseDir}}/app-data/{{.AppID}}/data:/data
       - /etc/localtime:/etc/localtime:ro
-    # Le port du JEU est fixe et écrit en clair : c'est celui que les joueurs
-    # tapent, il ne peut pas changer d'une réinstallation à l'autre. La console
+    # Le port du JEU est fixe — celui que les joueurs tapent — mais pilotable
+    # par le paramètre MC_PORT : sans ça, une deuxième instance serait refusée
+    # pour conflit sur 25565 sans que l'utilisateur puisse rien y changer. La console
     # RCON, elle, n'est vue que par Caleope : le daemon lui attribue un port
     # libre, comme pour n'importe quelle interface d'administration.
     ports:
-      - "25565:25565/tcp"
+      - "${CALEOPE_PORT_JEU}:25565/tcp"
       - "${CALEOPE_PORT_RCON}:25575"
     # Un serveur qui démarre met plusieurs minutes la première fois : il
     # télécharge le moteur, les mods, puis engendre le monde. Sans cette

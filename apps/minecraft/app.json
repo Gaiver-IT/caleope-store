@@ -10,14 +10,35 @@
     "docker_socket": false,
     "privileged": false
   },
-  "network": { "public": false, "internal": true },
+  "network": {
+    "public": false,
+    "internal": true
+  },
   "ports": [
-    { "name": "jeu",  "container": 25565, "dynamic": false, "protocol": "tcp", "firewall": true },
-    { "name": "rcon", "container": 25575, "dynamic": true,  "protocol": "tcp" }
+    {
+      "name": "jeu",
+      "container": 25565,
+      "dynamic": false,
+      "protocol": "tcp",
+      "firewall": true,
+      "param": "MC_PORT"
+    },
+    {
+      "name": "rcon",
+      "container": 25575,
+      "dynamic": true,
+      "protocol": "tcp"
+    }
   ],
   "volumes": [
-    { "source": "app-data/minecraft/data", "target": "/data" }
+    {
+      "source": "app-data/minecraft/data",
+      "target": "/data"
+    }
   ],
-  "backup": { "enabled": true },
-  "secure_headers": false
+  "backup": {
+    "enabled": true
+  },
+  "secure_headers": false,
+  "multi_instance": true
 }

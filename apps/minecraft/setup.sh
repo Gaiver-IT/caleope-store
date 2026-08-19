@@ -4,7 +4,10 @@ set -euo pipefail
 echo "→ Préparation du serveur Minecraft..."
 
 CONFIG_DIR="${CALEOPE_BASE_DIR}/app-config/${CALEOPE_APP_ID}"
-DATA_DIR="${CALEOPE_BASE_DIR}/app-data/minecraft"
+# ⚠️ Les données suivent l'INSTANCE, pas le nom du paquet : « minecraft » et
+# « minecraft@homestead » doivent avoir deux mondes distincts. Utiliser le nom
+# du paquet ici ferait écrire les deux serveurs au même endroit.
+DATA_DIR="${CALEOPE_BASE_DIR}/app-data/${CALEOPE_APP_ID}"
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}/data"
 
 # ── Le contrat de licence ───────────────────────────────────────────────────
@@ -78,15 +81,8 @@ if [ "${_JAVA}" != "25" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
     echo "  ✓ Variante Java ${_JAVA}"
 fi
 
-# ── Port du jeu ─────────────────────────────────────────────────────────────
-# Il est écrit en dur dans le compose (25565, celui que tout le monde connaît).
-# Si l'utilisateur en a choisi un autre, on patche le compose engendré — le
-# daemon nous laisse volontairement le modifier avant le démarrage.
-_PORT="${CALEOPE_PARAM_MC_PORT:-25565}"
-if [ "${_PORT}" != "25565" ] && [ -f "${CALEOPE_APP_DIR}/compose.yml" ]; then
-    sed -i "s|\"25565:25565/tcp\"|\"${_PORT}:25565/tcp\"|" "${CALEOPE_APP_DIR}/compose.yml"
-    echo "  ✓ Port du jeu : ${_PORT}"
-fi
+# Le port du jeu n'est plus patché ici : le daemon l'applique depuis MC_PORT
+# AVANT le contrôle de conflit, donc bien avant que ce script tourne.
 
 echo "  ✓ Serveur ${TYPE} ${VERSION}, ${MEMOIRE} de mémoire."
 [ -n "${MODRINTH}" ] && echo "  ✓ Mods Modrinth demandés : ${MODRINTH}"
