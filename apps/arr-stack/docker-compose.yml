@@ -428,6 +428,22 @@ services:
       - "traefik.http.routers.jellyfin-vue.tls=true"
       - "traefik.http.routers.jellyfin-vue.priority=10"
       - "traefik.http.services.jellyfin-vue.loadbalancer.server.port=80"
+      # ── Ouvrir Vue sur une adresse PROFONDE ne doit pas tuer la page ──────
+      # index.html référence ses fichiers en RELATIF (« ./assets/… ») et le
+      # routeur est en mode « history ». Sur une URL profonde, le navigateur
+      # demande donc /le/chemin/assets/… ; le serveur de Vue répond index.html
+      # à tout ce qu'il ne connaît pas, et le navigateur reçoit du HTML là où
+      # il attend du JavaScript. Résultat : page morte, sans message d'erreur.
+      #
+      # Mesuré chez un utilisateur qui avait ouvert l'adresse SSO de Jellyfin
+      # sur le domaine de Vue : CHAQUE fichier demandé rendait 12 945 octets,
+      # la taille exacte d'index.html.
+      #
+      # On ramène donc « …/assets/x » vers « /assets/x ». Une URL déjà correcte
+      # et la racine ne sont pas touchées.
+      - "traefik.http.middlewares.vue-assets.replacepathregex.regex=^/.+/(assets/.*)$$"
+      - "traefik.http.middlewares.vue-assets.replacepathregex.replacement=/$${1}"
+      - "traefik.http.routers.jellyfin-vue.middlewares=vue-assets"
       - "traefik.docker.network=caleope-public"
     networks:
       - caleope-public
