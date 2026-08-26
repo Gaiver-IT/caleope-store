@@ -332,8 +332,38 @@ VPN_SERVER_COUNTRIES=""
 COMPOSE_PROFILES="novpn"
 QBT_HOST="qbittorrent"
 
+# ── Ce qui est DÉJÀ EN PLACE fait foi ───────────────────────────────────────
+#
+# Une montée de version repasse par ce script SANS repasser les paramètres
+# d'installation. Sans ce bloc, le VPN retombait sur son défaut — « mode
+# non-interactif → VPN désactivé » — et la montée SORTAIT le client torrent du
+# VPN sans rien demander. Constaté en production : seul un conflit de nom de
+# conteneur a empêché la bascule, et secrets.env s'était déjà vidé de la clé
+# WireGuard. Il a fallu la récupérer dans l'environnement du gluetun encore en
+# marche, dernier endroit où elle existait.
+#
+# Ordre de préséance, le même que pour les secrets :
+#   ce que l'utilisateur fournit  >  ce qui tourne déjà  >  le défaut.
+_ANCIEN_SECRETS="${CONFIG_DIR}/secrets.env"
+_ancien() { # $1 = clé telle qu'écrite dans secrets.env
+    [ -f "${_ANCIEN_SECRETS}" ] || return 0
+    grep -m1 "^$1=" "${_ANCIEN_SECRETS}" 2>/dev/null | cut -d= -f2- || true
+}
+_VPN_DEJA=""
+[ -n "$(_ancien ARR_VPN_WG_PRIVATE_KEY)" ] && _VPN_DEJA="true"
+[ -n "$(_ancien ARR_VPN_OPENVPN_USER)" ]   && _VPN_DEJA="true"
+# ⚠️ « novpn » CONTIENT « vpn » : tester la sous-chaîne conserverait le VPN sur
+# une installation qui l'avait justement désactivé. On teste le profil entier.
+_ANCIEN_PROFILS=",$(_ancien COMPOSE_PROFILES),"
+case "${_ANCIEN_PROFILS}" in *,vpn,*) _VPN_DEJA="true" ;; esac
+
 # Lire depuis CALEOPE_PARAM_* si fournis (mode API / non-interactif)
 _VPN_ENABLED="${CALEOPE_PARAM_VPN_ENABLED:-}"
+# Rien de fourni, mais un VPN déjà configuré ici : on le CONSERVE.
+if [ -z "${_VPN_ENABLED}" ] && [ -n "${_VPN_DEJA}" ]; then
+    _VPN_ENABLED="true"
+    echo "  ✓ VPN déjà configuré sur cette installation — conservé."
+fi
 _VPN_PROVIDER="${CALEOPE_PARAM_VPN_PROVIDER:-}"
 _VPN_TYPE="${CALEOPE_PARAM_VPN_TYPE:-}"
 _VPN_WG_KEY="${CALEOPE_PARAM_VPN_WG_PRIVATE_KEY:-}"
@@ -348,13 +378,19 @@ if [[ -n "${_VPN_ENABLED}" ]]; then
         VPN_ENABLED=true
         COMPOSE_PROFILES="vpn"
         QBT_HOST="arr-gluetun"
-        VPN_PROVIDER="${_VPN_PROVIDER:-protonvpn}"
-        VPN_TYPE="${_VPN_TYPE:-wireguard}"
-        VPN_WG_PRIVATE_KEY="${_VPN_WG_KEY}"
-        VPN_WG_ADDRESSES="${_VPN_WG_ADDR}"
-        VPN_OPENVPN_USER="${_VPN_OVPN_USER}"
-        VPN_OPENVPN_PASSWORD="${_VPN_OVPN_PASS}"
-        VPN_SERVER_COUNTRIES="${_VPN_COUNTRIES}"
+        # Chaque valeur suit la même règle : fournie > déjà en place > défaut.
+        # Conserver le profil VPN avec des identifiants VIDES donnerait un tunnel
+        # qui ne monte pas, donc plus aucun téléchargement — pire que la bascule
+        # qu'on cherche à éviter.
+        VPN_PROVIDER="${_VPN_PROVIDER:-$(_ancien ARR_VPN_PROVIDER)}"
+        VPN_PROVIDER="${VPN_PROVIDER:-protonvpn}"
+        VPN_TYPE="${_VPN_TYPE:-$(_ancien ARR_VPN_TYPE)}"
+        VPN_TYPE="${VPN_TYPE:-wireguard}"
+        VPN_WG_PRIVATE_KEY="${_VPN_WG_KEY:-$(_ancien ARR_VPN_WG_PRIVATE_KEY)}"
+        VPN_WG_ADDRESSES="${_VPN_WG_ADDR:-$(_ancien ARR_VPN_WG_ADDRESSES)}"
+        VPN_OPENVPN_USER="${_VPN_OVPN_USER:-$(_ancien ARR_VPN_OPENVPN_USER)}"
+        VPN_OPENVPN_PASSWORD="${_VPN_OVPN_PASS:-$(_ancien ARR_VPN_OPENVPN_PASSWORD)}"
+        VPN_SERVER_COUNTRIES="${_VPN_COUNTRIES:-$(_ancien ARR_VPN_SERVER_COUNTRIES)}"
         echo "  ✓ VPN configuré (mode API) : ${VPN_PROVIDER} / ${VPN_TYPE}"
     else
         # false ou toute autre valeur → VPN désactivé
