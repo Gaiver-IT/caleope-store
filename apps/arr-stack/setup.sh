@@ -13,19 +13,36 @@ mkdir -p "${CONFIG_DIR}"
 
 # ── Structure de dossiers ─────────────────────────────────────────────
 echo "→ Création de la structure de dossiers..."
-mkdir -p "${STORAGE_PATH}/downloads/complete/movies" \
-         "${STORAGE_PATH}/downloads/complete/tv" \
-         "${STORAGE_PATH}/downloads/complete/music" \
-         "${STORAGE_PATH}/downloads/complete/books" \
-         "${STORAGE_PATH}/downloads/complete/comics" \
-         "${STORAGE_PATH}/downloads/incomplete" \
-         "${STORAGE_PATH}/media/movies" \
-         "${STORAGE_PATH}/media/tv" \
-         "${STORAGE_PATH}/media/music" \
-         "${STORAGE_PATH}/media/books" \
-         "${STORAGE_PATH}/media/comics" \
-         "${STORAGE_PATH}/media/manga"
-chmod -R 777 "${STORAGE_PATH}"
+_DOSSIERS=(
+    "${STORAGE_PATH}"
+    "${STORAGE_PATH}/downloads" "${STORAGE_PATH}/downloads/complete"
+    "${STORAGE_PATH}/downloads/complete/movies" "${STORAGE_PATH}/downloads/complete/tv"
+    "${STORAGE_PATH}/downloads/complete/music"  "${STORAGE_PATH}/downloads/complete/books"
+    "${STORAGE_PATH}/downloads/complete/comics" "${STORAGE_PATH}/downloads/incomplete"
+    "${STORAGE_PATH}/media"
+    "${STORAGE_PATH}/media/movies" "${STORAGE_PATH}/media/tv"    "${STORAGE_PATH}/media/music"
+    "${STORAGE_PATH}/media/books"  "${STORAGE_PATH}/media/comics" "${STORAGE_PATH}/media/manga"
+)
+mkdir -p "${_DOSSIERS[@]}"
+
+# ⚠️ PAS de « chmod -R » ici, et surtout pas sur ${STORAGE_PATH}.
+#
+# Ce chemin est la BIBLIOTHÈQUE MÉDIA : des dizaines de milliers de fichiers,
+# souvent sur un partage réseau. Un chmod récursif y descend entièrement — chaque
+# fichier coûtant un aller-retour NFS. Mesuré sur une installation réelle :
+# l'installation est restée bloquée en attente d'E/S ininterruptible, le NAS
+# martelé, et la montée de version n'a jamais abouti. Sur une machine dont le
+# montage réseau est fragile, c'est la panne assurée.
+#
+# Ce qu'on veut vraiment : que les conteneurs puissent écrire dans la structure.
+# Les DOSSIERS qu'on vient de créer suffisent — le contenu déjà présent a déjà
+# les droits qui lui vont, et n'a aucune raison d'être touché à chaque montée.
+#
+# « || true » : un partage réseau peut refuser le chmod (root_squash). Ce n'est
+# pas une raison d'interrompre toute l'installation.
+for _d in "${_DOSSIERS[@]}"; do
+    chmod 777 "${_d}" 2>/dev/null || true
+done
 
 
 if [[ "${STORAGE_PATH}" != "${CALEOPE_BASE_DIR}/app-data/arr-stack/data" ]]; then
