@@ -445,6 +445,11 @@ services:
       - "traefik.http.middlewares.vue-assets.replacepathregex.replacement=/$${1}"
       - "traefik.http.routers.jellyfin-vue.middlewares=vue-assets"
       - "traefik.docker.network=caleope-public"
+    volumes:
+      # Vue demande l'adresse du serveur au premier lancement tant qu'il n'en
+      # connaît aucune — un écran de plus avant même de pouvoir se connecter,
+      # sur une machine où Jellyfin est juste à côté. On la lui donne.
+      - {{.BaseDir}}/app-config/{{.AppID}}/jellyfin-vue.json:/usr/share/nginx/html/config.json:ro
     networks:
       - caleope-public
 

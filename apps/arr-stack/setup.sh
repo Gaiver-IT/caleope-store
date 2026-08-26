@@ -1790,6 +1790,25 @@ else
     JS_TODO="║  ${_NEXT_STEP}. Jellyseerr → connecter ton Jellyfin (${JELLYFIN_INT_URL:-ton-serveur:8096})    ║"
 fi
 
+
+# ── Jellyfin Vue : lui dire où est le serveur ───────────────────────────────
+# Sans « defaultServerURLs », Vue réclame l'adresse du serveur sur chaque
+# nouveau navigateur — un écran de plus avant même de pouvoir se connecter,
+# alors que Jellyfin tourne juste à côté. On écrit donc sa configuration.
+#
+# On garde routerMode « history » (adresses propres). ⚠️ Il rend les URL
+# profondes fragiles : Vue référence ses fichiers en relatif, d'où la règle
+# Traefik « vue-assets » du compose. Les deux vont ensemble.
+cat > "${CONFIG_DIR}/jellyfin-vue.json" << 'VUEJSON'
+{
+  "defaultServerURLs": ["https://jellyfin.__DOMAINE__"],
+  "allowServerSelection": true,
+  "routerMode": "history"
+}
+VUEJSON
+sed -i "s|__DOMAINE__|${CALEOPE_DOMAIN}|" "${CONFIG_DIR}/jellyfin-vue.json"
+chmod 644 "${CONFIG_DIR}/jellyfin-vue.json"
+
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                       Arr Stack — Accès                               ║
