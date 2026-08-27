@@ -1880,14 +1880,19 @@ fi
 # On garde routerMode « history » (adresses propres). ⚠️ Il rend les URL
 # profondes fragiles : Vue référence ses fichiers en relatif, d'où la règle
 # Traefik « vue-assets » du compose. Les deux vont ensemble.
-cat > "${CONFIG_DIR}/jellyfin-vue.json" << 'VUEJSON'
+# ⚠️ Contenu écrit EN UNE FOIS, sans sed derrière.
+# Ce fichier est monté tel quel dans le conteneur. « sed -i » ne modifie pas le
+# fichier : il en écrit un neuf et le renomme par-dessus — nouvel inode. Le
+# conteneur, lui, reste accroché à l'ancien : il continue de lire la version
+# d'AVANT la substitution. Mesuré : l'hôte affichait la bonne adresse pendant
+# que Vue lisait encore « jellyfin.__DOMAINE__ ».
+cat > "${CONFIG_DIR}/jellyfin-vue.json" << VUEJSON
 {
-  "defaultServerURLs": ["https://jellyfin.__DOMAINE__"],
+  "defaultServerURLs": ["https://jellyfin.${CALEOPE_DOMAIN}"],
   "allowServerSelection": true,
   "routerMode": "history"
 }
 VUEJSON
-sed -i "s|__DOMAINE__|${CALEOPE_DOMAIN}|" "${CONFIG_DIR}/jellyfin-vue.json"
 chmod 644 "${CONFIG_DIR}/jellyfin-vue.json"
 
 cat > "${CONFIG_DIR}/post-install.txt" <<EOF
