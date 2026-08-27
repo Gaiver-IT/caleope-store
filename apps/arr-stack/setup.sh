@@ -504,6 +504,33 @@ fi
 # ── Token Authentik (pour SSO Jellyfin dans le bootstrap) ────────────
 ARR_AK_TOKEN=""
 ARR_AK_DOMAIN="authentik.${CALEOPE_DOMAIN}"
+
+# ── Par quelle adresse Jellyfin joint-il Authentik ? ─────────────────────────
+#
+# Le serveur Jellyfin doit appeler Authentik LUI-MÊME (découverte OIDC, échange
+# du jeton). Le compose forçait « host-gateway », en supposant que c'est l'hôte
+# local qui sert le HTTPS. C'est vrai en mode « standalone » ; c'est FAUX quand
+# un proxy en amont termine le TLS (mode « npm ») : le Traefik local ne parle
+# alors qu'HTTP, et l'appel échoue sur « SSL certificate problem ».
+#
+# Constaté en production : la panne était masquée depuis des semaines par le
+# cache de découverte OIDC de Jellyfin. Elle n'est apparue qu'au premier
+# redémarrage du conteneur — donc au pire moment, sans rapport apparent.
+#
+# On donne donc au conteneur la MÊME résolution que l'hôte : c'est elle qui
+# aboutit sur le proxy qui termine le TLS, avec un certificat valide.
+# ⚠️ Sauf si l'hôte résout vers une adresse PUBLIQUE : ce serait le cas du
+# hairpin NAT, que « host-gateway » servait justement à contourner. On ne
+# remplace donc que par une adresse privée.
+ARR_AK_ADDR="host-gateway"
+_AK_RESOLU=$(getent hosts "${ARR_AK_DOMAIN}" 2>/dev/null | awk '{print $1}' | head -1)
+case "${_AK_RESOLU}" in
+    10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*)
+        ARR_AK_ADDR="${_AK_RESOLU}"
+        echo "  ✓ Authentik joignable en interne via ${ARR_AK_ADDR} (résolution de l'hôte)" ;;
+    "")  echo "  ℹ Authentik non résolu depuis l'hôte — on garde host-gateway" ;;
+    *)   echo "  ℹ Authentik résout vers une adresse publique (${_AK_RESOLU}) — host-gateway conservé" ;;
+esac
 if [[ -f "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" ]]; then
     _AK_TOKEN=$(grep "^AUTHENTIK_BOOTSTRAP_TOKEN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
     _AK_DOMAIN=$(grep "^AUTHENTIK_DOMAIN=" "${CALEOPE_BASE_DIR}/app-config/authentik/secrets.env" 2>/dev/null | cut -d= -f2- || true)
@@ -553,6 +580,7 @@ BAZARR_API_KEY=${BAZARR_API_KEY}
 # Authentik SSO — token passé au bootstrap via env_file
 ARR_AK_TOKEN=${ARR_AK_TOKEN}
 ARR_AK_DOMAIN=${ARR_AK_DOMAIN}
+ARR_AK_ADDR=${ARR_AK_ADDR}
 EOF
 chmod 600 "${CONFIG_DIR}/secrets.env"
 
