@@ -13,6 +13,16 @@
   réseau. Ne pas considérer le service opérationnel sur son seul état `healthy`.
 - Authentik est utilisé automatiquement comme ForwardAuth lorsqu'il est déjà
   installé sur Caleope.
+- Sortie VPN optionnelle pour Companion : fournir ensemble
+  `COMPANION_VPN_CONTAINER` et `COMPANION_VPN_NETWORK` à Caleope, ou renseigner
+  `INVIDIOUS_COMPANION_VPN_CONTAINER` et `INVIDIOUS_COMPANION_VPN_NETWORK`
+  dans les secrets d'installation avant un `install --force`. Le paquet vérifie
+  que le conteneur existe, fonctionne et appartient à ce réseau. Companion
+  partage ensuite son espace réseau, tandis qu'Invidious rejoint le réseau
+  indiqué pour lui parler. Cette dépendance doit être supervisée : redémarrer
+  le conteneur VPN recrée son espace réseau et peut imposer de recréer
+  Companion. N'utiliser qu'un VPN personnel de confiance ; le réseau partagé
+  donne aussi à Invidious accès aux autres conteneurs de ce réseau.
 - Les sources du schéma PostgreSQL proviennent d'Invidious
   `v2.20260804.1` (`48c6110a83fc`).
 

@@ -15,7 +15,7 @@ services:
           port: 5432
         check_tables: true
         invidious_companion:
-          - private_url: "http://invidious-companion:8282/companion"
+          - private_url: "${INVIDIOUS_COMPANION_URL}"
         invidious_companion_key: "${INVIDIOUS_COMPANION_KEY}"
         domain: "{{.Domain}}"
         external_port: 443

@@ -25,11 +25,30 @@ _previous() {
 DB_PASSWORD="$(_previous INVIDIOUS_DB_PASSWORD)"
 HMAC_KEY="$(_previous INVIDIOUS_HMAC_KEY)"
 COMPANION_KEY="$(_previous INVIDIOUS_COMPANION_KEY)"
+VPN_CONTAINER="${CALEOPE_PARAM_COMPANION_VPN_CONTAINER:-$(_previous INVIDIOUS_COMPANION_VPN_CONTAINER)}"
+VPN_NETWORK="${CALEOPE_PARAM_COMPANION_VPN_NETWORK:-$(_previous INVIDIOUS_COMPANION_VPN_NETWORK)}"
 
 [ -n "${DB_PASSWORD}" ] || DB_PASSWORD="$(openssl rand -hex 24)"
 [ -n "${HMAC_KEY}" ] || HMAC_KEY="$(openssl rand -hex 20)"
 # Invidious exige exactement 16 caractères pour cette clé.
 [ -n "${COMPANION_KEY}" ] || COMPANION_KEY="$(openssl rand -hex 8)"
+
+COMPANION_URL="http://invidious-companion:8282/companion"
+if [ -n "${VPN_CONTAINER}" ] || [ -n "${VPN_NETWORK}" ]; then
+    if [[ ! "${VPN_CONTAINER}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || \
+       [[ ! "${VPN_NETWORK}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+        echo "✗ Le conteneur et le réseau VPN Companion doivent être indiqués ensemble." >&2
+        exit 1
+    fi
+    if ! docker inspect "${VPN_CONTAINER}" | jq -e --arg net "${VPN_NETWORK}" \
+        '.[0].State.Running and (.[0].NetworkSettings.Networks | has($net))' >/dev/null; then
+        echo "✗ Conteneur VPN absent, arrêté ou non relié au réseau ${VPN_NETWORK}." >&2
+        exit 1
+    fi
+    python3 "${PACKAGE_DIR}/configure-companion-vpn.py" "${CALEOPE_APP_DIR}/compose.yml" \
+        "${VPN_CONTAINER}" "${VPN_NETWORK}"
+    COMPANION_URL="http://${VPN_CONTAINER}:8282/companion"
+fi
 
 CALEOPE_AUTH_MIDDLEWARE=""
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
@@ -42,6 +61,9 @@ fi
     printf 'INVIDIOUS_DB_PASSWORD=%s\n' "${DB_PASSWORD}"
     printf 'INVIDIOUS_HMAC_KEY=%s\n' "${HMAC_KEY}"
     printf 'INVIDIOUS_COMPANION_KEY=%s\n' "${COMPANION_KEY}"
+    printf 'INVIDIOUS_COMPANION_URL=%s\n' "${COMPANION_URL}"
+    printf 'INVIDIOUS_COMPANION_VPN_CONTAINER=%s\n' "${VPN_CONTAINER}"
+    printf 'INVIDIOUS_COMPANION_VPN_NETWORK=%s\n' "${VPN_NETWORK}"
     printf 'POSTGRES_DB=invidious\n'
     printf 'POSTGRES_USER=invidious\n'
     printf 'POSTGRES_PASSWORD=%s\n' "${DB_PASSWORD}"
