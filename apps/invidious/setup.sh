@@ -33,6 +33,8 @@ COMPANION_KEY="$(_previous INVIDIOUS_COMPANION_KEY)"
 
 CALEOPE_AUTH_MIDDLEWARE=""
 if [ -d "${CALEOPE_BASE_DIR}/apps-installed/authentik" ]; then
+    python3 "${PACKAGE_DIR}/authentik-forward-auth.py" "${CALEOPE_BASE_DIR}" \
+        "${CALEOPE_DOMAIN}" "invidious" "Invidious"
     CALEOPE_AUTH_MIDDLEWARE="authentik@docker"
 fi
 
