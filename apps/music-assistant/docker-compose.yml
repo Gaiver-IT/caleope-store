@@ -1,0 +1,48 @@
+services:
+  music-assistant:
+    image: ghcr.io/music-assistant/server:2.10.5
+    container_name: music-assistant
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/data:/data
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "4"
+
+  music-assistant-gateway:
+    image: nginx:alpine
+    container_name: music-assistant-gateway
+    restart: unless-stopped
+    depends_on:
+      - music-assistant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - {{.BaseDir}}/app-config/{{.AppID}}/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8095/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.music-assistant.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.music-assistant.entrypoints=websecure"
+      - "traefik.http.routers.music-assistant.tls=true"
+      - "traefik.http.services.music-assistant.loadbalancer.server.port=8095"
+      - "traefik.docker.network=caleope-public"
+    logging:
+      options:
+        max-size: "25m"
+        max-file: "4"
+    networks:
+      - caleope-public
+
+networks:
+  caleope-public:
+    external: true

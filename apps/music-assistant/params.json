@@ -1,0 +1,15 @@
+[
+  {
+    "key": "LOG_LEVEL",
+    "label": "Niveau de journalisation",
+    "description": "Conserver info sauf pour un diagnostic ponctuel.",
+    "type": "select",
+    "required": false,
+    "default": "info",
+    "options": [
+      { "value": "info", "label": "INFO" },
+      { "value": "warning", "label": "WARNING" },
+      { "value": "debug", "label": "DEBUG" }
+    ]
+  }
+]

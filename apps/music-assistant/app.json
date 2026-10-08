@@ -1,0 +1,20 @@
+{
+  "id": "music-assistant",
+  "name": "Music Assistant",
+  "description": "Agrège Jellyfin, Spotify et Deezer et diffuse leur catalogue sans télécharger les morceaux sur le serveur.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/music-assistant/data", "target": "/data" }
+  ],
+  "backup": { "enabled": true }
+}

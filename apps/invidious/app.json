@@ -1,0 +1,21 @@
+{
+  "id": "invidious",
+  "name": "Invidious",
+  "description": "Interface YouTube légère et sans publicité, avec proxy vidéo Invidious Companion.",
+  "category": "media",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [],
+  "volumes": [
+    { "source": "app-data/invidious/postgres", "target": "/var/lib/postgresql/data" },
+    { "source": "app-data/invidious/companion-cache", "target": "/var/tmp" }
+  ],
+  "backup": { "enabled": true }
+}

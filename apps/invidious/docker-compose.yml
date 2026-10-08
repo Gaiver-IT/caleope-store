@@ -1,0 +1,106 @@
+services:
+  invidious:
+    image: quay.io/invidious/invidious:latest
+    container_name: invidious
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      INVIDIOUS_CONFIG: |
+        db:
+          dbname: invidious
+          user: invidious
+          password: "${INVIDIOUS_DB_PASSWORD}"
+          host: invidious-db
+          port: 5432
+        check_tables: true
+        invidious_companion:
+          - private_url: "http://invidious-companion:8282/companion"
+        invidious_companion_key: "${INVIDIOUS_COMPANION_KEY}"
+        domain: "{{.Domain}}"
+        external_port: 443
+        https_only: true
+        registration_enabled: false
+        statistics_enabled: false
+        hmac_key: "${INVIDIOUS_HMAC_KEY}"
+    depends_on:
+      invidious-db:
+        condition: service_healthy
+      invidious-companion:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -nv --tries=1 --spider http://127.0.0.1:3000/api/v1/stats || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.invidious.rule=Host(`{{.Domain}}`)"
+      - "traefik.http.routers.invidious.entrypoints=websecure"
+      - "traefik.http.routers.invidious.tls=true"
+      - "traefik.http.routers.invidious.middlewares=${CALEOPE_AUTH_MIDDLEWARE}"
+      - "traefik.http.services.invidious.loadbalancer.server.port=3000"
+      - "traefik.docker.network=caleope-public"
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "4"
+    networks:
+      - caleope-public
+      - caleope-internal
+
+  invidious-companion:
+    image: quay.io/invidious/invidious-companion:latest
+    container_name: invidious-companion
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      SERVER_SECRET_KEY: "${INVIDIOUS_COMPANION_KEY}"
+    cap_drop:
+      - ALL
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/companion-cache:/var/tmp:rw
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "4"
+    networks:
+      - caleope-internal
+
+  invidious-db:
+    image: docker.io/library/postgres:14
+    container_name: invidious-db
+    restart: unless-stopped
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      POSTGRES_DB: invidious
+      POSTGRES_USER: invidious
+      POSTGRES_PASSWORD: "${INVIDIOUS_DB_PASSWORD}"
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/postgres:/var/lib/postgresql/data
+      - {{.BaseDir}}/app-config/{{.AppID}}/schema/sql:/config/sql:ro
+      - {{.BaseDir}}/app-config/{{.AppID}}/schema/init-invidious-db.sh:/docker-entrypoint-initdb.d/init-invidious-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging:
+      options:
+        max-size: "25m"
+        max-file: "4"
+    networks:
+      - caleope-internal
+
+networks:
+  caleope-public:
+    external: true
+  caleope-internal:
+    external: true
