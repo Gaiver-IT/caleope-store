@@ -10,6 +10,9 @@
   de celle utilisée par Companion pour obtenir le jeton. Le relais augmente la
   bande passante consommée par le serveur et reste modifiable dans les
   préférences de l'utilisateur.
+- L'accueil ouvre « Trending » : le flux « Popular » était vide sur la VM
+  personnelle (0 vidéo contre 75 liens vidéo sur « Trending »). Le menu
+  « Popular » est donc désactivé, sans désactiver la recherche ni les vidéos.
 - Le test de santé `/api/v1/stats` et la recherche ne prouvent pas la lecture :
   vérifier aussi `/api/v1/videos/<id>` et un flux vidéo réel. Companion doit
   obtenir un PO Token valide ; une sortie IP de datacenter ou de VPN peut être

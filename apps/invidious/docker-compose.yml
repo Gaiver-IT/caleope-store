@@ -22,8 +22,10 @@ services:
         https_only: true
         registration_enabled: false
         statistics_enabled: false
+        popular_enabled: false
         hmac_key: "${INVIDIOUS_HMAC_KEY}"
         default_user_preferences:
+          default_home: Trending
           local: true
     depends_on:
       invidious-db:
