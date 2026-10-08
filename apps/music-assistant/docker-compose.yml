@@ -22,6 +22,20 @@ services:
     networks:
       - caleope-public
 
+  music-assistant-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    container_name: music-assistant-pot
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - music-assistant
+    network_mode: "service:music-assistant"
+    command: ["--host", "127.0.0.1"]
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "3"
+
 networks:
   caleope-public:
     external: true

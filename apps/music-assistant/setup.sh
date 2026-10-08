@@ -41,6 +41,7 @@ cat > "${CALEOPE_APP_DIR}/post-install.txt" <<INFO
   │    1. Jellyfin — votre bibliothèque locale                       │
   │    2. Spotify — abonnement Premium requis                        │
   │    3. Deezer — abonnement Premium, HiFi ou Family requis         │
+  │    4. YouTube Music — Premium, cookie et PO Token local          │
   │                                                                  │
   │  Les titres Spotify/Deezer sont diffusés à la demande et ne      │
   │  sont pas téléchargés dans le stockage Caleope.                  │
