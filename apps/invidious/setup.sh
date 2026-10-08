@@ -10,6 +10,9 @@ PACKAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p "${CONFIG_DIR}/schema/sql"
 mkdir -p "${DATA_DIR}/postgres" "${DATA_DIR}/companion-cache"
+# Companion runs as an unprivileged user and needs a writable cache. The
+# directory is dedicated to this service; sticky permissions mirror /tmp.
+chmod 1777 "${DATA_DIR}/companion-cache"
 
 # Le schéma officiel est livré dans le paquet afin que PostgreSQL puisse
 # initialiser une base vide sans cloner de dépôt sur le serveur Caleope.

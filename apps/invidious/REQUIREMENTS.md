@@ -5,6 +5,11 @@
 - La lecture vidéo consomme la bande passante du serveur : ce paquet est prévu
   pour une instance personnelle, pas pour une instance publique.
 - Invidious Companion est inclus et obligatoire pour la lecture des vidéos.
+- Les vidéos sont relayées par défaut (`default_user_preferences.local: true`).
+  Le lien direct YouTube peut répondre 403 lorsque l'IP qui lit le flux diffère
+  de celle utilisée par Companion pour obtenir le jeton. Le relais augmente la
+  bande passante consommée par le serveur et reste modifiable dans les
+  préférences de l'utilisateur.
 - Le test de santé `/api/v1/stats` et la recherche ne prouvent pas la lecture :
   vérifier aussi `/api/v1/videos/<id>` et un flux vidéo réel. Companion doit
   obtenir un PO Token valide ; une sortie IP de datacenter ou de VPN peut être

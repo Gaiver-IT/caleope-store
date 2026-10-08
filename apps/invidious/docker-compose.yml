@@ -23,6 +23,8 @@ services:
         registration_enabled: false
         statistics_enabled: false
         hmac_key: "${INVIDIOUS_HMAC_KEY}"
+        default_user_preferences:
+          local: true
     depends_on:
       invidious-db:
         condition: service_healthy
