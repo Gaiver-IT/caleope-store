@@ -1,0 +1,10 @@
+[
+  {
+    "id": "PBX_BIND_IP",
+    "label": "Adresse d'écoute privée",
+    "description": "Adresse Tailscale ou RFC1918 de l'hôte. Laisser vide pour sélectionner automatiquement tailscale0, puis l'adresse privée principale.",
+    "type": "string",
+    "required": false,
+    "default": ""
+  }
+]

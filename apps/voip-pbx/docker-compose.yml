@@ -1,0 +1,42 @@
+services:
+  voip-pbx:
+    image: ghcr.io/mikopbx/mikopbx@sha256:f6c023fde04372a13bec82ba563cae1d5738caf5c134bf78615b68d4b012d943
+    container_name: voip-pbx
+    restart: unless-stopped
+    tty: true
+    env_file:
+      - {{.BaseDir}}/app-config/{{.AppID}}/secrets.env
+    environment:
+      TZ: Europe/Paris
+      PBX_NAME: Caleope VoIP PBX
+      WEB_ADMIN_LOGIN: admin
+      RTP_PORT_FROM: "20000"
+      RTP_PORT_TO: "20800"
+      ENABLE_USE_NAT: "1"
+      PBX_FIREWALL_ENABLED: "1"
+      PBX_FAIL2BAN_ENABLED: "1"
+      SSH_PORT: "2223"
+    ports:
+      - "${PBX_BIND_IP}:${CALEOPE_PORT_WEB}:443/tcp"
+      - "${PBX_BIND_IP}:${CALEOPE_PORT_SIP}:5060/udp"
+      - "${PBX_BIND_IP}:5061:5061/tcp"
+      - "${PBX_BIND_IP}:20000-20800:20000-20800/udp"
+    volumes:
+      - {{.BaseDir}}/app-data/{{.AppID}}/cf:/cf
+      - {{.BaseDir}}/app-data/{{.AppID}}/storage:/storage
+    networks:
+      - voip-pbx-private
+    security_opt:
+      - no-new-privileges:true
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "asterisk -rx 'core show version' >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  voip-pbx-private:
+    internal: true

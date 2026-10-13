@@ -1,0 +1,25 @@
+{
+  "id": "voip-pbx",
+  "name": "MikoPBX",
+  "description": "Standard téléphonique SIP générique MikoPBX avec Asterisk et interface web complète. Accès privé par défaut.",
+  "category": "communication",
+  "channel": "alpha",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": false,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": false, "internal": true },
+  "ports": [
+    { "name": "web", "container": 443, "dynamic": true },
+    { "name": "sip", "container": 5060, "host": 5060, "dynamic": false, "firewall": false, "protocol": "udp" }
+  ],
+  "volumes": [
+    { "source": "app-data/voip-pbx/cf", "target": "/cf" },
+    { "source": "app-data/voip-pbx/storage", "target": "/storage" }
+  ],
+  "backup": { "enabled": true },
+  "upstream": { "name": "MikoPBX", "license": "GPL-3.0-or-later", "url": "https://github.com/mikopbx/Core" }
+}
