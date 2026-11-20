@@ -1,0 +1,22 @@
+{
+  "id": "hermes",
+  "name": "Hermes Agent",
+  "description": "Agent IA autonome prenant en charge plusieurs fournisseurs de modèles (API cloud ou endpoints locaux compatibles OpenAI), avec gestion de la mémoire conversationnelle, exécution de commandes SSH et espace de travail persistant.",
+  "category": "ai",
+  "channel": "stable",
+  "repository": "official",
+  "capabilities": {
+    "reverse_proxy": true,
+    "gpu": false,
+    "docker_socket": false,
+    "privileged": false
+  },
+  "network": { "public": true, "internal": true },
+  "ports": [{ "name": "web", "container": 8080, "dynamic": true }],
+  "volumes": [
+    { "source": "app-data/hermes/data", "target": "/root/.hermes" },
+    { "source": "app-data/hermes/ssh", "target": "/root/.ssh" },
+    { "source": "app-data/hermes/workspace", "target": "/workspace" }
+  ],
+  "backup": { "enabled": true }
+}
